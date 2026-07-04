@@ -208,6 +208,17 @@ npx prisma studio # DB GUI 실행
 
 <br>
 
+## 🌐 공통 응답 / 에러코드 / API 문서
+
+- 모든 응답은 전역 `ResponseInterceptor` / `HttpExceptionFilter`(`src/common`)를 거쳐 아래 형태로 내려갑니다.
+  - 성공: `{ success: true, data, message }`
+  - 실패: `{ success: false, code, message }`
+- 도메인별 에러코드는 각 모듈의 `*-error-code.enum.ts`에 `도메인_번호`(ex- `AUTH_001`) 형식으로 정의하고, 예외를 던질 때는 `BusinessException(errorCode, message, status)`(`src/common/exceptions`)을 사용합니다.
+- Swagger 문서는 서버 실행 후 `/api-docs`에서 확인할 수 있으며, Bearer 인증 스키마가 등록되어 있습니다.
+- 현재 도메인 모듈들은 컨트롤러/서비스/에러코드 enum 등 뼈대만 생성된 상태이며, 실제 API 로직은 각 담당자가 채워나갑니다.
+
+<br>
+
 ## 📂 프로젝트 구조
 
 <!-- 기능이 추가되면서 폴더 구조는 계속 바뀔 수 있음 -->
@@ -218,6 +229,31 @@ npx prisma studio # DB GUI 실행
  ┃ ┣ 📂migrations
  ┃ ┗ 📜schema.prisma
  ┣ 📂src
+ ┃ ┣ 📂auth               (회원가입/로그인/온보딩 - A101~A103)
+ ┃ ┣ 📂user                (로그아웃/회원탈퇴 - A104)
+ ┃ ┣ 📂home                 (홈 화면 - H)
+ ┃ ┣ 📂symptom               (부글 기록 - B)
+ ┃ ┣ 📂lifestyle              (생활 기록 - L)
+ ┃ ┣ 📂calendar                (캘린더 - C)
+ ┃ ┣ 📂report                   (리포트 - R)
+ ┃ ┣ 📂guide                     (가이드 카드 - G)
+ ┃ ┃  ┣ 📂dto
+ ┃ ┃  ┣ 📜guide-error-code.enum.ts
+ ┃ ┃  ┣ 📜guide.controller.ts
+ ┃ ┃  ┣ 📜guide.controller.spec.ts
+ ┃ ┃  ┣ 📜guide.module.ts
+ ┃ ┃  ┣ 📜guide.service.ts
+ ┃ ┃  ┗ 📜guide.service.spec.ts
+ ┃ ┃    (auth/user/home/symptom/lifestyle/calendar/report 모두 위 guide와 동일한 구성)
+ ┃ ┣ 📂common
+ ┃ ┃ ┣ 📂dto
+ ┃ ┃ ┃ ┗ 📜api-response.dto.ts       (성공/실패 응답 타입)
+ ┃ ┃ ┣ 📂exceptions
+ ┃ ┃ ┃ ┗ 📜business.exception.ts     (에러코드를 담는 커스텀 예외)
+ ┃ ┃ ┣ 📂filters
+ ┃ ┃ ┃ ┗ 📜http-exception.filter.ts  (전역 예외 필터)
+ ┃ ┃ ┗ 📂interceptors
+ ┃ ┃   ┗ 📜response.interceptor.ts   (전역 응답 래퍼)
  ┃ ┣ 📂generated         (Prisma Client 자동 생성 - git 미포함)
  ┃ ┣ 📂prisma
  ┃ ┃ ┣ 📜prisma.module.ts
@@ -247,6 +283,8 @@ npx prisma studio # DB GUI 실행
 
 - prisma - `schema.prisma`에 DB 모델 정의, 마이그레이션 파일 관리
 - src
+  - auth / user / home / symptom / lifestyle / calendar / report / guide - 도메인별 모듈 (`nest g module/controller/service`로 생성, 각 `dto/` 폴더와 `*-error-code.enum.ts` 포함). 아직 로직 구현 전 뼈대 상태
+  - common - 전역 응답 래퍼(`interceptors`) / 예외 필터(`filters`) / 커스텀 예외(`exceptions`) / 응답 타입(`dto`)
   - generated/prisma - `prisma generate`로 자동 생성되는 Prisma Client (직접 수정 X)
   - prisma - 전역으로 주입되는 `PrismaService` / `PrismaModule`
-  - (추후 기능이 늘어나면 도메인별로 `.module.ts` / `.controller.ts` / `.service.ts`를 `src` 하위에 추가)
+  - (추후 기능이 늘어나면 도메인별 모듈 하위에 컨트롤러/서비스 로직과 dto를 채워나감)
