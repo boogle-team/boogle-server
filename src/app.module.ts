@@ -3,6 +3,14 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
+import { HomeModule } from './home/home.module';
+import { SymptomModule } from './symptom/symptom.module';
+import { LifestyleModule } from './lifestyle/lifestyle.module';
+import { CalendarModule } from './calendar/calendar.module';
+import { ReportModule } from './report/report.module';
+import { GuideModule } from './guide/guide.module';
 
 @Module({
   imports: [
@@ -10,6 +18,14 @@ import { PrismaModule } from './prisma/prisma.module';
       isGlobal: true,
     }),
     PrismaModule,
+    AuthModule,
+    UserModule,
+    HomeModule,
+    SymptomModule,
+    LifestyleModule,
+    CalendarModule,
+    ReportModule,
+    GuideModule,
   ],
   controllers: [AppController],
   providers: [AppService],
