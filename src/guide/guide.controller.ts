@@ -1,4 +1,4 @@
 import { Controller } from '@nestjs/common';
 
-@Controller('guide')
+@Controller('guides')
 export class GuideController {}

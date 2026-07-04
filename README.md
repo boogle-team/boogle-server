@@ -10,9 +10,9 @@
 
 ## 🙋🏻‍♀️ Boogle의 BE Developer를 소개합니다!
 
-| <a href="https://github.com/yeon-yeon1"><img src="https://github.com/yeon-yeon1.png" width="120px;" alt=""/></a> | <a href="https://github.com/an-junhyung"><img src="https://github.com/an-junhyung.png" width="120px;" alt=""/></a> | <a href="https://github.com/seongsoon1818"><img src="https://github.com/seongsoon1818.png" width="120px;" alt=""/></a> | <a href="https://github.com/mzxxzysy"><img src="https://github.com/mzxxzysy.png" width="120px;" alt=""/></a> | <a href="https://github.com/DBSRYDL"><img src="https://github.com/DBSRYDL.png" width="120px;" alt=""/></a> |
+| <a href="https://github.com/yeon-yeon1"><img src="https://github.com/yeon-yeon1.png" width="120px;" alt=""/></a> | <a href="https://github.com/an-junhyung"><img src="https://github.com/an-junhyung.png" width="120px;" alt=""/></a> | <a href="https://github.com/seongsoon1818"><img src="https://github.com/seongsoon1818.png" width="120px;" alt=""/></a> | <a href="https://github.com/DBSRYDL"><img src="https://github.com/DBSRYDL.png" width="120px;" alt=""/></a> | <a href="https://github.com/mzxxzysy"><img src="https://github.com/mzxxzysy.png" width="120px;" alt=""/></a> |
 | :---: | :---: | :---: | :---: | :---: |
-| [노진경](https://github.com/yeon-yeon1) | [안준형](https://github.com/an-junhyung) | [이성진](https://github.com/seongsoon1818) | [정서영](https://github.com/mzxxzysy) | [이윤교](https://github.com/DBSRYDL) |
+| [노진경](https://github.com/yeon-yeon1) | [안준형](https://github.com/an-junhyung) | [이성진](https://github.com/seongsoon1818) | [이윤교](https://github.com/DBSRYDL) | [정서영](https://github.com/mzxxzysy) |
 
 <br>
 
@@ -33,8 +33,6 @@
 | Package Manager | <img src="https://img.shields.io/badge/pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white"> | 빠른 설치 속도와 디스크 공간을 절약하는 효율적인 의존성 관리로 프로젝트 환경 설정에 용이 |
 | Formatting | <img src="https://img.shields.io/badge/eslint-4B32C3?style=for-the-badge&logo=eslint&logoColor=white"> <img src="https://img.shields.io/badge/prettier-000000?style=for-the-badge&logo=prettier&logoColor=F7B93E"> | 코드 스타일을 통일하고 잠재적인 오류를 사전에 방지하여 협업 시 효율성을 높임 |
 | Testing | <img src="https://img.shields.io/badge/Jest-C21325?style=for-the-badge&logo=jest&logoColor=white"> | NestJS 공식 권장 테스트 러너로, 단위/E2E 테스트를 별도 설정 없이 바로 사용 가능 |
-
-> 소셜 로그인(카카오/구글 OAuth), AI 문장화·태그추출(Claude API), PDF 생성(Puppeteer) 등은 기획 단계에서 정한 방향이며, 실제 도입 시 이 표에 추가합니다.
 
 <br>
 
@@ -210,10 +208,22 @@ npx prisma studio # DB GUI 실행
 
 ## 🌐 공통 응답 / 에러코드 / API 문서
 
-- 모든 응답은 전역 `ResponseInterceptor` / `HttpExceptionFilter`(`src/common`)를 거쳐 아래 형태로 내려갑니다.
-  - 성공: `{ success: true, data, message }`
+- API 공통 prefix는 `/api/v1`입니다 (`main.ts`의 `app.setGlobalPrefix('api/v1')`). 컨트롤러에는 `@Controller('home')`처럼 리소스 경로만 적으면 실제로는 `/api/v1/home`으로 노출됩니다. Swagger 문서(`/api-docs`)는 이 prefix의 영향을 받지 않습니다.
+- 모든 응답은 전역 `ResponseInterceptor` / `HttpExceptionFilter`(`src/common`)를 거쳐 API 명세서의 공통 Response Format대로 내려갑니다.
+  - 성공: `{ success: true, data, message }` (`message` 기본값: `"요청이 성공적으로 처리되었습니다."`)
   - 실패: `{ success: false, code, message }`
-- 도메인별 에러코드는 각 모듈의 `*-error-code.enum.ts`에 `도메인_번호`(ex- `AUTH_001`) 형식으로 정의하고, 예외를 던질 때는 `BusinessException(errorCode, message, status)`(`src/common/exceptions`)을 사용합니다.
+- **공통 에러코드**(`src/common/constants/common-error-code.enum.ts`): HTTP status에 따라 자동으로 매핑되는 기본 코드입니다. 별도 처리를 하지 않으면 아래 값이 그대로 내려갑니다.
+
+  | Status | code | 기본 message |
+  | --- | --- | --- |
+  | 400 | `BAD_REQUEST` | 요청 값이 올바르지 않습니다. |
+  | 401 | `UNAUTHORIZED` | 로그인이 필요합니다. |
+  | 403 | `FORBIDDEN` | 해당 요청을 처리할 권한이 없습니다. |
+  | 404 | `NOT_FOUND` | 요청한 데이터를 찾을 수 없습니다. |
+  | 409 | `CONFLICT` | 이미 존재하는 데이터입니다. |
+  | 500 | `INTERNAL_SERVER_ERROR` | 서버 내부 오류가 발생했습니다. |
+
+- **도메인 에러코드**: 위 공통 코드로 표현이 안 되는 도메인 고유 에러(ex- 이미 가입된 소셜 계정)는 각 모듈의 `*-error-code.enum.ts`에 `도메인_번호`(ex- `AUTH_001`) 형식으로 추가하고, `BusinessException(errorCode, message, status)`(`src/common/exceptions`)을 던져서 사용합니다. `BusinessException`은 `HttpExceptionFilter`에서 공통 매핑보다 우선 적용됩니다.
 - Swagger 문서는 서버 실행 후 `/api-docs`에서 확인할 수 있으며, Bearer 인증 스키마가 등록되어 있습니다.
 - 현재 도메인 모듈들은 컨트롤러/서비스/에러코드 enum 등 뼈대만 생성된 상태이며, 실제 API 로직은 각 담당자가 채워나갑니다.
 
@@ -229,14 +239,14 @@ npx prisma studio # DB GUI 실행
  ┃ ┣ 📂migrations
  ┃ ┗ 📜schema.prisma
  ┣ 📂src
- ┃ ┣ 📂auth               (회원가입/로그인/온보딩 - A101~A103)
- ┃ ┣ 📂user                (로그아웃/회원탈퇴 - A104)
- ┃ ┣ 📂home                 (홈 화면 - H)
- ┃ ┣ 📂symptom               (부글 기록 - B)
- ┃ ┣ 📂lifestyle              (생활 기록 - L)
- ┃ ┣ 📂calendar                (캘린더 - C)
- ┃ ┣ 📂report                   (리포트 - R)
- ┃ ┣ 📂guide                     (가이드 카드 - G)
+ ┃ ┣ 📂auth               (회원가입/로그인/온보딩 - A101~A103, 경로: /auth)
+ ┃ ┣ 📂user                (로그아웃/회원탈퇴 - A104, 경로: /users)
+ ┃ ┣ 📂home                 (홈 화면 - H, 경로: /home)
+ ┃ ┣ 📂record                (부글 기록 - B, 경로: /records)
+ ┃ ┣ 📂life-record            (생활 기록 - L, 경로: /life-records)
+ ┃ ┣ 📂calendar                (캘린더 - C, 경로: /calendar)
+ ┃ ┣ 📂report                   (리포트 - R, 경로: /reports)
+ ┃ ┣ 📂guide                     (가이드 카드 - G, 경로: /guides)
  ┃ ┃  ┣ 📂dto
  ┃ ┃  ┣ 📜guide-error-code.enum.ts
  ┃ ┃  ┣ 📜guide.controller.ts
@@ -244,7 +254,7 @@ npx prisma studio # DB GUI 실행
  ┃ ┃  ┣ 📜guide.module.ts
  ┃ ┃  ┣ 📜guide.service.ts
  ┃ ┃  ┗ 📜guide.service.spec.ts
- ┃ ┃    (auth/user/home/symptom/lifestyle/calendar/report 모두 위 guide와 동일한 구성)
+ ┃ ┃    (auth/user/home/record/life-record/calendar/report 모두 위 guide와 동일한 구성)
  ┃ ┣ 📂common
  ┃ ┃ ┣ 📂dto
  ┃ ┃ ┃ ┗ 📜api-response.dto.ts       (성공/실패 응답 타입)
@@ -283,7 +293,7 @@ npx prisma studio # DB GUI 실행
 
 - prisma - `schema.prisma`에 DB 모델 정의, 마이그레이션 파일 관리
 - src
-  - auth / user / home / symptom / lifestyle / calendar / report / guide - 도메인별 모듈 (`nest g module/controller/service`로 생성, 각 `dto/` 폴더와 `*-error-code.enum.ts` 포함). 아직 로직 구현 전 뼈대 상태
+  - auth / user / home / record / life-record / calendar / report / guide - 도메인별 모듈 (`nest g module/controller/service`로 생성, 각 `dto/` 폴더와 `*-error-code.enum.ts` 포함). 폴더/클래스명은 단수(ex- `RecordController`)이고 실제 API 경로는 API 명세서에 맞춰 복수형(ex- `/api/v1/records`)으로 노출됩니다. 아직 로직 구현 전 뼈대 상태
   - common - 전역 응답 래퍼(`interceptors`) / 예외 필터(`filters`) / 커스텀 예외(`exceptions`) / 응답 타입(`dto`)
   - generated/prisma - `prisma generate`로 자동 생성되는 Prisma Client (직접 수정 X)
   - prisma - 전역으로 주입되는 `PrismaService` / `PrismaModule`
