@@ -147,6 +147,17 @@ npx prisma studio # DB GUI 실행
     - ex- handleDelete
   - 언더바 사용 X (클래스명은 허용)
 
+## 📥 Import 경로
+
+- 같은 폴더(형제 파일)끼리는 상대경로(`./`)를 그대로 씁니다. ex- `main.ts`에서 `./app.module`
+- 상위 폴더로 거슬러 올라가야 하는 경우(`../`)는 `@/` alias(`tsconfig.json`의 `paths`, → `src/*`)를 씁니다. ex- `../generated/prisma/client` 대신 `@/generated/prisma/client`
+- `nest build` / `nest start`는 별도 도구(tsc-alias 등) 없이 `@/` alias를 relative import로 그대로 컴파일해줍니다. 다만 Jest는 tsconfig의 `paths`를 안 읽으므로 `package.json`의 `jest.moduleNameMapper`, `test/jest-e2e.json`의 `moduleNameMapper`에 각각 `^@/(.*)$` 매핑이 되어 있어야 합니다. 새 alias를 추가하면 이 두 곳도 같이 맞춰주세요.
+
+## 🧪 Prisma + Jest 관련 주의사항
+
+- Prisma 7의 생성된 클라이언트는 내부적으로 `./enums.js`처럼 확장자를 붙인 ESM 스타일 상대경로 import를 씁니다. ts-jest가 이를 못 찾는 문제가 있어 두 Jest 설정 모두 `moduleNameMapper`에 `"^(\\.{1,2}/.*)\\.js$": "$1"` 매핑을 추가해 확장자를 벗겨줍니다.
+- Prisma 7의 WASM 쿼리 컴파일러는 내부적으로 동적 `import()`를 사용하는데, Jest 기본 실행 환경에서는 지원되지 않아 실제 DB에 연결하는 테스트(e2e 등)를 돌리려면 `NODE_OPTIONS=--experimental-vm-modules` 플래그가 필요합니다. `test:e2e` 스크립트에 `cross-env`로 이미 적용되어 있습니다. `PrismaService`를 실제로 초기화(`$connect`)하는 테스트를 새로 추가한다면 같은 플래그가 필요할 수 있습니다.
+
 ## 📂 프로젝트 구조
 
 수정 예정
