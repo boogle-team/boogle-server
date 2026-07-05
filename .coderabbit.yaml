@@ -1,0 +1,41 @@
+language: "ko-KR"
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "develop"
+      - "main"
+  path_filters:
+    - "!src/generated/**"
+    - "!pnpm-lock.yaml"
+    - "!prisma/migrations/**"
+  path_instructions:
+    - path: "src/**/*.controller.ts"
+      instructions: >
+        NestJS 컨트롤러입니다. 라우팅 경로가 API 명세서(Notion)와 일치하는지,
+        요청 DTO에 class-validator 데코레이터가 있는지, 인증이 필요한 라우트에
+        Guard가 적용되어 있는지 확인해주세요.
+    - path: "src/**/*.service.ts"
+      instructions: >
+        NestJS 서비스입니다. 비즈니스 예외는 src/common/exceptions의
+        BusinessException과 각 도메인의 *-error-code.enum.ts를 사용하는지,
+        Prisma 쿼리에 N+1이나 불필요한 전체 조회가 없는지 확인해주세요.
+    - path: "src/**/dto/*.ts"
+      instructions: >
+        요청/응답 DTO입니다. class-validator/class-transformer 데코레이터
+        누락 여부와, API 명세서의 필드명(camelCase) 규칙 준수 여부를 확인해주세요.
+    - path: "src/**/*.spec.ts"
+      instructions: >
+        Jest 테스트 파일입니다. 정상 케이스뿐 아니라 예외 케이스(명세서의
+        "예외 케이스" 항목)도 테스트하고 있는지 확인해주세요.
+
+chat:
+  auto_reply: true

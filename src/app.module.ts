@@ -6,8 +6,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { HomeModule } from './home/home.module';
-import { SymptomModule } from './symptom/symptom.module';
-import { LifestyleModule } from './lifestyle/lifestyle.module';
+import { RecordModule } from './record/record.module';
+import { LifeRecordModule } from './life-record/life-record.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { ReportModule } from './report/report.module';
 import { GuideModule } from './guide/guide.module';
@@ -21,8 +21,8 @@ import { GuideModule } from './guide/guide.module';
     AuthModule,
     UserModule,
     HomeModule,
-    SymptomModule,
-    LifestyleModule,
+    RecordModule,
+    LifeRecordModule,
     CalendarModule,
     ReportModule,
     GuideModule,

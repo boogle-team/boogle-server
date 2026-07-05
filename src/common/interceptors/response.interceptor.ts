@@ -21,7 +21,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<
       map((data) => ({
         success: true,
         data,
-        message: 'success',
+        message: '요청이 성공적으로 처리되었습니다.',
       })),
     );
   }
