@@ -30,9 +30,21 @@ const DEFAULT_ERROR_BY_STATUS: Record<
     code: CommonErrorCode.NOT_FOUND,
     message: '요청한 데이터를 찾을 수 없습니다.',
   },
+  [HttpStatus.METHOD_NOT_ALLOWED]: {
+    code: CommonErrorCode.METHOD_NOT_ALLOWED,
+    message: '허용되지 않은 요청 메서드입니다.',
+  },
   [HttpStatus.CONFLICT]: {
     code: CommonErrorCode.CONFLICT,
     message: '이미 존재하는 데이터입니다.',
+  },
+  [HttpStatus.UNPROCESSABLE_ENTITY]: {
+    code: CommonErrorCode.UNPROCESSABLE_ENTITY,
+    message: '처리할 수 없는 요청입니다.',
+  },
+  [HttpStatus.TOO_MANY_REQUESTS]: {
+    code: CommonErrorCode.TOO_MANY_REQUESTS,
+    message: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
   },
   [HttpStatus.INTERNAL_SERVER_ERROR]: {
     code: CommonErrorCode.INTERNAL_SERVER_ERROR,
