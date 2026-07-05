@@ -65,10 +65,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : {
             success: false,
             code: fallback.code,
-            message:
-              exception instanceof HttpException
-                ? exception.message
-                : fallback.message,
+            message: fallback.message,
           };
 
     response.status(status).json(body);
