@@ -1,5 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
@@ -13,7 +13,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalInterceptors(new ResponseInterceptor(new Reflector()));
   app.useGlobalFilters(new HttpExceptionFilter());
   app.setGlobalPrefix('api/v1');
 
