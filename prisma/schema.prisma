@@ -7,3 +7,98 @@ generator client {
 datasource db {
   provider = "mysql"
 }
+
+model Member {
+  id               BigInt    @id @default(autoincrement())
+  loginId          String    @unique @db.VarChar(20) @map("login_id")
+  password         String    @db.VarChar(255)
+  nickname         String    @db.VarChar(40)
+  profileImg       String?   @db.VarChar(255) @map("profile_img")
+  email            String    @unique @db.VarChar(255)
+  name             String    @db.VarChar(20)
+  gender           String?   @db.VarChar(1)
+  age              Int?
+  ageGroup         Int?      @db.TinyInt @map("age_group")
+  baselineType     String?   @db.VarChar(1) @map("baseline_type")
+  birth            String?   @db.VarChar(20)
+  sensInfo         String    @db.VarChar(1) @map("sens_info")
+  regDate          DateTime  @default(now()) @map("reg_date")
+  status           String    @db.VarChar(1)
+  deleteDate       DateTime? @map("delete_date")
+  subscription     String    @db.VarChar(1)
+  subscriptionDate DateTime? @map("subscription_date")
+  recordAlarm      String?   @db.VarChar(1) @map("record_alarm")
+  reportAlarm      String?   @db.VarChar(1) @map("report_alarm")
+  warnAlarm        String?   @db.VarChar(1) @map("warn_alarm")
+
+  lifeRecords LifeRecord[]
+
+  @@map("member")
+}
+
+model LifeRecord {
+  id          BigInt    @id @default(autoincrement())
+  userId      BigInt    @map("user_id")
+  regDate     DateTime  @map("reg_date")
+  sleep       String?   @db.VarChar(1)
+  stress      String?   @db.VarChar(1)
+  water       String?   @db.VarChar(1)
+  mealRegular String?   @db.VarChar(1) @map("meal_regular")
+  memo        String?   @db.VarChar(255)
+  autoTags    String?   @db.VarChar(255) @map("auto_tags")
+  sleepTime   Int?      @db.TinyInt @map("sleep_time")
+  exercise    String?   @db.VarChar(1)
+  caffeine    String?   @db.VarChar(1)
+  medicine    String?   @db.VarChar(1)
+  outing      String?   @db.VarChar(1)
+  hormone     String?   @db.VarChar(1)
+  status      String    @default("A") @db.VarChar(1)
+  updateTime  DateTime? @map("update_time")
+
+  member    Member        @relation(fields: [userId], references: [id])
+  lifeTags  LifeTag[]
+  lifeFoods LifeFoodTag[]
+
+  @@unique([userId, regDate])
+  @@map("life_record")
+}
+
+model Tag {
+  id   BigInt @id @default(autoincrement())
+  name String @unique @db.VarChar(40)
+
+  lifeTags LifeTag[]
+
+  @@map("tags")
+}
+
+model LifeTag {
+  tagId  BigInt @map("tag_id")
+  lifeId BigInt @map("life_id")
+
+  tag        Tag        @relation(fields: [tagId], references: [id])
+  lifeRecord LifeRecord @relation(fields: [lifeId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, lifeId])
+  @@map("life_tags")
+}
+
+model Food {
+  id   Int    @id @default(autoincrement())
+  name String @unique @db.VarChar(20)
+
+  lifeFoods LifeFoodTag[]
+
+  @@map("food")
+}
+
+model LifeFoodTag {
+  lifeId BigInt @map("life_id")
+  foodId Int    @map("food_id")
+
+  lifeRecord LifeRecord @relation(fields: [lifeId], references: [id], onDelete: Cascade)
+  food       Food       @relation(fields: [foodId], references: [id])
+
+  @@id([lifeId, foodId])
+  @@map("life_food_tag")
+}
