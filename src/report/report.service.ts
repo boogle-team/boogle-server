@@ -1178,6 +1178,7 @@ export class ReportService {
         },
         guideContent: {
           status: 'A',
+          category: 'P',
         },
       },
       select: {
