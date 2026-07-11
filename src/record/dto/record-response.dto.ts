@@ -16,36 +16,36 @@ export class RecordResponseDto {
   @ApiProperty({ nullable: true, example: 4 })
   stoolBristol!: number | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  stoolSimple!: number | null;
+  @ApiProperty({ nullable: true, example: 'M' })
+  stoolSimple!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  bowlFeeling!: number | null;
+  @ApiProperty({ nullable: true, example: 'C' })
+  bowlFeeling!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  stomach!: number | null;
+  @ApiProperty({ nullable: true, example: 'N' })
+  stomach!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  distension!: number | null;
+  @ApiProperty({ nullable: true, example: 'N' })
+  distension!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  remainingFeeling!: number | null;
+  @ApiProperty({ nullable: true, example: 'N' })
+  remainingFeeling!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  urgency!: number | null;
+  @ApiProperty({ nullable: true, example: 'N' })
+  urgency!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
+  @ApiProperty({ nullable: true, example: 5 })
   takenTime!: number | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  amount!: number | null;
+  @ApiProperty({ nullable: true, example: 'N' })
+  amount!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  color!: number | null;
+  @ApiProperty({ nullable: true, example: 'B' })
+  color!: string | null;
 
-  @ApiProperty({ nullable: true, example: 4 })
-  status!: number | null;
+  @ApiProperty({ nullable: true, example: 'A' })
+  status!: string | null;
 
   @ApiProperty({ example: '2026-07-10T10:35:00.000Z' })
-  updatedAt!: Date;
+  updatedAt!: string;
 }
