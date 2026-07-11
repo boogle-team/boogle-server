@@ -77,14 +77,15 @@ export class CreateLifeRecordDto {
   caffeine?: string;
 
   @ApiPropertyOptional({
-    nullable: true,
-    example: null,
+    type: [Number],
+    example: [1, 3],
     description:
-      '감기약 C / 항생제 V / 유산균 L / 철분제 I / 변비약 B / 기타 E',
+      '복용한 약 ID 목록 (medicine 테이블 참조: 1 감기약 / 2 항생제 / 3 유산균 / 4 철분제 / 5 변비약 / 6 기타)',
   })
   @IsOptional()
-  @IsString()
-  medicine?: string | null;
+  @IsArray()
+  @IsInt({ each: true })
+  medicineIds?: number[];
 
   @ApiPropertyOptional({
     example: 'N',

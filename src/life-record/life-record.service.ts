@@ -6,6 +6,8 @@ import {
   LifeFoodTag,
   LifeRecord,
   LifeTag,
+  Medicine,
+  MedicineMap,
   Tag,
 } from '@/generated/prisma/client';
 import { LifeRecordErrorCode } from './life-record-error-code.enum';
@@ -31,12 +33,14 @@ import {
 
 type LifeRecordWithRelations = LifeRecord & {
   lifeTags: (LifeTag & { tag: Tag })[];
-  lifeFoods: (LifeFoodTag & { food: Food })[];
+  foodTags: (LifeFoodTag & { food: Food })[];
+  medicineMaps: (MedicineMap & { medicine: Medicine })[];
 };
 
 const LIFE_RECORD_INCLUDE = {
   lifeTags: { include: { tag: true } },
-  lifeFoods: { include: { food: true } },
+  foodTags: { include: { food: true } },
+  medicineMaps: { include: { medicine: true } },
 } as const;
 
 const LIFE_VALUE_FIELDS = Object.keys(
@@ -75,8 +79,9 @@ export class LifeRecordService {
       );
     }
 
-    const tagNames = dto.tagNames ?? [];
+    const tagNames = [...new Set(dto.tagNames ?? [])];
     const foodIds = await this.resolveValidFoodIds(dto.foodIds);
+    const medicineIds = await this.resolveValidMedicineIds(dto.medicineIds);
 
     try {
       const created = await this.prisma.lifeRecord.create({
@@ -92,7 +97,6 @@ export class LifeRecordService {
           sleepTime: dto.sleepTime,
           exercise: dto.exercise,
           caffeine: dto.caffeine,
-          medicine: dto.medicine,
           outing: dto.outing,
           hormone: dto.hormone,
           lifeTags: tagNames.length
@@ -107,10 +111,17 @@ export class LifeRecordService {
                 })),
               }
             : undefined,
-          lifeFoods: foodIds.length
+          foodTags: foodIds.length
             ? {
                 create: foodIds.map((foodId) => ({
                   food: { connect: { id: foodId } },
+                })),
+              }
+            : undefined,
+          medicineMaps: medicineIds.length
+            ? {
+                create: medicineIds.map((medicineId) => ({
+                  medicine: { connect: { id: medicineId } },
                 })),
               }
             : undefined,
@@ -213,9 +224,9 @@ export class LifeRecordService {
         mealRegular: item.mealRegular,
         memo: item.memo,
         tagNames: item.lifeTags.map((lifeTag) => lifeTag.tag.name),
-        foods: item.lifeFoods.map((lifeFood) => ({
-          id: lifeFood.food.id,
-          name: lifeFood.food.name,
+        foods: item.foodTags.map((foodTag) => ({
+          id: foodTag.food.id,
+          name: foodTag.food.name,
         })),
         status: item.status,
       })),
@@ -250,15 +261,26 @@ export class LifeRecordService {
       dto.foodIds !== undefined
         ? await this.resolveValidFoodIds(dto.foodIds)
         : undefined;
+    const medicineIds =
+      dto.medicineIds !== undefined
+        ? await this.resolveValidMedicineIds(dto.medicineIds)
+        : undefined;
+    const tagNames =
+      dto.tagNames !== undefined ? [...new Set(dto.tagNames)] : undefined;
 
     const lifeIdBigInt = toBigInt(lifeId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (dto.tagNames !== undefined) {
+      if (tagNames !== undefined) {
         await tx.lifeTag.deleteMany({ where: { lifeId: lifeIdBigInt } });
       }
       if (foodIds !== undefined) {
         await tx.lifeFoodTag.deleteMany({ where: { lifeId: lifeIdBigInt } });
+      }
+      if (medicineIds !== undefined) {
+        await tx.medicineMap.deleteMany({
+          where: { lifeRecordId: lifeIdBigInt },
+        });
       }
 
       return tx.lifeRecord.update({
@@ -270,20 +292,17 @@ export class LifeRecordService {
           mealRegular: dto.mealRegular,
           memo: dto.memo,
           autoTags:
-            dto.tagNames !== undefined
-              ? dto.tagNames.join(',') || null
-              : undefined,
+            tagNames !== undefined ? tagNames.join(',') || null : undefined,
           sleepTime: dto.sleepTime,
           exercise: dto.exercise,
           caffeine: dto.caffeine,
-          medicine: dto.medicine,
           outing: dto.outing,
           hormone: dto.hormone,
           updateTime: new Date(),
           lifeTags:
-            dto.tagNames !== undefined
+            tagNames !== undefined
               ? {
-                  create: dto.tagNames.map((name) => ({
+                  create: tagNames.map((name) => ({
                     tag: {
                       connectOrCreate: {
                         where: { name },
@@ -293,10 +312,17 @@ export class LifeRecordService {
                   })),
                 }
               : undefined,
-          lifeFoods: foodIds?.length
+          foodTags: foodIds?.length
             ? {
                 create: foodIds.map((foodId) => ({
                   food: { connect: { id: foodId } },
+                })),
+              }
+            : undefined,
+          medicineMaps: medicineIds?.length
+            ? {
+                create: medicineIds.map((medicineId) => ({
+                  medicine: { connect: { id: medicineId } },
                 })),
               }
             : undefined,
@@ -399,6 +425,21 @@ export class LifeRecordService {
     return foods.map((food) => food.id);
   }
 
+  private async resolveValidMedicineIds(
+    medicineIds?: number[],
+  ): Promise<number[]> {
+    if (!medicineIds || medicineIds.length === 0) {
+      return [];
+    }
+
+    const medicines = await this.prisma.medicine.findMany({
+      where: { id: { in: medicineIds } },
+      select: { id: true },
+    });
+
+    return medicines.map((medicine) => medicine.id);
+  }
+
   private toDate(dateOnly: string): Date {
     return new Date(`${dateOnly}T00:00:00.000Z`);
   }
@@ -420,12 +461,15 @@ export class LifeRecordService {
       sleepTime: record.sleepTime,
       exercise: record.exercise,
       caffeine: record.caffeine,
-      medicine: record.medicine,
+      medicines: record.medicineMaps.map((medicineMap) => ({
+        id: medicineMap.medicine.id,
+        name: medicineMap.medicine.name ?? '',
+      })),
       outing: record.outing,
       hormone: record.hormone,
-      foods: record.lifeFoods.map((lifeFood) => ({
-        id: lifeFood.food.id,
-        name: lifeFood.food.name,
+      foods: record.foodTags.map((foodTag) => ({
+        id: foodTag.food.id,
+        name: foodTag.food.name,
       })),
       status: record.status,
       createdAt: formatDateTime(record.regDate),
@@ -448,12 +492,15 @@ export class LifeRecordService {
       sleepTime: record.sleepTime,
       exercise: record.exercise,
       caffeine: record.caffeine,
-      medicine: record.medicine,
+      medicines: record.medicineMaps.map((medicineMap) => ({
+        id: medicineMap.medicine.id,
+        name: medicineMap.medicine.name ?? '',
+      })),
       outing: record.outing,
       hormone: record.hormone,
-      foods: record.lifeFoods.map((lifeFood) => ({
-        id: lifeFood.food.id,
-        name: lifeFood.food.name,
+      foods: record.foodTags.map((foodTag) => ({
+        id: foodTag.food.id,
+        name: foodTag.food.name,
       })),
       status: record.status,
       updatedAt: formatDateTime(record.updateTime as Date),

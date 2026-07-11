@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FoodDto } from '@/food/dto/food-list-response.dto';
 
+export class MedicineDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: '감기약' })
+  name: string;
+}
+
 export class LifeRecordDetailResponseDto {
   @ApiProperty({ example: 15 })
   id: number;
@@ -41,8 +49,8 @@ export class LifeRecordDetailResponseDto {
   @ApiPropertyOptional({ nullable: true, example: 'O' })
   caffeine: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
-  medicine: string | null;
+  @ApiProperty({ type: [MedicineDto] })
+  medicines: MedicineDto[];
 
   @ApiPropertyOptional({ nullable: true, example: 'N' })
   outing: string | null;
@@ -97,8 +105,8 @@ export class LifeRecordUpdateResponseDto {
   @ApiPropertyOptional({ nullable: true })
   caffeine: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
-  medicine: string | null;
+  @ApiProperty({ type: [MedicineDto] })
+  medicines: MedicineDto[];
 
   @ApiPropertyOptional({ nullable: true })
   outing: string | null;

@@ -6,20 +6,37 @@ const prisma = new PrismaClient({
   adapter: new PrismaMariaDb(process.env.DATABASE_URL as string),
 });
 
-const FOOD_NAMES = [
-  '자극적인 음식',
-  '기름진 음식',
-  '카페인',
-  '유제품',
-  '식이섬유 충분',
+const FOODS = [
+  { id: 1, name: '자극적인 음식' },
+  { id: 2, name: '기름진 음식' },
+  { id: 3, name: '카페인' },
+  { id: 4, name: '유제품' },
+  { id: 5, name: '식이섬유 충분' },
+];
+
+const MEDICINES = [
+  { id: 1, name: '감기약' },
+  { id: 2, name: '항생제' },
+  { id: 3, name: '유산균' },
+  { id: 4, name: '철분제' },
+  { id: 5, name: '변비약' },
+  { id: 6, name: '기타' },
 ];
 
 async function main() {
-  for (const name of FOOD_NAMES) {
+  for (const food of FOODS) {
     await prisma.food.upsert({
-      where: { name },
-      create: { name },
-      update: {},
+      where: { id: food.id },
+      create: food,
+      update: { name: food.name },
+    });
+  }
+
+  for (const medicine of MEDICINES) {
+    await prisma.medicine.upsert({
+      where: { id: medicine.id },
+      create: medicine,
+      update: { name: medicine.name },
     });
   }
 

@@ -9,9 +9,11 @@ describe('LifeRecordService', () => {
   let prisma: {
     lifeRecord: Record<string, jest.Mock>;
     food: Record<string, jest.Mock>;
+    medicine: Record<string, jest.Mock>;
     tag: Record<string, jest.Mock>;
     lifeTag: Record<string, jest.Mock>;
     lifeFoodTag: Record<string, jest.Mock>;
+    medicineMap: Record<string, jest.Mock>;
   };
   let geminiTagExtractor: { extractTags: jest.Mock };
 
@@ -28,13 +30,13 @@ describe('LifeRecordService', () => {
     sleepTime: 2,
     exercise: 'N',
     caffeine: 'O',
-    medicine: null,
     outing: 'N',
     hormone: null,
     status: 'A',
     updateTime: null,
     lifeTags: [{ tag: { id: 1n, name: '야식' } }],
-    lifeFoods: [{ food: { id: 1, name: '자극적인 음식' } }],
+    foodTags: [{ food: { id: 1, name: '자극적인 음식' } }],
+    medicineMaps: [{ medicine: { id: 1, name: '감기약' } }],
   };
 
   beforeEach(async () => {
@@ -48,9 +50,11 @@ describe('LifeRecordService', () => {
         count: jest.fn(),
       },
       food: { findMany: jest.fn() },
+      medicine: { findMany: jest.fn() },
       tag: { findMany: jest.fn().mockResolvedValue([]) },
       lifeTag: { deleteMany: jest.fn() },
       lifeFoodTag: { deleteMany: jest.fn() },
+      medicineMap: { deleteMany: jest.fn() },
     };
     geminiTagExtractor = { extractTags: jest.fn() };
 
