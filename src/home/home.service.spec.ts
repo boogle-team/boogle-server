@@ -158,4 +158,28 @@ describe('HomeService', () => {
 
     expect(result.streak).toBe(2);
   });
+
+  it('KST 기준 하루 경계(전날 15:00 UTC ~ 당일 14:59:59.999 UTC)로 오늘 기록을 조회한다', async () => {
+    prisma.member.findUnique.mockResolvedValue({
+      nickname: '땅콩잼',
+      regDate: new Date('2026-04-30T00:00:00.000Z'),
+    });
+    prisma.monthlyRecord.findFirst.mockResolvedValue(null);
+    prisma.boogleRecord.findMany.mockResolvedValue([]);
+    prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+    await service.getHome(1n, '2026-05-12');
+
+    const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
+      unknown,
+      [{ where: { regDate: { gte: Date; lte: Date } } }]
+    >;
+    const todayCallArgs = findManyMock.mock.calls[0][0];
+    expect(todayCallArgs.where.regDate.gte.toISOString()).toBe(
+      '2026-05-11T15:00:00.000Z',
+    );
+    expect(todayCallArgs.where.regDate.lte.toISOString()).toBe(
+      '2026-05-12T14:59:59.999Z',
+    );
+  });
 });

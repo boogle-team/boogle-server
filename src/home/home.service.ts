@@ -12,18 +12,22 @@ const USER_TYPE_LABEL: Record<string, string> = {
 };
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-// 하루 경계(자정)를 무엇으로 볼지는 팀 확정 전이라 UTC 기준으로 단순화한다.
-// (docs/api/home-calendar-api.md §9 참고)
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// regDate는 절대 시각(UTC instant)으로 저장되어 있다는 전제 하에,
+// "며칠"인지 판단할 때는 Asia/Seoul(KST) 기준 달력 날짜로 변환해야 한다.
+// UTC 자정 기준으로 자르면 새벽 0~9시 KST 기록이 전날로 분류되는 버그가 생긴다.
 function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+// "YYYY-MM-DD"(KST 달력 날짜)의 자정에 해당하는 실제 UTC 시각.
 function dayStart(dateStr: string): Date {
-  return new Date(`${dateStr}T00:00:00.000Z`);
+  return new Date(`${dateStr}T00:00:00.000+09:00`);
 }
 
 function dayEnd(dateStr: string): Date {
-  return new Date(`${dateStr}T23:59:59.999Z`);
+  return new Date(`${dateStr}T23:59:59.999+09:00`);
 }
 
 function addDays(dateStr: string, amount: number): string {
@@ -32,10 +36,15 @@ function addDays(dateStr: string, amount: number): string {
   return toDateKey(date);
 }
 
+// 요일은 달력 날짜 자체의 속성이라 실제 시각 변환 없이 순수 계산으로 구한다.
+function getDayOfWeek(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=일 ~ 6=토
+}
+
 function getTodayKstDateString(): string {
   const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
+  return toDateKey(now);
 }
 
 @Injectable()
@@ -159,7 +168,7 @@ export class HomeService {
     userId: bigint,
     date: string,
   ): Promise<Set<string>> {
-    const dayOfWeek = dayStart(date).getUTCDay(); // 0=일 ~ 6=토
+    const dayOfWeek = getDayOfWeek(date);
     const weekStartDate = addDays(date, -dayOfWeek);
     const weekEndDate = addDays(date, 6 - dayOfWeek);
 
@@ -179,7 +188,7 @@ export class HomeService {
     date: string,
     weekBoogleDates: Set<string>,
   ): WeekStripDayDto[] {
-    const dayOfWeek = dayStart(date).getUTCDay();
+    const dayOfWeek = getDayOfWeek(date);
     const weekStartDate = addDays(date, -dayOfWeek);
 
     return Array.from({ length: 7 }, (_, i) => {

@@ -133,7 +133,7 @@
 | Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
 | Query | `date` | string(`YYYY-MM-DD`) | ❌ | 기준 날짜. 생략 시 서버 오늘 날짜(KST) |
 
-```
+```http
 GET /api/v1/home
 Authorization: Bearer eyJhbGc...
 ```
@@ -239,7 +239,7 @@ Authorization: Bearer eyJhbGc...
 | Query | `year` | int | ✅ | 연도 (예: `2026`) |
 | Query | `month` | int | ✅ | 월 `1`~`12` |
 
-```
+```http
 GET /api/v1/calendar?year=2026&month=6
 Authorization: Bearer eyJhbGc...
 ```
@@ -305,7 +305,7 @@ Authorization: Bearer eyJhbGc...
 | Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
 | Query | `date` | string(`YYYY-MM-DD`) | ✅ | 조회 날짜 |
 
-```
+```http
 GET /api/v1/calendar/daily?date=2026-06-17
 Authorization: Bearer eyJhbGc...
 ```

@@ -32,4 +32,12 @@ describe('HomeController', () => {
 
     expect(service.getHome).toHaveBeenCalledWith(1n, undefined);
   });
+
+  it('getHome은 서비스에서 발생한 예외를 그대로 전파한다', async () => {
+    service.getHome.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      controller.getHome({ id: 1n }, { date: '2026-05-12' }),
+    ).rejects.toThrow('boom');
+  });
 });
