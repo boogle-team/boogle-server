@@ -90,8 +90,6 @@ model BoogleRecord {
   stoolSimple      String?  @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
   bowelFeeling     String?  @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
   stomach          String?  @db.Char(1) // 복통 N/M/L
-  memo             String?  @db.VarChar(255)
-  autoTags         String?  @map("auto_tags") @db.VarChar(255)
   distension       String?  @db.Char(1) // 복부팽만 N/M/L
   remainingFeeling String?  @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
   urgency          String?  @db.Char(1) // 긴박감 N/M/L
@@ -99,23 +97,11 @@ model BoogleRecord {
   amount           String?  @db.Char(1) // 적음S/보통N/많음M
   color            String?  @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
   status           String   @default("A") @db.Char(1)
-  updateDate       DateTime? @map("update_date")
+  updateDate       DateTime? @updatedAt @map("update_date")
 
   user             Member       @relation(fields: [userId], references: [id])
-  boogleTags       BoogleTag[]
 
   @@map("boogle_record")
-}
-
-model BoogleTag {
-  tagId    BigInt @map("tag_id")
-  boogleId BigInt @map("boogle_id")
-
-  tag      Tag          @relation(fields: [tagId], references: [id])
-  boogle   BoogleRecord @relation(fields: [boogleId], references: [id])
-
-  @@id([tagId, boogleId])
-  @@map("boogle_tags")
 }
 
 model LifeRecord {
@@ -180,7 +166,6 @@ model Tag {
   id   BigInt @id @default(autoincrement())
   name String @unique @db.VarChar(40)
 
-  boogleTags BoogleTag[]
   lifeTags   LifeTag[]
 
   @@map("tags")
