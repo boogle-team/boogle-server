@@ -4,6 +4,10 @@ import request from 'supertest';
 import { NotificationController } from './notification.controller';
 import { NotificationService } from './notification.service';
 
+// supertest의 request()가 받는 서버 타입을 그대로 재사용해
+// INestApplication의 제네릭을 좁힌다 (getHttpServer()가 any가 되는 것 방지).
+type SupertestApp = Parameters<typeof request>[0];
+
 describe('NotificationController', () => {
   let controller: NotificationController;
   let service: { getNotifications: jest.Mock };
@@ -38,7 +42,7 @@ describe('NotificationController', () => {
   });
 
   describe('라우트 레벨 검증 (StubAuthGuard)', () => {
-    let app: INestApplication;
+    let app: INestApplication<SupertestApp>;
 
     beforeEach(async () => {
       const module: TestingModule = await Test.createTestingModule({

@@ -4,10 +4,14 @@ import { NotificationService } from './notification.service';
 
 describe('NotificationService', () => {
   let service: NotificationService;
-  let prisma: { alarmMap: { findMany: jest.Mock } };
+  let prisma: {
+    alarmMap: { findMany: jest.Mock; count: jest.Mock };
+  };
 
   beforeEach(async () => {
-    prisma = { alarmMap: { findMany: jest.fn() } };
+    prisma = {
+      alarmMap: { findMany: jest.fn(), count: jest.fn() },
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -25,6 +29,7 @@ describe('NotificationService', () => {
 
   it('기록이 없으면 빈 목록과 unreadCount 0을 반환한다', async () => {
     prisma.alarmMap.findMany.mockResolvedValue([]);
+    prisma.alarmMap.count.mockResolvedValue(0);
 
     const result = await service.getNotifications(1n);
 
@@ -64,6 +69,7 @@ describe('NotificationService', () => {
         },
       },
     ]);
+    prisma.alarmMap.count.mockResolvedValue(1);
 
     const result = await service.getNotifications(1n);
 
@@ -106,10 +112,46 @@ describe('NotificationService', () => {
         },
       },
     ]);
+    prisma.alarmMap.count.mockResolvedValue(1);
 
     const result = await service.getNotifications(1n);
 
     expect(result.notifications).toHaveLength(1);
     expect(result.notifications[0].id).toBe(2);
+  });
+
+  it('regDate가 null인 행은 목록에서 제외한다', async () => {
+    prisma.alarmMap.findMany.mockResolvedValue([
+      {
+        id: 1n,
+        regDate: null,
+        isRead: 'N',
+        alarm: {
+          category: 'R',
+          title: '기록할 시간이에요',
+          content: '30초면 충분해요.',
+        },
+      },
+    ]);
+    prisma.alarmMap.count.mockResolvedValue(1);
+
+    const result = await service.getNotifications(1n);
+
+    expect(result.notifications).toHaveLength(0);
+  });
+
+  it('목록 조회에 상한(take)을 걸고, unreadCount는 별도 count 쿼리로 정확히 구한다', async () => {
+    prisma.alarmMap.findMany.mockResolvedValue([]);
+    prisma.alarmMap.count.mockResolvedValue(7);
+
+    const result = await service.getNotifications(1n);
+
+    expect(result.unreadCount).toBe(7);
+    expect(prisma.alarmMap.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 }),
+    );
+    expect(prisma.alarmMap.count).toHaveBeenCalledWith({
+      where: { userId: 1n, isRead: 'N' },
+    });
   });
 });
