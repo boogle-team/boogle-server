@@ -1,5 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { BusinessException } from '@/common/exceptions/business.exception';
+import { HomeErrorCode } from './home-error-code.enum';
 import { HomeResponseDto, WeekStripDayDto } from './dto/home-response.dto';
 
 const USER_TYPE_LABEL: Record<string, string> = {
@@ -13,6 +16,7 @@ const USER_TYPE_LABEL: Record<string, string> = {
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const STREAK_LOOKBACK_DAYS = 400;
 
 // regDate는 절대 시각(UTC instant)으로 저장되어 있다는 전제 하에,
 // "며칠"인지 판단할 때는 Asia/Seoul(KST) 기준 달력 날짜로 변환해야 한다.
@@ -59,16 +63,20 @@ export class HomeService {
       select: { nickname: true, regDate: true },
     });
     if (!member) {
-      throw new NotFoundException('요청한 데이터를 찾을 수 없습니다.');
+      throw new BusinessException(
+        HomeErrorCode.MEMBER_NOT_FOUND,
+        '요청한 데이터를 찾을 수 없습니다.',
+        HttpStatus.NOT_FOUND,
+      );
     }
 
-    const [
-      monthlyRecord,
-      boogleRecords,
-      lifeRecord,
-      weekBoogleDates,
-      streakBoogleDates,
-    ] = await Promise.all([
+    // 오늘/이번 주/연속기록(streak)이 필요로 하는 날짜 범위가 서로 겹치므로
+    // (오늘 ⊂ 이번 주 ⊂ 최근 400일), boogle_record는 한 번만 넓게 조회하고
+    // 나머지는 메모리에서 derive한다. 미래 날짜(이번 주 남은 요일 등)는
+    // 애초에 기록이 있을 수 없으므로 조회 범위에서 빠져도 결과에 영향 없다.
+    const lookbackStart = addDays(date, -STREAK_LOOKBACK_DAYS);
+
+    const [monthlyRecord, allBoogleRecords, lifeRecord] = await Promise.all([
       this.prisma.monthlyRecord.findFirst({
         where: { userId },
         orderBy: { monthStartDate: 'desc' },
@@ -78,7 +86,7 @@ export class HomeService {
         where: {
           userId,
           status: 'A',
-          regDate: { gte: dayStart(date), lte: dayEnd(date) },
+          regDate: { gte: dayStart(lookbackStart), lte: dayEnd(date) },
         },
         orderBy: { regDate: 'asc' },
         select: {
@@ -101,19 +109,26 @@ export class HomeService {
           foodTags: { include: { food: true } },
         },
       }),
-      this.getWeekBoogleDates(userId, date),
-      this.getStreakLookbackDates(userId, date),
     ]);
 
-    const weekStrip = this.buildWeekStrip(date, weekBoogleDates);
-    const streak = this.calculateStreak(date, streakBoogleDates);
+    const recordedDates = new Set(
+      allBoogleRecords.map((record) => toDateKey(record.regDate)),
+    );
+    const boogleRecords = allBoogleRecords.filter(
+      (record) => toDateKey(record.regDate) === date,
+    );
 
-    const joinedDays =
+    const weekStrip = this.buildWeekStrip(date, recordedDates);
+    const streak = this.calculateStreak(date, recordedDates);
+
+    const joinedDays = Math.max(
+      1,
       Math.floor(
         (dayStart(date).getTime() -
           dayStart(toDateKey(member.regDate)).getTime()) /
           ONE_DAY_MS,
-      ) + 1;
+      ) + 1,
+    );
 
     return {
       user: {
@@ -164,55 +179,17 @@ export class HomeService {
     };
   }
 
-  private async getWeekBoogleDates(
-    userId: bigint,
-    date: string,
-  ): Promise<Set<string>> {
-    const dayOfWeek = getDayOfWeek(date);
-    const weekStartDate = addDays(date, -dayOfWeek);
-    const weekEndDate = addDays(date, 6 - dayOfWeek);
-
-    const records = await this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: { gte: dayStart(weekStartDate), lte: dayEnd(weekEndDate) },
-      },
-      select: { regDate: true },
-    });
-
-    return new Set(records.map((r) => toDateKey(r.regDate)));
-  }
-
   private buildWeekStrip(
     date: string,
-    weekBoogleDates: Set<string>,
+    recordedDates: Set<string>,
   ): WeekStripDayDto[] {
     const dayOfWeek = getDayOfWeek(date);
     const weekStartDate = addDays(date, -dayOfWeek);
 
     return Array.from({ length: 7 }, (_, i) => {
       const day = addDays(weekStartDate, i);
-      return { date: day, hasRecord: weekBoogleDates.has(day) };
+      return { date: day, hasRecord: recordedDates.has(day) };
     });
-  }
-
-  private async getStreakLookbackDates(
-    userId: bigint,
-    date: string,
-  ): Promise<Set<string>> {
-    const lookbackStart = addDays(date, -400);
-
-    const records = await this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: { gte: dayStart(lookbackStart), lte: dayEnd(date) },
-      },
-      select: { regDate: true },
-    });
-
-    return new Set(records.map((r) => toDateKey(r.regDate)));
   }
 
   private calculateStreak(date: string, recordedDates: Set<string>): number {

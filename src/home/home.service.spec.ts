@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { BusinessException } from '@/common/exceptions/business.exception';
+import { HomeErrorCode } from './home-error-code.enum';
 import { HomeService } from './home.service';
 
 describe('HomeService', () => {
@@ -31,11 +33,15 @@ describe('HomeService', () => {
     expect(service).toBeDefined();
   });
 
-  it('회원이 없으면 NotFoundException을 던진다', async () => {
+  it('회원이 없으면 BusinessException(MEMBER_NOT_FOUND, 404)을 던진다', async () => {
     prisma.member.findUnique.mockResolvedValue(null);
 
+    await expect(service.getHome(1n, '2026-05-12')).rejects.toMatchObject({
+      errorCode: HomeErrorCode.MEMBER_NOT_FOUND,
+      status: HttpStatus.NOT_FOUND,
+    });
     await expect(service.getHome(1n, '2026-05-12')).rejects.toBeInstanceOf(
-      NotFoundException,
+      BusinessException,
     );
   });
 
@@ -86,20 +92,17 @@ describe('HomeService', () => {
       regDate: new Date('2026-04-30T00:00:00.000Z'),
     });
     prisma.monthlyRecord.findFirst.mockResolvedValue(null);
-    prisma.boogleRecord.findMany
-      .mockResolvedValueOnce([
-        {
-          id: 100n,
-          regDate: new Date('2026-05-12T08:30:00.000Z'),
-          hasBowel: true,
-          stoolBristol: 4,
-          stoolSimple: 'M',
-          bowelFeeling: 'C',
-          stomach: 'N',
-        },
-      ])
-      .mockResolvedValueOnce([]) // week
-      .mockResolvedValueOnce([]); // streak lookback
+    prisma.boogleRecord.findMany.mockResolvedValue([
+      {
+        id: 100n,
+        regDate: new Date('2026-05-12T08:30:00.000Z'),
+        hasBowel: true,
+        stoolBristol: 4,
+        stoolSimple: 'M',
+        bowelFeeling: 'C',
+        stomach: 'N',
+      },
+    ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
     const result = await service.getHome(1n, '2026-05-12');
@@ -145,13 +148,11 @@ describe('HomeService', () => {
       regDate: new Date('2026-04-30T00:00:00.000Z'),
     });
     prisma.monthlyRecord.findFirst.mockResolvedValue(null);
-    prisma.boogleRecord.findMany
-      .mockResolvedValueOnce([]) // 오늘은 아직 기록 없음
-      .mockResolvedValueOnce([]) // week
-      .mockResolvedValueOnce([
-        { regDate: new Date('2026-05-11T08:00:00.000Z') },
-        { regDate: new Date('2026-05-10T08:00:00.000Z') },
-      ]); // streak lookback: 어제, 그제 기록 있음
+    // 오늘 기록은 없고, 어제·그제 기록만 있는 상황 (단일 조회 결과에 다 포함)
+    prisma.boogleRecord.findMany.mockResolvedValue([
+      { regDate: new Date('2026-05-10T08:00:00.000Z') },
+      { regDate: new Date('2026-05-11T08:00:00.000Z') },
+    ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
     const result = await service.getHome(1n, '2026-05-12');
@@ -159,7 +160,7 @@ describe('HomeService', () => {
     expect(result.streak).toBe(2);
   });
 
-  it('KST 기준 하루 경계(전날 15:00 UTC ~ 당일 14:59:59.999 UTC)로 오늘 기록을 조회한다', async () => {
+  it('오늘 포함 최근 400일 범위(KST 기준)로 boogle_record를 한 번만 조회한다', async () => {
     prisma.member.findUnique.mockResolvedValue({
       nickname: '땅콩잼',
       regDate: new Date('2026-04-30T00:00:00.000Z'),
@@ -170,15 +171,17 @@ describe('HomeService', () => {
 
     await service.getHome(1n, '2026-05-12');
 
+    expect(prisma.boogleRecord.findMany).toHaveBeenCalledTimes(1);
+
     const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
       unknown,
       [{ where: { regDate: { gte: Date; lte: Date } } }]
     >;
-    const todayCallArgs = findManyMock.mock.calls[0][0];
-    expect(todayCallArgs.where.regDate.gte.toISOString()).toBe(
-      '2026-05-11T15:00:00.000Z',
+    const callArgs = findManyMock.mock.calls[0][0];
+    expect(callArgs.where.regDate.gte.toISOString()).toBe(
+      '2025-04-06T15:00:00.000Z',
     );
-    expect(todayCallArgs.where.regDate.lte.toISOString()).toBe(
+    expect(callArgs.where.regDate.lte.toISOString()).toBe(
       '2026-05-12T14:59:59.999Z',
     );
   });

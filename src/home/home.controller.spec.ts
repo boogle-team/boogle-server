@@ -1,4 +1,6 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
 import { HomeController } from './home.controller';
 import { HomeService } from './home.service';
 
@@ -39,5 +41,43 @@ describe('HomeController', () => {
     await expect(
       controller.getHome({ id: 1n }, { date: '2026-05-12' }),
     ).rejects.toThrow('boom');
+  });
+
+  describe('라우트 레벨 검증 (ValidationPipe + StubAuthGuard)', () => {
+    let app: INestApplication;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [HomeController],
+        providers: [{ provide: HomeService, useValue: service }],
+      }).compile();
+
+      app = module.createNestApplication();
+      app.useGlobalPipes(
+        new ValidationPipe({ whitelist: true, transform: true }),
+      );
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('date가 YYYY-MM-DD 형식이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .get('/home')
+        .query({ date: '2026-05-12T00:00:00Z' })
+        .expect(400);
+
+      expect(service.getHome).not.toHaveBeenCalled();
+    });
+
+    it('date가 없으면 인증(StubAuthGuard) 통과 후 서비스가 호출된다', async () => {
+      service.getHome.mockResolvedValueOnce({});
+
+      await request(app.getHttpServer()).get('/home').expect(200);
+
+      expect(service.getHome).toHaveBeenCalledWith(1n, undefined);
+    });
   });
 });

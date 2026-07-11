@@ -196,13 +196,18 @@ Authorization: Bearer eyJhbGc...
       { "id": 1, "name": "자극적인 음식" }
     ]
   },
-  "weeklyPattern": {
-    "ruleCode": "CONSTIPATION_PATTERN",
-    "label": "딱딱한 변 경향",
-    "description": "수분이 부족했던 날과 함께 나타났어요."
-  }
+  "weeklyPattern": null
 }
 ```
+
+> ⚠️ `weeklyPattern`은 **현재 구현에서 항상 `null`**입니다 (데이터 소스 미확정, 아래 §9 참고). 소스가 정해지면 아래와 같은 형태가 될 예정입니다 (향후 응답 예시, 현재는 미구현):
+> ```json
+> {
+>   "ruleCode": "CONSTIPATION_PATTERN",
+>   "label": "딱딱한 변 경향",
+>   "description": "수분이 부족했던 날과 함께 나타났어요."
+> }
+> ```
 
 ### 필드 설명
 
@@ -398,7 +403,7 @@ Authorization: Bearer eyJhbGc...
 - **calendar**: `boogle_record` + `life_record` 를 각각 월 범위(`reg_date BETWEEN 월초 AND 월말 AND status='A'`)로 조회.
   - 월 전체 날짜 배열은 서버에서 생성 후 병합: 날짜별 `boogleStatus`(부글) + `hasLifeRecord`(생활) 판정.
   - 하루 여러 건일 때 날짜 대표값(`stoolSimple`) 규칙 필요(§9).
-  - `stoolDistribution`은 `has_bowl=true` 건들의 `stool_simple` 집계.
+  - `stoolDistribution`은 `has_bowel=true` 건들의 `stool_simple` 집계.
 - **calendar/daily**: 해당 날짜 `boogle_record` **여러 건** + `life_record` 1건(+ `boogle_tags`/`life_tags`/`life_food_tag` join). 경로는 부글 도메인 `/records` 충돌 회피 위해 `/calendar` 하위에 둠.
 - 날짜 범위 조회 시 KST 기준 하루 경계(`00:00:00` ~ `23:59:59`) 주의. `reg_date`가 `datetime`이므로 날짜만으로 매칭 X.
 - `status='A'`(삭제 안 된 것)만 조회.
