@@ -47,18 +47,18 @@ describe('CalendarService', () => {
     it('같은 날 배변 없음→있음 기록이면 BOWEL이 우선한다', async () => {
       prisma.boogleRecord.findMany.mockResolvedValue([
         {
-          regDate: new Date('2026-06-05T08:00:00.000Z'),
+          regDate: new Date('2026-06-05T08:00:00.000+09:00'),
           hasBowel: false,
           stoolSimple: null,
         },
         {
-          regDate: new Date('2026-06-05T17:00:00.000Z'),
+          regDate: new Date('2026-06-05T17:00:00.000+09:00'),
           hasBowel: true,
           stoolSimple: 'M',
         },
       ]);
       prisma.lifeRecord.findMany.mockResolvedValue([
-        { regDate: new Date('2026-06-05T09:00:00.000Z') },
+        { regDate: new Date('2026-06-05T09:00:00.000+09:00') },
       ]);
 
       const result = await service.getMonthlyCalendar(1n, 2026, 6);
@@ -72,7 +72,7 @@ describe('CalendarService', () => {
     it('배변 없음만 기록된 날은 NO_BOWEL이다', async () => {
       prisma.boogleRecord.findMany.mockResolvedValue([
         {
-          regDate: new Date('2026-06-02T08:00:00.000Z'),
+          regDate: new Date('2026-06-02T08:00:00.000+09:00'),
           hasBowel: false,
           stoolSimple: null,
         },
@@ -90,17 +90,17 @@ describe('CalendarService', () => {
     it('변 상태 분포 percent를 계산한다', async () => {
       prisma.boogleRecord.findMany.mockResolvedValue([
         {
-          regDate: new Date('2026-06-01T08:00:00.000Z'),
+          regDate: new Date('2026-06-01T08:00:00.000+09:00'),
           hasBowel: true,
           stoolSimple: 'H',
         },
         {
-          regDate: new Date('2026-06-02T08:00:00.000Z'),
+          regDate: new Date('2026-06-02T08:00:00.000+09:00'),
           hasBowel: true,
           stoolSimple: 'M',
         },
         {
-          regDate: new Date('2026-06-03T08:00:00.000Z'),
+          regDate: new Date('2026-06-03T08:00:00.000+09:00'),
           hasBowel: true,
           stoolSimple: 'M',
         },
@@ -122,6 +122,23 @@ describe('CalendarService', () => {
         percent: 0,
       });
     });
+
+    it('KST 자정 근처(0~9시) 기록도 올바른 날짜로 집계된다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([
+        {
+          // UTC로는 5/31 15:30이지만 KST로는 6/1 00:30 — 6월 1일 기록이어야 한다.
+          regDate: new Date('2026-06-01T00:30:00.000+09:00'),
+          hasBowel: true,
+          stoolSimple: 'M',
+        },
+      ]);
+      prisma.lifeRecord.findMany.mockResolvedValue([]);
+
+      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const day1 = result.days.find((d) => d.date === '2026-06-01');
+
+      expect(day1?.boogleStatus).toBe('BOWEL');
+    });
   });
 
   describe('getDailyRecords', () => {
@@ -134,6 +151,25 @@ describe('CalendarService', () => {
       expect(result.date).toBe('2026-06-17');
       expect(result.boogleRecords).toEqual([]);
       expect(result.lifeRecord).toBeNull();
+    });
+
+    it('KST 기준 하루 경계(전날 15:00 UTC ~ 당일 14:59:59.999 UTC)로 조회한다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+      await service.getDailyRecords(1n, '2026-06-17');
+
+      const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
+        unknown,
+        [{ where: { regDate: { gte: Date; lte: Date } } }]
+      >;
+      const callArgs = findManyMock.mock.calls[0][0];
+      expect(callArgs.where.regDate.gte.toISOString()).toBe(
+        '2026-06-16T15:00:00.000Z',
+      );
+      expect(callArgs.where.regDate.lte.toISOString()).toBe(
+        '2026-06-17T14:59:59.999Z',
+      );
     });
 
     it('부글/생활 기록을 응답 형태로 매핑한다 (태그·음식·약 포함)', async () => {

@@ -24,6 +24,11 @@ export interface BoogleRecordDetailDto {
   distension: string | null;
   remainingFeeling: string | null;
   urgency: string | null;
+  /**
+   * 배변 소요 시간 코드: 1=5분 이하, 2=5~15분, 3=15분 이상.
+   * (life_record.sleepTime과 동일한 3단계 규칙을 잠정 적용 — 팀 공통 문서
+   * §3(배변 기록)에 아직 정의되어 있지 않음. docs/api/home-calendar-api.md §9 참고)
+   */
   takenTime: number | null;
   amount: string | null;
   color: string | null;

@@ -19,8 +19,22 @@ function parseAutoTags(autoTags: string | null): string[] {
     .filter((tag) => tag.length > 0);
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// regDate는 절대 시각(UTC instant)으로 저장되어 있다는 전제 하에,
+// "며칠"인지 판단할 때는 Asia/Seoul(KST) 기준 달력 날짜로 변환해야 한다.
+// UTC 자정 기준으로 자르면 새벽 0~9시 KST 기록이 전날로 분류되는 버그가 생긴다.
 function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// "YYYY-MM-DD"(KST 달력 날짜)의 자정에 해당하는 실제 UTC 시각.
+function kstDayStart(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00.000+09:00`);
+}
+
+function kstDayEnd(dateStr: string): Date {
+  return new Date(`${dateStr}T23:59:59.999+09:00`);
 }
 
 @Injectable()
@@ -32,8 +46,14 @@ export class CalendarService {
     year: number,
     month: number,
   ): Promise<CalendarResponseDto> {
-    const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEnd = new Date(Date.UTC(year, month, 1));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextMonthYear = month === 12 ? year + 1 : year;
+
+    // 달력 날짜(KST) 기준 이번 달의 시작/다음 달 시작 시각.
+    const monthStart = kstDayStart(`${year}-${pad(month)}-01`);
+    const monthEnd = kstDayStart(`${nextMonthYear}-${pad(nextMonth)}-01`);
+    // 일수 계산은 달력 산수라 타임존과 무관하다.
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
     const [boogleRecords, lifeRecords] = await Promise.all([
@@ -86,8 +106,8 @@ export class CalendarService {
 
     const days: CalendarDayDto[] = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(Date.UTC(year, month - 1, day));
-      const key = toDateKey(date);
+      // 순수 달력 날짜 문자열 조합이라 타임존 변환이 필요 없다.
+      const key = `${year}-${pad(month)}-${pad(day)}`;
       const boogle = boogleByDate.get(key);
 
       days.push({
@@ -132,8 +152,8 @@ export class CalendarService {
     userId: bigint,
     date: string,
   ): Promise<CalendarDailyResponseDto> {
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    const dayStart = kstDayStart(date);
+    const dayEnd = kstDayEnd(date);
 
     const [boogleRecords, lifeRecord] = await Promise.all([
       this.prisma.boogleRecord.findMany({
