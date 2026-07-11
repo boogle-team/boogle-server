@@ -20,7 +20,7 @@ export class RecordResponseDto {
   stoolSimple!: string | null;
 
   @ApiProperty({ nullable: true, example: 'C' })
-  bowlFeeling!: string | null;
+  bowelFeeling!: string | null;
 
   @ApiProperty({ nullable: true, example: 'N' })
   stomach!: string | null;

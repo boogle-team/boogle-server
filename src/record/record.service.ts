@@ -165,7 +165,7 @@ export class RecordService {
       hasBowel: record.hasBowel,
       stoolBristol: record.stoolBristol,
       stoolSimple: record.stoolSimple,
-      bowlFeeling: record.bowelFeeling,
+      bowelFeeling: record.bowelFeeling,
       stomach: record.stomach,
       distension: record.distension,
       remainingFeeling: record.remainingFeeling,
