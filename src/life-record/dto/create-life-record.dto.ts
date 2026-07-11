@@ -55,7 +55,7 @@ export class CreateLifeRecordDto {
   @IsString({ each: true })
   tagNames?: string[];
 
-  @ApiPropertyOptional({ example: 2 })
+  @ApiPropertyOptional({ example: 4, description: '수면 시간(시간 단위)' })
   @IsOptional()
   @IsInt()
   sleepTime?: number;
@@ -97,14 +97,20 @@ export class CreateLifeRecordDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    example: null,
-    description: '없음 N / 생리 중 M / 변화 있음 E',
+    example: 'N',
+    description:
+      '없음 N / 생리 중 M / 변화 있음 E (마이페이지에서 민감정보 동의한 사용자만 노출)',
   })
   @IsOptional()
   @IsString()
   hormone?: string | null;
 
-  @ApiPropertyOptional({ type: [Number], example: [1, 3] })
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [1, 3],
+    description:
+      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 자극적인 음식 / 3 카페인)',
+  })
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })
