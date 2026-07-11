@@ -51,6 +51,7 @@
 | --- | --- | --- |
 | 400 | `BAD_REQUEST` | 필수 파라미터 누락 / 형식 오류 (year·month·date 등) |
 | 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 (기능명세 `A-2` 대응) |
+| 404 | `MEMBER_NOT_FOUND` | 토큰의 사용자 ID에 해당하는 회원이 없음 (홈 `GET /home`) |
 | 500 | `INTERNAL_SERVER_ERROR` | 서버 내부 오류 |
 
 ---
@@ -201,6 +202,7 @@ Authorization: Bearer eyJhbGc...
 ```
 
 > ⚠️ `weeklyPattern`은 **현재 구현에서 항상 `null`**입니다 (데이터 소스 미확정, 아래 §9 참고). 소스가 정해지면 아래와 같은 형태가 될 예정입니다 (향후 응답 예시, 현재는 미구현):
+>
 > ```json
 > {
 >   "ruleCode": "CONSTIPATION_PATTERN",
@@ -208,6 +210,7 @@ Authorization: Bearer eyJhbGc...
 >   "description": "수분이 부족했던 날과 함께 나타났어요."
 > }
 > ```
+>
 
 ### 필드 설명
 

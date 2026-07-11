@@ -14,17 +14,25 @@ function createContext(headers: Record<string, unknown>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
+function restoreNodeEnv(value: string | undefined) {
+  if (value === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = value;
+  }
+}
+
 describe('StubAuthGuard', () => {
   let guard: StubAuthGuard;
   const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
     guard = new StubAuthGuard();
-    process.env.NODE_ENV = originalNodeEnv;
+    restoreNodeEnv(originalNodeEnv);
   });
 
   afterAll(() => {
-    process.env.NODE_ENV = originalNodeEnv;
+    restoreNodeEnv(originalNodeEnv);
   });
 
   it('헤더가 없으면 기본 사용자(id=1)로 인증한다', () => {

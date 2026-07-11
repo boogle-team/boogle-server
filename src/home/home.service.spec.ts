@@ -175,14 +175,14 @@ describe('HomeService', () => {
 
     const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
       unknown,
-      [{ where: { regDate: { gte: Date; lte: Date } } }]
+      [{ where: { regDate: { gte: Date; lt: Date } } }]
     >;
     const callArgs = findManyMock.mock.calls[0][0];
     expect(callArgs.where.regDate.gte.toISOString()).toBe(
       '2025-04-06T15:00:00.000Z',
     );
-    expect(callArgs.where.regDate.lte.toISOString()).toBe(
-      '2026-05-12T14:59:59.999Z',
+    expect(callArgs.where.regDate.lt.toISOString()).toBe(
+      '2026-05-12T15:00:00.000Z',
     );
   });
 });

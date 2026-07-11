@@ -16,6 +16,10 @@ const USER_TYPE_LABEL: Record<string, string> = {
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// streak(연속 기록 일수) 조회 상한. 이 값보다 긴 연속 기록은 401(선택일 포함)로
+// 잘려서 표시된다. 초기 단계에서 400일(약 13개월) 연속 기록 사용자가 나올
+// 가능성은 낮다고 보고, 무제한 역방향 페이지 조회 대신 의도적으로 상한을 둔
+// 제품 계약으로 취급한다. 필요해지면 이 상수를 늘리거나 페이지 조회로 교체한다.
 const STREAK_LOOKBACK_DAYS = 400;
 
 // regDate는 절대 시각(UTC instant)으로 저장되어 있다는 전제 하에,
@@ -30,14 +34,17 @@ function dayStart(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00.000+09:00`);
 }
 
-function dayEnd(dateStr: string): Date {
-  return new Date(`${dateStr}T23:59:59.999+09:00`);
-}
-
 function addDays(dateStr: string, amount: number): string {
   const date = dayStart(dateStr);
   date.setUTCDate(date.getUTCDate() + amount);
   return toDateKey(date);
+}
+
+// 반개방 구간(다음 날 자정 미만)의 상한 시각. `23:59:59.999`처럼 고정
+// 소수초로 자르면 그보다 더 정밀한 소수초에 저장된 기록이 누락될 수 있어
+// "다음 날 시작 직전까지"를 `lt`로 비교하는 방식을 쓴다.
+function nextDayStart(dateStr: string): Date {
+  return dayStart(addDays(dateStr, 1));
 }
 
 // 요일은 달력 날짜 자체의 속성이라 실제 시각 변환 없이 순수 계산으로 구한다.
@@ -86,7 +93,7 @@ export class HomeService {
         where: {
           userId,
           status: 'A',
-          regDate: { gte: dayStart(lookbackStart), lte: dayEnd(date) },
+          regDate: { gte: dayStart(lookbackStart), lt: nextDayStart(date) },
         },
         orderBy: { regDate: 'asc' },
         select: {
@@ -103,7 +110,7 @@ export class HomeService {
         where: {
           userId,
           status: 'A',
-          regDate: { gte: dayStart(date), lte: dayEnd(date) },
+          regDate: { gte: dayStart(date), lt: nextDayStart(date) },
         },
         include: {
           foodTags: { include: { food: true } },
