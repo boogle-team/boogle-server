@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import {
@@ -15,7 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RecordService } from './record.service';
-import { CreateRecordDto } from './dto/boogle-record.dto';
+import { CreateRecordDto, UpdateRecordDto } from './dto/boogle-record.dto';
 
 @ApiTags('record')
 @ApiBearerAuth()
@@ -38,5 +39,16 @@ export class RecordController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.recordService.findOne(Number(userId), id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: '부글 기록 수정' })
+  @ApiBody({ type: UpdateRecordDto })
+  update(
+    @Headers('x-user-id') userId: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRecordDto,
+  ) {
+    return this.recordService.update(Number(userId), id, dto);
   }
 }

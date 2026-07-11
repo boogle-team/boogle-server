@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { CreateRecordDto } from './dto/boogle-record.dto';
+import { CreateRecordDto, UpdateRecordDto } from './dto/boogle-record.dto';
 import { RecordResponseDto } from './dto/record-response.dto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { RecordErrorCode } from './record-error-code.enum';
@@ -100,6 +100,38 @@ export class RecordService {
         HttpStatus.FORBIDDEN,
       );
     }
+  }
+
+  // 부글 기록 수정
+  async update(
+    userId: number,
+    id: number,
+    dto: UpdateRecordDto,
+  ): Promise<RecordResponseDto> {
+    const record = await this.findRecord(id);
+
+    this.validateOwner(record, userId);
+
+    const updatedRecord = await this.prisma.boogleRecord.update({
+      where: {
+        id,
+      },
+      data: {
+        ...dto,
+
+        ...(dto.regDate && {
+          regDate: new Date(dto.regDate),
+        }),
+
+        ...(dto.stoolBristol !== undefined && {
+          stoolSimple: this.convertStoolSimple(dto.stoolBristol),
+        }),
+
+        updateDate: new Date(),
+      },
+    });
+
+    return this.toResponse(updatedRecord);
   }
 
   // 응답 DTO 변환
