@@ -44,7 +44,7 @@ export function formatDateTime(date: Date): string {
   return date.toISOString().slice(0, 19);
 }
 
-export function toBigInt(value: number): bigint {
+export function toBigInt(value: string | number): bigint {
   return BigInt(value);
 }
 

@@ -57,7 +57,7 @@ export class LifeRecordService {
   ) {}
 
   async create(
-    userId: number,
+    userId: string,
     dto: CreateLifeRecordDto,
   ): Promise<LifeRecordDetailResponseDto> {
     this.assertValidRegDate(dto.regDate);
@@ -177,7 +177,7 @@ export class LifeRecordService {
   }
 
   async findAll(
-    userId: number,
+    userId: string,
     query: LifeRecordListQueryDto,
   ): Promise<LifeRecordListResponseDto> {
     if (query.startDate && !isValidRegDate(query.startDate)) {
@@ -238,7 +238,7 @@ export class LifeRecordService {
   }
 
   async findOne(
-    userId: number,
+    userId: string,
     lifeId: number,
   ): Promise<LifeRecordDetailResponseDto> {
     const record = await this.findActiveOrThrow(lifeId);
@@ -248,7 +248,7 @@ export class LifeRecordService {
   }
 
   async update(
-    userId: number,
+    userId: string,
     lifeId: number,
     dto: UpdateLifeRecordDto,
   ): Promise<LifeRecordUpdateResponseDto> {
@@ -334,7 +334,7 @@ export class LifeRecordService {
     return this.toUpdateResponse(updated);
   }
 
-  async remove(userId: number, lifeId: number): Promise<null> {
+  async remove(userId: string, lifeId: number): Promise<null> {
     const record = await this.findActiveOrThrow(lifeId);
     this.assertOwner(record, userId, LifeRecordErrorCode.LIFE_RECORD_FORBIDDEN);
 
@@ -367,7 +367,7 @@ export class LifeRecordService {
 
   private assertOwner(
     record: LifeRecordWithRelations,
-    userId: number,
+    userId: string,
     errorCode: LifeRecordErrorCode,
   ): void {
     if (record.userId !== toBigInt(userId)) {

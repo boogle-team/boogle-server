@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuthService } from '@/auth/auth.service';
 import { FoodController } from './food.controller';
 import { FoodService } from './food.service';
 
@@ -11,7 +12,10 @@ describe('FoodController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FoodController],
-      providers: [{ provide: FoodService, useValue: service }],
+      providers: [
+        { provide: FoodService, useValue: service },
+        { provide: AuthService, useValue: {} },
+      ],
     }).compile();
 
     controller = module.get<FoodController>(FoodController);
@@ -21,8 +25,8 @@ describe('FoodController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('findAll은 keyword를 서비스에 위임한다', () => {
-    controller.findAll(1, { keyword: '카페인' });
+  it('findAll은 keyword를 서비스에 위임한다', async () => {
+    await controller.findAll({ id: '1' }, { keyword: '카페인' });
     expect(service.findAll).toHaveBeenCalledWith('카페인');
   });
 });

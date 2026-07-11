@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuthService } from '@/auth/auth.service';
 import { LifeRecordController } from './life-record.controller';
 import { LifeRecordService } from './life-record.service';
 
@@ -13,6 +14,8 @@ describe('LifeRecordController', () => {
     remove: jest.Mock;
   };
 
+  const user = { id: '1' };
+
   beforeEach(async () => {
     service = {
       create: jest.fn(),
@@ -25,7 +28,10 @@ describe('LifeRecordController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [LifeRecordController],
-      providers: [{ provide: LifeRecordService, useValue: service }],
+      providers: [
+        { provide: LifeRecordService, useValue: service },
+        { provide: AuthService, useValue: {} },
+      ],
     }).compile();
 
     controller = module.get<LifeRecordController>(LifeRecordController);
@@ -35,36 +41,36 @@ describe('LifeRecordController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create는 userId와 dto를 그대로 서비스에 위임한다', () => {
+  it('create는 userId와 dto를 그대로 서비스에 위임한다', async () => {
     const dto = { regDate: '2026-07-02' };
-    controller.create(1, dto);
-    expect(service.create).toHaveBeenCalledWith(1, dto);
+    await controller.create(user, dto);
+    expect(service.create).toHaveBeenCalledWith('1', dto);
   });
 
-  it('extractTags는 dto.text를 서비스에 위임한다', () => {
-    controller.extractTags(1, { text: '메모' });
+  it('extractTags는 dto.text를 서비스에 위임한다', async () => {
+    await controller.extractTags(user, { text: '메모' });
     expect(service.extractTags).toHaveBeenCalledWith('메모');
   });
 
-  it('findAll은 userId와 쿼리를 서비스에 위임한다', () => {
+  it('findAll은 userId와 쿼리를 서비스에 위임한다', async () => {
     const query = { page: 1, size: 10 };
-    controller.findAll(1, query);
-    expect(service.findAll).toHaveBeenCalledWith(1, query);
+    await controller.findAll(user, query);
+    expect(service.findAll).toHaveBeenCalledWith('1', query);
   });
 
-  it('findOne은 userId와 lifeId를 서비스에 위임한다', () => {
-    controller.findOne(1, 15);
-    expect(service.findOne).toHaveBeenCalledWith(1, 15);
+  it('findOne은 userId와 lifeId를 서비스에 위임한다', async () => {
+    await controller.findOne(user, 15);
+    expect(service.findOne).toHaveBeenCalledWith('1', 15);
   });
 
-  it('update는 userId, lifeId, dto를 서비스에 위임한다', () => {
+  it('update는 userId, lifeId, dto를 서비스에 위임한다', async () => {
     const dto = { memo: '수정' };
-    controller.update(1, 15, dto);
-    expect(service.update).toHaveBeenCalledWith(1, 15, dto);
+    await controller.update(user, 15, dto);
+    expect(service.update).toHaveBeenCalledWith('1', 15, dto);
   });
 
-  it('remove는 userId와 lifeId를 서비스에 위임한다', () => {
-    controller.remove(1, 15);
-    expect(service.remove).toHaveBeenCalledWith(1, 15);
+  it('remove는 userId와 lifeId를 서비스에 위임한다', async () => {
+    await controller.remove(user, 15);
+    expect(service.remove).toHaveBeenCalledWith('1', 15);
   });
 });
