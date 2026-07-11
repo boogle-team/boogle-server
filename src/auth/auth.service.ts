@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -12,7 +12,7 @@ type OAuthProvider = 'kakao' | 'google';
 type OAuthProviderCode = 'K' | 'G';
 
 interface JwtPayload {
-  sub: number;
+  sub: string;
   type: 'access' | 'refresh';
   iat: number;
   exp: number;
@@ -43,6 +43,8 @@ interface MemberResponseSource {
 @Injectable()
 export class AuthService {
   private readonly tokenType = 'Bearer';
+  private readonly socialProviderTimeoutMs = 5000;
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -111,6 +113,21 @@ export class AuthService {
         throw error;
       }
 
+      if (this.isUniqueConstraintError(error)) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_EMAIL_ALREADY_USED,
+          '동일한 이메일로 가입된 다른 소셜 계정이 존재합니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      this.logger.error(
+        `AuthService.socialLogin failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
       throw new BusinessException(
         AuthErrorCode.SOCIAL_LOGIN_FAILED,
         '소셜 로그인 처리 중 오류가 발생했습니다.',
@@ -119,11 +136,13 @@ export class AuthService {
     }
   }
 
-  async logout(userId: number, dto: LogoutRequestDto) {
+  async logout(userId: string, dto: LogoutRequestDto) {
+    const memberId = this.toBigIntId(userId);
+
     if (dto.refreshToken) {
       await this.prisma.refreshToken.updateMany({
         where: {
-          userId: BigInt(userId),
+          userId: memberId,
           tokenHash: this.hashToken(dto.refreshToken),
           revokedAt: null,
         },
@@ -137,7 +156,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.updateMany({
       where: {
-        userId: BigInt(userId),
+        userId: memberId,
         revokedAt: null,
       },
       data: {
@@ -171,7 +190,7 @@ export class AuthService {
     if (
       !savedToken ||
       savedToken.revokedAt ||
-      savedToken.userId !== BigInt(payload.sub)
+      savedToken.userId !== this.toBigIntId(payload.sub)
     ) {
       throw new BusinessException(
         AuthErrorCode.REFRESH_TOKEN_INVALID,
@@ -291,7 +310,7 @@ export class AuthService {
     const payload: JwtPayload =
       type === 'access'
         ? {
-            sub: Number(member.id),
+            sub: member.id.toString(),
             email: member.email,
             role: 'USER',
             type,
@@ -299,7 +318,7 @@ export class AuthService {
             exp: now + expiresIn,
           }
         : {
-            sub: Number(member.id),
+            sub: member.id.toString(),
             sessionId: randomUUID(),
             type,
             iat: now,
@@ -384,7 +403,9 @@ export class AuthService {
       ) as JwtPayload;
 
       if (
-        typeof payload.sub !== 'number' ||
+        typeof payload.sub !== 'string' ||
+        payload.sub.length === 0 ||
+        !/^\d+$/.test(payload.sub) ||
         (payload.type !== 'access' && payload.type !== 'refresh') ||
         typeof payload.iat !== 'number' ||
         typeof payload.exp !== 'number'
@@ -445,6 +466,7 @@ export class AuthService {
         `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
           idToken,
         )}`,
+        { signal: AbortSignal.timeout(this.socialProviderTimeoutMs) },
       );
     } catch {
       throw new BusinessException(
@@ -496,6 +518,7 @@ export class AuthService {
           headers: {
             Authorization: `${this.tokenType} ${accessToken}`,
           },
+          signal: AbortSignal.timeout(this.socialProviderTimeoutMs),
         },
       );
     } catch {
@@ -623,17 +646,20 @@ export class AuthService {
       return fallbackValue;
     }
 
-    if (process.env.NODE_ENV === 'production') {
-      throw new BusinessException(
-        AuthErrorCode.TOKEN_INVALID,
-        'JWT 설정이 올바르지 않습니다.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    if (
+      process.env.NODE_ENV === 'development' ||
+      process.env.NODE_ENV === 'test'
+    ) {
+      return type === 'access'
+        ? 'local-dev-access-secret-change-me'
+        : 'local-dev-refresh-secret-change-me';
     }
 
-    return type === 'access'
-      ? 'local-dev-access-secret-change-me'
-      : 'local-dev-refresh-secret-change-me';
+    throw new BusinessException(
+      AuthErrorCode.TOKEN_INVALID,
+      'JWT 설정이 올바르지 않습니다.',
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
 
   private getRequiredEnv(key: string) {
@@ -668,5 +694,18 @@ export class AuthService {
 
   private toBoolean(value: string) {
     return value === 'Y';
+  }
+
+  private toBigIntId(id: string) {
+    return BigInt(id);
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    );
   }
 }

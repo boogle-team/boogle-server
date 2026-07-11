@@ -70,6 +70,9 @@ export class AuthController {
   @ApiOkResponse({
     description: '로그아웃 성공',
   })
+  @ApiUnauthorizedResponse({
+    description: 'token 누락 또는 유효하지 않은 token',
+  })
   logout(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: LogoutRequestDto,
@@ -83,6 +86,12 @@ export class AuthController {
   @ApiBody({ type: RefreshTokenRequestDto })
   @ApiOkResponse({
     description: '토큰 재발급 성공',
+  })
+  @ApiBadRequestResponse({
+    description: 'refreshToken 누락',
+  })
+  @ApiUnauthorizedResponse({
+    description: '유효하지 않거나 만료된 refreshToken',
   })
   refresh(@Body() dto: RefreshTokenRequestDto) {
     return this.authService.refresh(dto);

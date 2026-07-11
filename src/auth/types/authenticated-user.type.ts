@@ -1,3 +1,3 @@
 export interface AuthenticatedUser {
-  id: number;
+  id: string;
 }

@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class UpdateMeRequestDto {
   @ApiPropertyOptional({
@@ -9,6 +15,7 @@ export class UpdateMeRequestDto {
   })
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   nickname?: string;
 
   @ApiPropertyOptional({

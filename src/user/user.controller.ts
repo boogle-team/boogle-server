@@ -10,6 +10,9 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -21,7 +24,7 @@ import { UserService } from './user.service';
 import { SaveOnboardingRequestDto } from './dto/save-onboarding-request.dto';
 import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 
-@ApiTags('회원가입, 로그인')
+@ApiTags('온보딩, 계정 관리')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -34,6 +37,15 @@ export class UserController {
   @ApiResponse({
     status: 201,
     description: '온보딩 정보 저장 성공',
+  })
+  @ApiConflictResponse({
+    description: '이미 온보딩을 완료한 사용자',
+  })
+  @ApiNotFoundResponse({
+    description: '사용자를 찾을 수 없음',
+  })
+  @ApiForbiddenResponse({
+    description: '탈퇴한 회원',
   })
   saveOnboarding(
     @CurrentUser() user: AuthenticatedUser,
@@ -48,6 +60,12 @@ export class UserController {
     status: 200,
     description: '온보딩 정보 조회 성공',
   })
+  @ApiNotFoundResponse({
+    description: '사용자를 찾을 수 없음',
+  })
+  @ApiForbiddenResponse({
+    description: '탈퇴한 회원',
+  })
   getOnboarding(@CurrentUser() user: AuthenticatedUser) {
     return this.userService.getOnboarding(user.id);
   }
@@ -57,6 +75,12 @@ export class UserController {
   @ApiResponse({
     status: 200,
     description: '내 정보 조회 성공',
+  })
+  @ApiNotFoundResponse({
+    description: '사용자를 찾을 수 없음',
+  })
+  @ApiForbiddenResponse({
+    description: '탈퇴한 회원',
   })
   getMe(@CurrentUser() user: AuthenticatedUser) {
     return this.userService.getMe(user.id);
@@ -68,6 +92,12 @@ export class UserController {
   @ApiResponse({
     status: 200,
     description: '내 정보 수정 성공',
+  })
+  @ApiNotFoundResponse({
+    description: '사용자를 찾을 수 없음',
+  })
+  @ApiForbiddenResponse({
+    description: '탈퇴한 회원',
   })
   updateMe(
     @CurrentUser() user: AuthenticatedUser,
@@ -81,6 +111,12 @@ export class UserController {
   @ApiResponse({
     status: 200,
     description: '회원탈퇴 성공',
+  })
+  @ApiNotFoundResponse({
+    description: '사용자를 찾을 수 없음',
+  })
+  @ApiForbiddenResponse({
+    description: '탈퇴한 회원',
   })
   deleteMe(@CurrentUser() user: AuthenticatedUser) {
     return this.userService.deleteMe(user.id);

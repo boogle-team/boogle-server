@@ -30,11 +30,10 @@ interface MemberWithSocialAccountsResponseSource extends MemberResponseSource {
 export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async saveOnboarding(userId: number, dto: SaveOnboardingRequestDto) {
+  async saveOnboarding(userId: string, dto: SaveOnboardingRequestDto) {
     this.assertNickname(dto.nickname);
 
-    const member = await this.findMemberOrThrow(userId);
-    this.assertActiveMember(member);
+    const member = await this.findActiveMemberOrThrow(userId);
 
     if (this.isOnboardingCompleted(member)) {
       throw new BusinessException(
@@ -64,7 +63,7 @@ export class UserService {
     }
 
     const updatedMember = await this.prisma.member.update({
-      where: { id: userId },
+      where: { id: this.toBigIntId(userId) },
       data: onboardingData,
     });
 
@@ -74,7 +73,7 @@ export class UserService {
     };
   }
 
-  async getOnboarding(userId: number) {
+  async getOnboarding(userId: string) {
     const member = await this.findActiveMemberOrThrow(userId);
 
     return {
@@ -89,13 +88,13 @@ export class UserService {
     };
   }
 
-  async getMe(userId: number) {
+  async getMe(userId: string) {
     const member = await this.findActiveMemberWithSocialAccountsOrThrow(userId);
 
     return this.toMeResponse(member);
   }
 
-  async updateMe(userId: number, dto: UpdateMeRequestDto) {
+  async updateMe(userId: string, dto: UpdateMeRequestDto) {
     this.assertNickname(dto.nickname);
 
     const member = await this.findActiveMemberOrThrow(userId);
@@ -133,14 +132,14 @@ export class UserService {
     }
 
     const updatedMember = await this.prisma.member.update({
-      where: { id: userId },
+      where: { id: this.toBigIntId(userId) },
       data: updateData,
     });
 
     return this.toProfileResponse(updatedMember);
   }
 
-  async deleteMe(userId: number) {
+  async deleteMe(userId: string) {
     const member = await this.findActiveMemberOrThrow(userId);
 
     await this.prisma.$transaction([
@@ -165,9 +164,9 @@ export class UserService {
     return null;
   }
 
-  private async findMemberOrThrow(userId: number) {
+  private async findMemberOrThrow(userId: string) {
     const member = await this.prisma.member.findUnique({
-      where: { id: BigInt(userId) },
+      where: { id: this.toBigIntId(userId) },
     });
 
     if (!member) {
@@ -181,9 +180,9 @@ export class UserService {
     return member;
   }
 
-  private async findActiveMemberWithSocialAccountsOrThrow(userId: number) {
+  private async findActiveMemberWithSocialAccountsOrThrow(userId: string) {
     const member = await this.prisma.member.findUnique({
-      where: { id: BigInt(userId) },
+      where: { id: this.toBigIntId(userId) },
       include: {
         socialAccounts: {
           select: {
@@ -205,7 +204,7 @@ export class UserService {
     return member;
   }
 
-  private async findActiveMemberOrThrow(userId: number) {
+  private async findActiveMemberOrThrow(userId: string) {
     const member = await this.findMemberOrThrow(userId);
     this.assertActiveMember(member);
     return member;
@@ -279,5 +278,9 @@ export class UserService {
 
   private toBoolean(value: string) {
     return value === 'Y';
+  }
+
+  private toBigIntId(id: string) {
+    return BigInt(id);
   }
 }
