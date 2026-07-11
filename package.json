@@ -82,6 +82,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "moduleNameMapper": {
+      "^@/prisma/prisma\\.service$": "<rootDir>/prisma/__mocks__/prisma.service.ts",
       "^@/(.*)$": "<rootDir>/$1",
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
