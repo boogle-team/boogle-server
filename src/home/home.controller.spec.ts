@@ -1,8 +1,25 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '@/common/decorators/current-user.decorator';
 import { HomeController } from './home.controller';
 import { HomeService } from './home.service';
+
+// 가드 없이 @CurrentUser()만 붙은 라우트 — 인증 정보가 없을 때
+// 데코레이터가 401을 던지는지 확인하기 위한 테스트 전용 컨트롤러.
+@Controller('__no-guard-test')
+class NoGuardTestController {
+  @Get()
+  get(@CurrentUser() user: CurrentUserPayload) {
+    return user;
+  }
+}
 
 describe('HomeController', () => {
   let controller: HomeController;
@@ -78,6 +95,27 @@ describe('HomeController', () => {
       await request(app.getHttpServer()).get('/home').expect(200);
 
       expect(service.getHome).toHaveBeenCalledWith(1n, undefined);
+    });
+  });
+
+  describe('@CurrentUser() 인증 실패 처리', () => {
+    let app: INestApplication;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [NoGuardTestController],
+      }).compile();
+
+      app = module.createNestApplication();
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('인증 가드 없이 request.user가 비어있으면 401을 반환한다', async () => {
+      await request(app.getHttpServer()).get('/__no-guard-test').expect(401);
     });
   });
 });
