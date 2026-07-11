@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 
 // 부글 기록 생성 dto
@@ -14,6 +15,7 @@ export class CreateRecordDto {
     example: true,
     description: '배변 여부',
   })
+  @Type(() => Boolean)
   @IsBoolean()
   hasBowel!: boolean;
 

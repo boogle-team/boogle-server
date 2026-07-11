@@ -19,10 +19,7 @@ export class RecordController {
   @Post()
   @ApiOperation({ summary: '부글 기록 생성' })
   @ApiBody({ type: CreateRecordDto })
-  create(
-    @Headers('x-user-id') userId: string,
-    @Body() createRecordDto: CreateRecordDto,
-  ) {
-    return this.recordService.create(Number(userId), createRecordDto);
+  create(@Headers('x-user-id') userId: string, @Body() dto: CreateRecordDto) {
+    return this.recordService.create(Number(userId), dto);
   }
 }

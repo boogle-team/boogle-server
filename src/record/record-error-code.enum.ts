@@ -1,3 +1,3 @@
 export enum RecordErrorCode {
-  // TODO: e.g. SYMPTOM_001 = 'SYMPTOM_001',
+  INVALID_BOWEL_REQUEST = 'INVALID_BOWEL_REQUEST',
 }
