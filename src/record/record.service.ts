@@ -65,30 +65,11 @@ export class RecordService {
 
   // 부글 기록 조회
   async findOne(userId: number, id: number): Promise<RecordResponseDto> {
-    const record = await this.findRecord(id);
+    const record = await this.findActiveRecord(id);
 
     this.validateOwner(record, userId);
 
     return this.toResponse(record);
-  }
-
-  // 기록존재 여부 확인
-  private async findRecord(id: number) {
-    const record = await this.prisma.boogleRecord.findUnique({
-      where: {
-        id,
-      },
-    });
-
-    if (!record) {
-      throw new BusinessException(
-        RecordErrorCode.RECORD_NOT_FOUND,
-        '존재하지 않는 기록입니다.',
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    return record;
   }
 
   // 기록 소유자 확인
@@ -108,7 +89,7 @@ export class RecordService {
     id: number,
     dto: UpdateRecordDto,
   ): Promise<RecordResponseDto> {
-    const record = await this.findRecord(id);
+    const record = await this.findActiveRecord(id);
 
     this.validateOwner(record, userId);
 
@@ -132,6 +113,47 @@ export class RecordService {
     });
 
     return this.toResponse(updatedRecord);
+  }
+
+  // 부글 기록 삭제 (soft delete)
+  async remove(userId: number, id: number): Promise<void> {
+    const record = await this.findActiveRecord(id);
+
+    this.validateOwner(record, userId);
+
+    await this.prisma.boogleRecord.update({
+      where: {
+        id,
+      },
+      data: {
+        status: 'D',
+        updateDate: new Date(),
+      },
+    });
+
+    return;
+  }
+
+  // 삭제되지 않은 레코드 조회
+  private async findActiveRecord(id: number): Promise<BoogleRecord> {
+    const record = await this.prisma.boogleRecord.findFirst({
+      where: {
+        id,
+        status: {
+          not: 'D',
+        },
+      },
+    });
+
+    if (!record) {
+      throw new BusinessException(
+        RecordErrorCode.RECORD_NOT_FOUND,
+        '존재하지 않는 기록입니다.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return record;
   }
 
   // 응답 DTO 변환

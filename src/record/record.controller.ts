@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -50,5 +51,14 @@ export class RecordController {
     @Body() dto: UpdateRecordDto,
   ) {
     return this.recordService.update(Number(userId), id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: '부글 기록 삭제' })
+  remove(
+    @Headers('x-user-id') userId: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.recordService.remove(Number(userId), id);
   }
 }
