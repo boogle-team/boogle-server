@@ -134,7 +134,12 @@ export class LifeRecordController {
   }
 
   @Get(':lifeId')
-  @ApiParam({ name: 'lifeId', description: '생활 기록 ID', example: 15 })
+  @ApiParam({
+    name: 'lifeId',
+    type: Number,
+    description: '생활 기록 ID',
+    example: 15,
+  })
   @ApiOperation({
     summary: '생활기록 상세 조회',
     description:
@@ -145,6 +150,7 @@ export class LifeRecordController {
     type: LifeRecordDetailResponseDto,
     description: '생활 기록 상세 조회 성공',
   })
+  @ApiBadRequestResponse({ description: 'lifeId가 숫자 형식이 아님' })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({
     description: '다른 사용자의 생활 기록에 접근함(LIFE_RECORD_FORBIDDEN)',
@@ -160,7 +166,12 @@ export class LifeRecordController {
   }
 
   @Patch(':lifeId')
-  @ApiParam({ name: 'lifeId', description: '생활 기록 ID', example: 15 })
+  @ApiParam({
+    name: 'lifeId',
+    type: Number,
+    description: '생활 기록 ID',
+    example: 15,
+  })
   @ApiOperation({
     summary: '생활기록 수정',
     description:
@@ -172,7 +183,8 @@ export class LifeRecordController {
     description: '생활 기록 수정 성공',
   })
   @ApiBadRequestResponse({
-    description: '생활 기록 항목 값이 올바르지 않음(INVALID_LIFE_VALUE)',
+    description:
+      'lifeId가 숫자 형식이 아니거나, 생활 기록 항목 값이 올바르지 않음(INVALID_LIFE_VALUE)',
   })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({
@@ -190,7 +202,12 @@ export class LifeRecordController {
   }
 
   @Delete(':lifeId')
-  @ApiParam({ name: 'lifeId', description: '생활 기록 ID', example: 15 })
+  @ApiParam({
+    name: 'lifeId',
+    type: Number,
+    description: '생활 기록 ID',
+    example: 15,
+  })
   @ApiOperation({
     summary: '생활기록 삭제',
     description:
@@ -198,6 +215,7 @@ export class LifeRecordController {
   })
   @ResponseMessage('생활 기록이 삭제되었습니다.')
   @ApiOkResponse({ description: '생활 기록 삭제 성공' })
+  @ApiBadRequestResponse({ description: 'lifeId가 숫자 형식이 아님' })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({
     description: '다른 사용자의 생활 기록에 접근함(LIFE_RECORD_FORBIDDEN)',

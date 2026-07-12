@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class LifeRecordListQueryDto {
   @ApiPropertyOptional({
@@ -33,11 +33,12 @@ export class LifeRecordListQueryDto {
   @ApiPropertyOptional({
     example: 10,
     default: 10,
-    description: '페이지당 항목 수',
+    description: '페이지당 항목 수 (최대 100)',
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(100)
   size?: number = 10;
 }

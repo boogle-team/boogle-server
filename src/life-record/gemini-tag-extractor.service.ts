@@ -13,6 +13,7 @@ export interface ExtractedTag {
 }
 
 const GEMINI_QUOTA_EXCEEDED_STATUS = 429;
+const GEMINI_REQUEST_TIMEOUT_MS = 15_000;
 
 @Injectable()
 export class GeminiTagExtractorService {
@@ -82,12 +83,15 @@ export class GeminiTagExtractorService {
     existingTagNames: string[],
   ): Promise<ExtractedTag[]> {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: this.modelName,
-      generationConfig: {
-        responseMimeType: 'application/json',
+    const model = genAI.getGenerativeModel(
+      {
+        model: this.modelName,
+        generationConfig: {
+          responseMimeType: 'application/json',
+        },
       },
-    });
+      { timeout: GEMINI_REQUEST_TIMEOUT_MS },
+    );
 
     const prompt = [
       '아래 문장은 사용자가 작성한 하루 생활 메모야.',

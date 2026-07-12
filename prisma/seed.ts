@@ -2,8 +2,14 @@ import 'dotenv/config';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../src/generated/prisma/client';
 
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required to run the seed script');
+}
+
 const prisma = new PrismaClient({
-  adapter: new PrismaMariaDb(process.env.DATABASE_URL as string),
+  adapter: new PrismaMariaDb(databaseUrl),
 });
 
 const FOODS = [
@@ -41,9 +47,9 @@ async function main() {
   }
 
   await prisma.member.upsert({
-    where: { id: 1 },
+    where: { id: 1n },
     create: {
-      id: 1,
+      id: 1n,
       loginId: 'test_user',
       password: 'test_password',
       nickname: '테스트유저',

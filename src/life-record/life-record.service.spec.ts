@@ -14,6 +14,7 @@ describe('LifeRecordService', () => {
     lifeTag: Record<string, jest.Mock>;
     lifeFoodTag: Record<string, jest.Mock>;
     medicineMap: Record<string, jest.Mock>;
+    $transaction: jest.Mock;
   };
   let geminiTagExtractor: { extractTags: jest.Mock };
 
@@ -55,7 +56,13 @@ describe('LifeRecordService', () => {
       lifeTag: { deleteMany: jest.fn() },
       lifeFoodTag: { deleteMany: jest.fn() },
       medicineMap: { deleteMany: jest.fn() },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      Array.isArray(arg)
+        ? Promise.all(arg)
+        : (arg as (tx: typeof prisma) => unknown)(prisma),
+    );
     geminiTagExtractor = { extractTags: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -174,6 +181,38 @@ describe('LifeRecordService', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('startDate 형식이 올바르지 않으면 INVALID_DATE_FORMAT을 던진다', async () => {
+      await expect(
+        service.findAll('1', { startDate: '2026/07/01' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_DATE_FORMAT,
+      });
+    });
+
+    it('endDate 형식이 올바르지 않으면 INVALID_DATE_FORMAT을 던진다', async () => {
+      await expect(
+        service.findAll('1', { endDate: '2026/07/31' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_DATE_FORMAT,
+      });
+    });
+
+    it('정상 조회 시 페이지네이션 정보와 함께 목록을 반환한다', async () => {
+      prisma.lifeRecord.findMany.mockResolvedValue([baseRecord]);
+      prisma.lifeRecord.count.mockResolvedValue(23);
+
+      const result = await service.findAll('1', { page: 1, size: 10 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe(15);
+      expect(result.page).toBe(1);
+      expect(result.size).toBe(10);
+      expect(result.totalCount).toBe(23);
+      expect(result.hasNext).toBe(true);
+    });
+  });
+
   describe('findOne', () => {
     it('기록이 없으면 LIFE_RECORD_NOT_FOUND를 던진다', async () => {
       prisma.lifeRecord.findFirst.mockResolvedValue(null);
@@ -201,6 +240,72 @@ describe('LifeRecordService', () => {
 
       expect(result.id).toBe(15);
       expect(result.userId).toBe(1);
+    });
+  });
+
+  describe('update', () => {
+    it('생활 값이 올바르지 않으면 INVALID_LIFE_VALUE를 던진다', async () => {
+      await expect(
+        service.update('1', 15, { sleep: 'A' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_LIFE_VALUE,
+      });
+    });
+
+    it('기록이 없으면 LIFE_RECORD_NOT_FOUND를 던진다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.update('1', 15, { memo: '수정' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_NOT_FOUND,
+      });
+    });
+
+    it('소유자가 다르면 LIFE_RECORD_FORBIDDEN을 던진다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue({
+        ...baseRecord,
+        userId: 999n,
+      });
+
+      await expect(
+        service.update('1', 15, { memo: '수정' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_FORBIDDEN,
+      });
+    });
+
+    it('정상 수정 시 태그/음식/약을 트랜잭션으로 재연결하고 수정된 응답을 반환한다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(baseRecord);
+      prisma.food.findMany.mockResolvedValue([{ id: 3 }]);
+      prisma.medicine.findMany.mockResolvedValue([{ id: 5 }]);
+      prisma.lifeRecord.update.mockResolvedValue({
+        ...baseRecord,
+        memo: '수정된 메모',
+        updateTime: new Date('2026-07-02T13:20:00.000Z'),
+        foodTags: [{ food: { id: 3, name: '카페인' } }],
+        medicineMaps: [{ medicine: { id: 5, name: '변비약' } }],
+      });
+
+      const result = await service.update('1', 15, {
+        memo: '수정된 메모',
+        tagNames: ['야식'],
+        foodIds: [3],
+        medicineIds: [5],
+      });
+
+      expect(prisma.lifeTag.deleteMany).toHaveBeenCalledWith({
+        where: { lifeId: 15n },
+      });
+      expect(prisma.lifeFoodTag.deleteMany).toHaveBeenCalledWith({
+        where: { lifeId: 15n },
+      });
+      expect(prisma.medicineMap.deleteMany).toHaveBeenCalledWith({
+        where: { lifeRecordId: 15n },
+      });
+      expect(result.memo).toBe('수정된 메모');
+      expect(result.foods).toEqual([{ id: 3, name: '카페인' }]);
+      expect(result.medicines).toEqual([{ id: 5, name: '변비약' }]);
     });
   });
 

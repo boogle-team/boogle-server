@@ -8,6 +8,7 @@ import {
   LifeTag,
   Medicine,
   MedicineMap,
+  Prisma,
   Tag,
 } from '@/generated/prisma/client';
 import { LifeRecordErrorCode } from './life-record-error-code.enum';
@@ -133,6 +134,16 @@ export class LifeRecordService {
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;
+      }
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BusinessException(
+          LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
+          '해당 날짜의 생활 기록이 이미 존재합니다.',
+          HttpStatus.CONFLICT,
+        );
       }
       throw new BusinessException(
         LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,

@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { AuthService } from '@/auth/auth.service';
+import { BusinessException } from '@/common/exceptions/business.exception';
 import { LifeRecordController } from './life-record.controller';
 import { LifeRecordService } from './life-record.service';
+import { LifeRecordErrorCode } from './life-record-error-code.enum';
 
 describe('LifeRecordController', () => {
   let controller: LifeRecordController;
@@ -72,5 +75,53 @@ describe('LifeRecordController', () => {
   it('remove는 userId와 lifeId를 서비스에 위임한다', async () => {
     await controller.remove(user, 15);
     expect(service.remove).toHaveBeenCalledWith('1', 15);
+  });
+
+  it('create는 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
+      '해당 날짜의 생활 기록이 이미 존재합니다.',
+      HttpStatus.CONFLICT,
+    );
+    service.create.mockRejectedValue(error);
+
+    await expect(
+      controller.create(user, { regDate: '2026-07-02' }),
+    ).rejects.toBe(error);
+  });
+
+  it('findOne은 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.LIFE_RECORD_NOT_FOUND,
+      '생활 기록을 찾을 수 없습니다.',
+      HttpStatus.NOT_FOUND,
+    );
+    service.findOne.mockRejectedValue(error);
+
+    await expect(controller.findOne(user, 15)).rejects.toBe(error);
+  });
+
+  it('update는 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.LIFE_RECORD_FORBIDDEN,
+      '해당 기록에 접근할 권한이 없습니다.',
+      HttpStatus.FORBIDDEN,
+    );
+    service.update.mockRejectedValue(error);
+
+    await expect(controller.update(user, 15, { memo: '수정' })).rejects.toBe(
+      error,
+    );
+  });
+
+  it('remove는 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.LIFE_RECORD_NOT_FOUND,
+      '생활 기록을 찾을 수 없습니다.',
+      HttpStatus.NOT_FOUND,
+    );
+    service.remove.mockRejectedValue(error);
+
+    await expect(controller.remove(user, 15)).rejects.toBe(error);
   });
 });

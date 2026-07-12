@@ -87,4 +87,26 @@ describe('GeminiTagExtractorService', () => {
     });
     expect(generateContent).toHaveBeenCalledTimes(3);
   });
+
+  it('응답이 JSON 배열이 아니면 TAG_EXTRACTION_FAILED를 던진다', async () => {
+    generateContent.mockResolvedValue({
+      response: { text: () => '이건 JSON이 아닙니다' },
+    });
+
+    await expect(service.extractTags('문장')).rejects.toMatchObject({
+      errorCode: LifeRecordErrorCode.TAG_EXTRACTION_FAILED,
+    });
+  });
+
+  it('배열 항목의 name/confidence 형식이 어긋나면 TAG_EXTRACTION_FAILED를 던진다', async () => {
+    generateContent.mockResolvedValue({
+      response: {
+        text: () => JSON.stringify([{ name: '수면 부족', confidence: '높음' }]),
+      },
+    });
+
+    await expect(service.extractTags('문장')).rejects.toMatchObject({
+      errorCode: LifeRecordErrorCode.TAG_EXTRACTION_FAILED,
+    });
+  });
 });
