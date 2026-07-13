@@ -1,14 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
-import { GetWeeklyReportQueryDto } from './dto/get-weekly-report-query.dto';
-import {
+import type { GetWeeklyReportQueryDto } from './dto/get-weekly-report-query.dto';
+import type {
   BowelRhythmByDayDto,
   ChangeSummaryDto,
   FrequentTimeSlotDto,
   InsufficientNoticeDto,
   LifeFactorStatsDto,
-  PatternCardDto,
   PreviousWeeklySummaryDto,
   ReportPeriodDto,
   StoolDistributionDto,
@@ -17,8 +16,8 @@ import {
   WeeklyReportResponseDto,
   WeeklySummaryDto,
 } from './dto/weekly-report-response.dto';
-import { GetMonthlyReportQueryDto } from './dto/get-monthly-report-query.dto';
-import {
+import type { GetMonthlyReportQueryDto } from './dto/get-monthly-report-query.dto';
+import type {
   MonthlyChangeSummaryDto,
   MonthlyLifeFactorStatsDto,
   MonthlyPatternCardDto,
@@ -33,7 +32,25 @@ import {
   WeeklyTrendDto,
 } from './dto/monthly-report-response.dto';
 import { CreatePdfReportRequestDto } from './dto/create-pdf-report-request.dto';
+import type {
+  BoogleRecordForWeekly,
+  LifeRecordForWeekly,
+  DetectedRule,
+  WeeklyRecordForReport,
+  MonthlyRecordForReport,
+  WeeklyRecordForTrend,
+} from './dto/report-record.dto';
 import { ReportErrorCode } from './report-error-code.enum';
+import type {
+  PdfReportResult,
+  MemberForPdf,
+  BoogleRecordForPdf,
+  LifeRecordForPdf,
+  WeeklyRecordForPdf,
+  MonthlyRecordForPdf,
+  GuideContentForPdf,
+  PdfReportBuildData,
+} from './dto/pdf-report-data.dto';
 import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -46,123 +63,6 @@ const MONTHLY_PDF_ENDPOINT = '/api/v1/reports/pdf';
 
 const FREE_PDF_MAX_DAYS = 31;
 const PREMIUM_PDF_MAX_DAYS = 366;
-
-type BoogleRecordForWeekly = {
-  regDate: Date;
-  hasBowel: boolean;
-  stoolSimple: string | null;
-  bowelFeeling: string | null;
-  stomach: string | null;
-  distension: string | null;
-  remainingFeeling: string | null;
-  urgency: string | null;
-};
-
-type LifeRecordForWeekly = {
-  regDate: Date;
-  sleepTime: number | null;
-  caffeine: string | null;
-  exercise: string | null;
-  stress: string | null;
-  water: string | null;
-  mealRegular: string | null;
-};
-
-type DetectedRule = {
-  ruleCode: string;
-  card: PatternCardDto;
-};
-
-type WeeklyRecordForReport = {
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  completionScore: number | null;
-};
-
-type MonthlyRecordForReport = {
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  state: number | null;
-  completionScore: number | null;
-  conditionScore: number | null;
-  userType: string | null;
-};
-
-type WeeklyRecordForTrend = {
-  weekStartDate: Date;
-  bowelCount: number | null;
-  completionScore: number | null;
-};
-
-type PdfReportResult = {
-  buffer: Buffer;
-  filename: string;
-};
-
-type MemberForPdf = {
-  name: string | null;
-  nickname: string | null;
-  subscription: string;
-  subscriptionDate: Date | null;
-};
-
-type BoogleRecordForPdf = {
-  id: bigint;
-  regDate: Date;
-  hasBowel: boolean;
-  stoolBristol: number | null;
-  stoolSimple: string | null;
-  bowelFeeling: string | null;
-  stomach: string | null;
-  distension: string | null;
-  remainingFeeling: string | null;
-  urgency: string | null;
-  takenTime: number | null;
-  amount: string | null;
-  color: string | null;
-  memo: string | null;
-  autoTags: string | null;
-};
-
-type LifeRecordForPdf = {
-  id: bigint;
-  regDate: Date;
-  sleep: string | null;
-  sleepTime: number | null;
-  stress: string | null;
-  water: string | null;
-  mealRegular: string | null;
-  exercise: string | null;
-  caffeine: string | null;
-  outing: string | null;
-  hormone: string | null;
-  memo: string | null;
-  autoTags: string | null;
-};
-
-type WeeklyRecordForPdf = {
-  weekStartDate: Date;
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  completionScore: number | null;
-};
-
-type MonthlyRecordForPdf = {
-  monthStartDate: Date;
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  state: number | null;
-  completionScore: number | null;
-  conditionScore: number | null;
-  userType: string | null;
-};
-
-type GuideContentForPdf = {
-  ruleCode: string | null;
-  title: string;
-  category: string | null;
-  content: string;
-};
 
 @Injectable()
 export class ReportService {
@@ -2256,17 +2156,9 @@ export class ReportService {
     return [...ruleCodes];
   }
 
-  private async buildPdfReportBuffer(data: {
-    member: MemberForPdf;
-    startDate: Date;
-    endDate: Date;
-    includeDailyRecords: boolean;
-    boogleRecords: BoogleRecordForPdf[];
-    lifeRecords: LifeRecordForPdf[];
-    weeklyRecords: WeeklyRecordForPdf[];
-    monthlyRecords: MonthlyRecordForPdf[];
-    guides: GuideContentForPdf[];
-  }): Promise<Buffer> {
+  private async buildPdfReportBuffer(
+    data: PdfReportBuildData,
+  ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',

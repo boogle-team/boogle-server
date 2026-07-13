@@ -3,8 +3,8 @@ import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ReportService } from '@/report/report.service';
 import type { WeeklyReportResponseDto } from '@/report/dto/weekly-report-response.dto';
-import { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
-import {
+import type { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
+import type {
   GuideCardDto,
   GuideCategory,
   GuideFeedbackStatus,
@@ -14,8 +14,8 @@ import {
   WarningFlagDto,
 } from './dto/guide-screen-response.dto';
 import { GuideErrorCode } from './guide-error-code.enum';
-import { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
-import {
+import type { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
+import type {
   GuideDetailResponseDto,
   GuideDetailRuleDto,
   PatternGuideDetailResponseDto,
@@ -24,12 +24,19 @@ import {
   WarningDetailFlagDto,
   WarningGuideDetailResponseDto,
 } from './dto/guide-detail-response.dto';
-import { GuideFeedbackRequestDto } from './dto/guide-feedback-request.dto';
-import {
+import type { GuideFeedbackRequestDto } from './dto/guide-feedback-request.dto';
+import type {
   CreateGuideFeedbackResponseDto,
   DeleteGuideFeedbackResponseDto,
   UpdateGuideFeedbackResponseDto,
 } from './dto/guide-feedback-response.dto';
+import type {
+  GuideContentRow,
+  PatternGuideRuleRow,
+  WarningRecordRow,
+  GuideContentDetailRow,
+  WarningDetailRecordRow,
+} from './dto/guide-record.dto';
 
 const GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES: ReadonlySet<string> =
   new Set<string>([
@@ -38,44 +45,6 @@ const GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES: ReadonlySet<string> =
   ]);
 
 const INTERNAL_SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
-
-type GuideContentRow = {
-  id: number;
-  category: string | null;
-  title: string;
-  content: string;
-};
-
-type PatternGuideRuleRow = {
-  ruleCode: string | null;
-  guideContent: GuideContentRow;
-};
-
-type WarningRecordRow = {
-  regDate: Date;
-  hasBowel: boolean;
-  color: string | null;
-  stomach: string | null;
-};
-
-type GuideContentDetailRow = {
-  id: number;
-  category: string | null;
-  title: string;
-  content: string;
-  status: string;
-  guideRules: Array<{
-    ruleCode: string | null;
-    condition: string | null;
-  }>;
-};
-
-type WarningDetailRecordRow = {
-  id: bigint;
-  regDate: Date;
-  color: string | null;
-  stomach: string | null;
-};
 
 @Injectable()
 export class GuideService {
