@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -21,7 +21,11 @@ export class CreateRecordDto {
     example: true,
     description: '배변 여부',
   })
-  @Type(() => Boolean)
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
   @IsBoolean()
   hasBowel!: boolean;
 
