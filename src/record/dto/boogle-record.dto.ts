@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 // 부글 기록 생성 dto
 export class CreateRecordDto {
@@ -8,7 +14,7 @@ export class CreateRecordDto {
     example: '2026-07-10',
     description: 'YYYY-MM-DD',
   })
-  @IsString()
+  @IsDateString()
   regDate!: string;
 
   @ApiProperty({
