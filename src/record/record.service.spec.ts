@@ -62,7 +62,7 @@ describe('RecordService', () => {
     expect(mockCreate).toHaveBeenCalledWith({
       data: {
         userId: 1,
-        hasBowel: true,
+        hasBowel: false,
         regDate: new Date('2026-07-11'),
       },
     });
