@@ -28,14 +28,6 @@ import { MonthlyReportResponseDto } from './dto/monthly-report-response.dto';
 import { CreatePdfReportRequestDto } from './dto/create-pdf-report-request.dto';
 import { ReportService } from './report.service';
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id?: string | number | bigint;
-    userId?: string | number | bigint;
-    sub?: string | number | bigint;
-  };
-}
-
 @ApiTags('Reports')
 @ApiBearerAuth()
 @Controller('reports')
@@ -59,7 +51,7 @@ export class ReportController {
   // @ResponseMessage('주간 리포트 조회에 성공했습니다.')
   async getWeeklyReport(
     @Query() query: GetWeeklyReportQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<WeeklyReportResponseDto> {
     const userId = this.extractUserId(req);
 
@@ -83,25 +75,21 @@ export class ReportController {
   // @ResponseMessage('월간 리포트 조회에 성공했습니다.')
   async getMonthlyReport(
     @Query() query: GetMonthlyReportQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<MonthlyReportResponseDto> {
     const userId = this.extractUserId(req);
 
     return this.reportService.getMonthlyReport(userId, query);
   }
 
-  private extractUserId(req: AuthenticatedRequest): bigint {
-    const rawUserId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
+  private extractUserId(req: Request): bigint {
+    const userId = req.user?.id;
 
-    if (rawUserId === undefined || rawUserId === null) {
+    if (userId === undefined) {
       throw new UnauthorizedException();
     }
 
-    try {
-      return BigInt(rawUserId);
-    } catch {
-      throw new UnauthorizedException();
-    }
+    return userId;
   }
 
   @Post('pdf')
@@ -133,7 +121,7 @@ export class ReportController {
   })
   async createPdfReport(
     @Body() body: CreatePdfReportRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
     const userId = this.extractUserId(req);

@@ -34,14 +34,6 @@ import {
 } from './dto/guide-feedback-response.dto';
 import { GuideService } from './guide.service';
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id?: string | number | bigint;
-    userId?: string | number | bigint;
-    sub?: string | number | bigint;
-  };
-}
-
 @ApiTags('Guides')
 @ApiBearerAuth()
 @Controller('guides')
@@ -71,7 +63,7 @@ export class GuideController {
   // @ResponseMessage('가이드 조회에 성공했습니다.')
   async getGuideScreen(
     @Query() query: GetGuideScreenQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<GuideScreenResponseDto> {
     const userId = this.extractUserId(req);
 
@@ -108,7 +100,7 @@ export class GuideController {
   async getGuideDetail(
     @Param('guideContentId') guideContentId: string,
     @Query() query: GetGuideDetailQueryDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<GuideDetailResponseDto> {
     const userId = this.extractUserId(req);
 
@@ -151,7 +143,7 @@ export class GuideController {
   async createGuideFeedback(
     @Param('guideContentId') guideContentId: string,
     @Body() body: GuideFeedbackRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<CreateGuideFeedbackResponseDto> {
     const userId = this.extractUserId(req);
 
@@ -181,7 +173,7 @@ export class GuideController {
   async updateGuideFeedback(
     @Param('guideContentId') guideContentId: string,
     @Body() body: GuideFeedbackRequestDto,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<UpdateGuideFeedbackResponseDto> {
     const userId = this.extractUserId(req);
 
@@ -199,24 +191,20 @@ export class GuideController {
   })
   async deleteGuideFeedback(
     @Param('guideContentId') guideContentId: string,
-    @Req() req: AuthenticatedRequest,
+    @Req() req: Request,
   ): Promise<DeleteGuideFeedbackResponseDto> {
     const userId = this.extractUserId(req);
 
     return this.guideService.deleteGuideFeedback(userId, guideContentId);
   }
 
-  private extractUserId(req: AuthenticatedRequest): bigint {
-    const rawUserId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
+  private extractUserId(req: Request): bigint {
+    const userId = req.user?.id;
 
-    if (rawUserId === undefined || rawUserId === null) {
+    if (userId === undefined) {
       throw new UnauthorizedException();
     }
 
-    try {
-      return BigInt(rawUserId);
-    } catch {
-      throw new UnauthorizedException();
-    }
+    return userId;
   }
 }
