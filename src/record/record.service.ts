@@ -107,8 +107,6 @@ export class RecordService {
         ...(dto.stoolBristol !== undefined && {
           stoolSimple: this.convertStoolSimple(dto.stoolBristol),
         }),
-
-        updateDate: new Date(),
       },
     });
 
@@ -127,7 +125,6 @@ export class RecordService {
       },
       data: {
         status: 'D',
-        updateDate: new Date(),
       },
     });
 
