@@ -3,7 +3,9 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+
   ServiceUnavailableException,
+
 } from '@nestjs/common';
 import { Request } from 'express';
 
@@ -15,17 +17,22 @@ import { Request } from 'express';
  * 헤더 값을 그대로 신뢰하므로 어떤 사용자로도 위장할 수 있다.
  * 이는 실제 인증(JWT)이 붙기 전까지 로컬/테스트 환경에서만 쓰는
  * 임시 조치이며, 인증 모듈 완성 후 JwtAuthGuard로 교체 예정이다.
+
  * 혹시라도 운영 배포(NODE_ENV=production)에 이 상태로 나가면
  * 인증 우회로 이어지지 않도록, 그 경우엔 무조건 실패(fail-closed)한다.
+
+develop
  */
 @Injectable()
 export class StubAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+
     if (process.env.NODE_ENV === 'production') {
       throw new ServiceUnavailableException(
         'StubAuthGuard는 운영 환경에서 사용할 수 없습니다. JwtAuthGuard로 교체가 필요합니다.',
       );
     }
+
 
     const request = context.switchToHttp().getRequest<Request>();
     const headerUserId = request.headers['x-user-id'];
