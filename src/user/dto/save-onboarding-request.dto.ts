@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsNumber,
@@ -53,11 +52,4 @@ export class SaveOnboardingRequestDto {
   })
   @IsIn(['R', 'C', 'L', 'U'])
   baselineType: 'R' | 'C' | 'L' | 'U';
-
-  @ApiProperty({
-    example: true,
-    description: '민감정보 수집 동의 여부. 미동의면 false',
-  })
-  @IsBoolean()
-  sensInfo: boolean;
 }

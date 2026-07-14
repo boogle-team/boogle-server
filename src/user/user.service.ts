@@ -1,8 +1,11 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
+import type { MemberConsent } from '@/generated/prisma/client';
 import { SaveOnboardingRequestDto } from './dto/save-onboarding-request.dto';
 import { UpdateMeRequestDto } from './dto/update-me-request.dto';
+import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
+import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import { UserErrorCode } from './user-error-code.enum';
 
 interface MemberResponseSource {
@@ -20,10 +23,17 @@ interface MemberResponseSource {
 
 interface SocialAccountResponseSource {
   provider: string;
+  email: string | null;
+  regDate: Date;
+}
+
+interface MemberConsentResponseSource {
+  agreed: boolean;
 }
 
 interface MemberWithSocialAccountsResponseSource extends MemberResponseSource {
   socialAccounts?: SocialAccountResponseSource[];
+  memberConsents?: MemberConsentResponseSource[];
 }
 
 @Injectable()
@@ -49,13 +59,11 @@ export class UserService {
       gender: string;
       ageGroup: number;
       baselineType: string;
-      sensInfo: string;
     } = {
       nickname: dto.nickname,
       gender: dto.gender,
       ageGroup: dto.ageGroup,
       baselineType: dto.baselineType,
-      sensInfo: this.toSensInfoFlag(dto.sensInfo),
     };
 
     if (dto.profileImage !== undefined) {
@@ -68,7 +76,13 @@ export class UserService {
     });
 
     return {
-      ...this.toProfileResponse(updatedMember),
+      ...this.toProfileResponse(
+        updatedMember,
+        await this.getSensitiveInfoAgreed(
+          updatedMember.id,
+          updatedMember.sensInfo,
+        ),
+      ),
       onboardingCompleted: true,
     };
   }
@@ -83,7 +97,10 @@ export class UserService {
       gender: member.gender,
       ageGroup: member.ageGroup,
       baselineType: member.baselineType,
-      sensInfo: this.toBoolean(member.sensInfo),
+      sensitiveInfoAgreed: await this.getSensitiveInfoAgreed(
+        member.id,
+        member.sensInfo,
+      ),
       onboardingCompleted: this.isOnboardingCompleted(member),
     };
   }
@@ -92,6 +109,121 @@ export class UserService {
     const member = await this.findActiveMemberWithSocialAccountsOrThrow(userId);
 
     return this.toMeResponse(member);
+  }
+
+  async getSensitiveInfoConsent(userId: string) {
+    const member = await this.findMemberOrThrow(userId);
+
+    const consent = await this.prisma.memberConsent.findFirst({
+      where: {
+        userId: this.toBigIntId(userId),
+        consentType: 'SENSITIVE',
+      },
+      orderBy: { id: 'desc' },
+    });
+
+    return {
+      agreed: consent?.agreed ?? this.toBoolean(member.sensInfo),
+      policyVersion: consent?.policyVersion ?? 'legacy',
+      agreedAt:
+        consent && !consent.agreed
+          ? null
+          : (consent?.agreedAt?.toISOString() ??
+            (this.toBoolean(member.sensInfo)
+              ? member.regDate.toISOString()
+              : null)),
+      withdrawnAt: consent?.withdrawnAt?.toISOString() ?? null,
+    };
+  }
+
+  async updateSensitiveInfoConsent(
+    userId: string,
+    dto: UpdateSensitiveInfoConsentRequestDto,
+  ) {
+    if (typeof dto.agreed !== 'boolean') {
+      throw new BusinessException(
+        UserErrorCode.SENSITIVE_INFO_AGREEMENT_INVALID,
+        'agreed는 boolean 값이어야 합니다.',
+      );
+    }
+
+    if (typeof dto.policyVersion !== 'string' || !dto.policyVersion.trim()) {
+      throw new BusinessException(
+        UserErrorCode.POLICY_VERSION_REQUIRED,
+        'policyVersion은 필수입니다.',
+      );
+    }
+
+    const member = await this.findActiveMemberOrThrow(userId);
+    if (member.gender !== 'F') {
+      throw new BusinessException(
+        UserErrorCode.SENSITIVE_INFO_NOT_AVAILABLE,
+        '민감정보 수집 동의 기능을 사용할 수 없는 사용자입니다.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const now = new Date();
+    const consent = await this.prisma.$transaction(async (tx) => {
+      let savedConsent: MemberConsent;
+
+      if (dto.agreed) {
+        savedConsent = await tx.memberConsent.create({
+          data: {
+            userId: member.id,
+            consentType: 'SENSITIVE',
+            agreed: true,
+            policyVersion: dto.policyVersion,
+            agreedAt: now,
+          },
+        });
+      } else {
+        const latestConsent = await tx.memberConsent.findFirst({
+          where: { userId: member.id, consentType: 'SENSITIVE' },
+          orderBy: { id: 'desc' },
+        });
+
+        savedConsent = latestConsent
+          ? await tx.memberConsent.update({
+              where: { id: latestConsent.id },
+              data: {
+                agreed: false,
+                policyVersion: dto.policyVersion,
+                withdrawnAt: now,
+              },
+            })
+          : await tx.memberConsent.create({
+              data: {
+                userId: member.id,
+                consentType: 'SENSITIVE',
+                agreed: false,
+                policyVersion: dto.policyVersion,
+                withdrawnAt: now,
+              },
+            });
+
+        await tx.lifeRecord.updateMany({
+          where: { userId: member.id },
+          data: { hormone: null },
+        });
+      }
+
+      await tx.member.update({
+        where: { id: member.id },
+        data: { sensInfo: dto.agreed ? 'Y' : 'F' },
+      });
+
+      return savedConsent;
+    });
+
+    return {
+      agreed: consent.agreed,
+      policyVersion: consent.policyVersion,
+      agreedAt: consent.agreed
+        ? (consent.agreedAt?.toISOString() ?? null)
+        : null,
+      withdrawnAt: consent.withdrawnAt?.toISOString() ?? null,
+    };
   }
 
   async updateMe(userId: string, dto: UpdateMeRequestDto) {
@@ -128,7 +260,10 @@ export class UserService {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return this.toProfileResponse(member);
+      return this.toProfileResponse(
+        member,
+        await this.getSensitiveInfoAgreed(member.id, member.sensInfo),
+      );
     }
 
     const updatedMember = await this.prisma.member.update({
@@ -136,30 +271,46 @@ export class UserService {
       data: updateData,
     });
 
-    return this.toProfileResponse(updatedMember);
+    return this.toProfileResponse(
+      updatedMember,
+      await this.getSensitiveInfoAgreed(
+        updatedMember.id,
+        updatedMember.sensInfo,
+      ),
+    );
   }
 
-  async deleteMe(userId: string) {
+  async deleteMe(userId: string, dto: DeleteMeRequestDto) {
+    if (dto.confirmation !== '탈퇴합니다') {
+      throw new BusinessException(
+        UserErrorCode.WITHDRAWAL_CONFIRMATION_INVALID,
+        '회원탈퇴 확인 문구가 올바르지 않습니다.',
+      );
+    }
+
     const member = await this.findActiveMemberOrThrow(userId);
 
-    await this.prisma.$transaction([
-      this.prisma.member.update({
-        where: { id: member.id },
-        data: {
-          status: 'D',
-          deleteDate: new Date(),
-        },
-      }),
-      this.prisma.refreshToken.updateMany({
-        where: {
-          userId: member.id,
-          revokedAt: null,
-        },
-        data: {
-          revokedAt: new Date(),
-        },
-      }),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.lifeTag.deleteMany({
+        where: { life: { userId: member.id } },
+      });
+      await tx.lifeFoodTag.deleteMany({
+        where: { life: { userId: member.id } },
+      });
+      await tx.medicineMap.deleteMany({
+        where: { lifeRecord: { userId: member.id } },
+      });
+      await tx.alarmMap.deleteMany({ where: { userId: member.id } });
+      await tx.memberConsent.deleteMany({ where: { userId: member.id } });
+      await tx.refreshToken.deleteMany({ where: { userId: member.id } });
+      await tx.socialAccount.deleteMany({ where: { userId: member.id } });
+      await tx.guideFeedback.deleteMany({ where: { userId: member.id } });
+      await tx.weeklyRecord.deleteMany({ where: { userId: member.id } });
+      await tx.monthlyRecord.deleteMany({ where: { userId: member.id } });
+      await tx.boogleRecord.deleteMany({ where: { userId: member.id } });
+      await tx.lifeRecord.deleteMany({ where: { userId: member.id } });
+      await tx.member.delete({ where: { id: member.id } });
+    });
 
     return null;
   }
@@ -187,7 +338,18 @@ export class UserService {
         socialAccounts: {
           select: {
             provider: true,
+            email: true,
+            regDate: true,
           },
+          orderBy: {
+            id: 'asc',
+          },
+        },
+        memberConsents: {
+          where: { consentType: 'SENSITIVE' },
+          select: { agreed: true },
+          orderBy: { id: 'desc' },
+          take: 1,
         },
       },
     });
@@ -229,7 +391,10 @@ export class UserService {
     }
   }
 
-  private toProfileResponse(member: MemberResponseSource) {
+  private toProfileResponse(
+    member: MemberResponseSource,
+    sensitiveInfoAgreed = this.toBoolean(member.sensInfo),
+  ) {
     return {
       id: Number(member.id),
       email: member.email,
@@ -238,15 +403,22 @@ export class UserService {
       gender: member.gender,
       ageGroup: member.ageGroup,
       baselineType: member.baselineType,
-      sensInfo: this.toBoolean(member.sensInfo),
+      sensitiveInfoAgreed,
       onboardingCompleted: this.isOnboardingCompleted(member),
     };
   }
 
   private toMeResponse(member: MemberWithSocialAccountsResponseSource) {
     return {
-      ...this.toProfileResponse(member),
-      provider: this.toProviderResponse(member.socialAccounts?.[0]?.provider),
+      ...this.toProfileResponse(
+        member,
+        member.memberConsents?.[0]?.agreed ?? this.toBoolean(member.sensInfo),
+      ),
+      socialAccounts: (member.socialAccounts ?? []).map((account) => ({
+        provider: this.toProviderResponse(account.provider),
+        maskedEmail: this.maskEmail(account.email),
+        linkedAt: account.regDate.toISOString(),
+      })),
       regDate: member.regDate,
     };
   }
@@ -272,12 +444,31 @@ export class UserService {
     );
   }
 
-  private toSensInfoFlag(value: boolean) {
-    return value ? 'Y' : 'F';
-  }
-
   private toBoolean(value: string) {
     return value === 'Y';
+  }
+
+  private async getSensitiveInfoAgreed(userId: bigint, fallback: string) {
+    const consent = await this.prisma.memberConsent.findFirst({
+      where: { userId, consentType: 'SENSITIVE' },
+      orderBy: { id: 'desc' },
+    });
+
+    return consent?.agreed ?? this.toBoolean(fallback);
+  }
+
+  private maskEmail(email: string | null) {
+    if (!email) {
+      return null;
+    }
+
+    const [localPart, domain] = email.split('@');
+    if (!domain) {
+      return email;
+    }
+
+    const visibleLength = Math.min(4, Math.max(1, localPart.length));
+    return `${localPart.slice(0, visibleLength)}****@${domain}`;
   }
 
   private toBigIntId(id: string) {
