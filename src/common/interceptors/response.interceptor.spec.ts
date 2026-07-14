@@ -18,7 +18,7 @@ describe('ResponseInterceptor', () => {
     );
     const context = {
       getHandler: () => handler,
-    } as ExecutionContext;
+    } as unknown as ExecutionContext;
 
     await expect(
       lastValueFrom(interceptor.intercept(context, next)),
@@ -32,7 +32,7 @@ describe('ResponseInterceptor', () => {
   it('keeps the default message when endpoint metadata is absent', async () => {
     const context = {
       getHandler: () => () => undefined,
-    } as ExecutionContext;
+    } as unknown as ExecutionContext;
 
     await expect(
       lastValueFrom(interceptor.intercept(context, next)),
@@ -53,7 +53,7 @@ describe('ResponseInterceptor', () => {
     );
     const context = {
       getHandler: () => handler,
-    } as ExecutionContext;
+    } as unknown as ExecutionContext;
 
     await expect(
       lastValueFrom(interceptor.intercept(context, next)),

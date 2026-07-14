@@ -32,7 +32,7 @@ describe('JwtAuthGuard', () => {
       context: {
         getHandler: () => handler,
         switchToHttp: () => ({ getRequest: () => request }),
-      } as ExecutionContext,
+      } as unknown as ExecutionContext,
       request,
     };
   }

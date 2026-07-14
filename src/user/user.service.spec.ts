@@ -23,12 +23,14 @@ describe('UserService', () => {
     },
     memberConsent: {
       findFirst: jest.fn(),
-      create:
-        jest.fn<
-          (args: {
+      create: jest.fn<
+        Promise<Record<string, unknown>>,
+        [
+          args: {
             data: Record<string, unknown>;
-          }) => Promise<Record<string, unknown>>
-        >(),
+          },
+        ]
+      >(),
       update: jest.fn(),
     },
     lifeRecord: {
@@ -73,8 +75,6 @@ describe('UserService', () => {
         agreedAt: '2026-07-15T00:00:00.000Z',
         withdrawnAt: null,
       });
-      // Jest's mock call storage is typed as any in this project configuration.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       expect(prisma.memberConsent.create.mock.calls[0][0]).toMatchObject({
         data: {
           userId: 1n,
@@ -177,10 +177,14 @@ describe('UserService', () => {
     it('throws USER_NOT_FOUND before querying consent history', async () => {
       prisma.member.findUnique.mockResolvedValue(null);
 
-      await expect(service.getSensitiveInfoConsent('1')).rejects.toMatchObject({
-        errorCode: UserErrorCode.USER_NOT_FOUND,
-        status: 404,
-      } satisfies Partial<BusinessException>);
+      const error = await service
+        .getSensitiveInfoConsent('1')
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BusinessException);
+      const businessError = error as BusinessException;
+      expect(businessError.errorCode).toBe(UserErrorCode.USER_NOT_FOUND);
+      expect(businessError.getStatus()).toBe(404);
       expect(prisma.memberConsent.findFirst).not.toHaveBeenCalled();
     });
   });

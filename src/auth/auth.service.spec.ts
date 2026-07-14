@@ -26,12 +26,14 @@ describe('AuthService', () => {
     },
     memberConsent: {
       findFirst: jest.fn(),
-      createMany:
-        jest.fn<
-          (args: {
+      createMany: jest.fn<
+        Promise<{ count: number }>,
+        [
+          args: {
             data: Array<{ consentType: string; agreed: boolean }>;
-          }) => Promise<{ count: number }>
-        >(),
+          },
+        ]
+      >(),
     },
     refreshToken: {
       create: jest.fn(),
@@ -134,10 +136,7 @@ describe('AuthService', () => {
       onboardingCompleted: false,
       user: { sensitiveInfoAgreed: false },
     });
-    // Jest's mock call storage is typed as any in this project configuration.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const createManyInput = prisma.memberConsent.createMany.mock.calls[0][0];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(createManyInput.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ consentType: 'PRIVACY', agreed: true }),
