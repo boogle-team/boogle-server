@@ -9,44 +9,44 @@ datasource db {
 }
 
 model Member {
-  id               BigInt   @id @default(autoincrement()) // pk
-  loginId          String?  @unique @map("login_id") @db.VarChar(20) // 일반 로그인 id
-  password         String?  @db.VarChar(255) // hash값
-  nickname         String?  @db.VarChar(40) // 닉네임
-  profileImg       String?  @map("profile_img") @db.VarChar(255) // 프로필 이미지 파일명
-  email            String?  @unique @db.VarChar(255)
-  name             String?  @db.VarChar(20)
-  gender           String?  @db.Char(1) // M/F/N
+  id               BigInt    @id @default(autoincrement()) // pk
+  loginId          String?   @unique @map("login_id") @db.VarChar(20) // 일반 로그인 id
+  password         String?   @db.VarChar(255) // hash값
+  nickname         String?   @db.VarChar(40) // 닉네임
+  profileImg       String?   @map("profile_img") @db.VarChar(255) // 프로필 이미지 파일명
+  email            String?   @unique @db.VarChar(255)
+  name             String?   @db.VarChar(20)
+  gender           String?   @db.Char(1) // M/F/N
   age              Int?
-  ageGroup         Int?     @map("age_group") @db.TinyInt // 10/20/30/40
-  baselineType     String?  @map("baseline_type") @db.Char(1) // Regular/Constipation/Loose/Unkown
-  birth            String?  @db.VarChar(20)
-  sensInfo         String   @default("F") @map("sens_info") @db.Char(1)
-  regDate          DateTime @default(now()) @map("reg_date")
-  status           String   @default("A") @db.Char(1) // Activate/Delete
+  ageGroup         Int?      @map("age_group") @db.TinyInt // 10/20/30/40
+  baselineType     String?   @map("baseline_type") @db.Char(1) // Regular/Constipation/Loose/Unkown
+  birth            String?   @db.VarChar(20)
+  sensInfo         String    @default("F") @map("sens_info") @db.Char(1)
+  regDate          DateTime  @default(now()) @map("reg_date")
+  status           String    @default("A") @db.Char(1) // Activate/Delete
   deleteDate       DateTime? @map("delete_date")
-  subscription     String   @default("N") @db.Char(1) // N/Y
+  subscription     String    @default("N") @db.Char(1) // N/Y
   subscriptionDate DateTime? @map("subscription_date")
-  recordAlarm      String?  @default("Y") @map("record_alarm") @db.Char(1) // Y/N
-  reportAlarm      String?  @default("Y") @map("report_alarm") @db.Char(1) // Y/N
-  warnAlarm        String?  @default("Y") @map("warn_alarm") @db.Char(1) // Y/N
+  recordAlarm      String?   @default("Y") @map("record_alarm") @db.Char(1) // Y/N
+  reportAlarm      String?   @default("Y") @map("report_alarm") @db.Char(1) // Y/N
+  warnAlarm        String?   @default("Y") @map("warn_alarm") @db.Char(1) // Y/N
 
-  alarmMaps        AlarmMap[]
-  socialAccounts   SocialAccount[]
-  boogleRecords    BoogleRecord[]
-  lifeRecords      LifeRecord[]
-  weeklyRecords    WeeklyRecord[]
-  monthlyRecords   MonthlyRecord[]
-  guideFeedbacks   GuideFeedback[]
+  alarmMaps      AlarmMap[]
+  socialAccounts SocialAccount[]
+  boogleRecords  BoogleRecord[]
+  lifeRecords    LifeRecord[]
+  weeklyRecords  WeeklyRecord[]
+  monthlyRecords MonthlyRecord[]
+  guideFeedbacks GuideFeedback[]
 
   @@map("member")
 }
 
 model Alarm {
-  id        Int    @id @default(autoincrement())
-  category  String @db.Char(1) // W/R/P
-  title     String @db.VarChar(40)
-  content   String @db.VarChar(255)
+  id       Int    @id @default(autoincrement())
+  category String @db.Char(1) // W/R/P
+  title    String @db.VarChar(40)
+  content  String @db.VarChar(255)
 
   alarmMaps AlarmMap[]
 
@@ -60,8 +60,8 @@ model AlarmMap {
   regDate DateTime? @default(now()) @map("reg_date")
   isRead  String?   @default("N") @map("is_read") @db.Char(1) // N/Y
 
-  user    Member?   @relation(fields: [userId], references: [id])
-  alarm   Alarm?    @relation(fields: [alarmId], references: [id])
+  user  Member? @relation(fields: [userId], references: [id])
+  alarm Alarm?  @relation(fields: [alarmId], references: [id])
 
   @@map("alarm_map")
 }
@@ -74,7 +74,7 @@ model SocialAccount {
   email      String?  @db.VarChar(40)
   regDate    DateTime @default(now()) @map("reg_date")
 
-  user       Member   @relation(fields: [userId], references: [id])
+  user Member @relation(fields: [userId], references: [id])
 
   @@unique([provider, providerId], map: "social_account_index_0")
   @@unique([userId, provider], map: "social_account_index_1")
@@ -82,63 +82,49 @@ model SocialAccount {
 }
 
 model BoogleRecord {
-  id               BigInt   @id @default(autoincrement())
-  userId           BigInt   @map("user_id")
-  regDate          DateTime @map("reg_date")
-  hasBowel         Boolean  @default(false) @map("has_bowel")
-  stoolBristol     Int?     @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
-  stoolSimple      String?  @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
-  bowelFeeling     String?  @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
-  stomach          String?  @db.Char(1) // 복통 N/M/L
-  memo             String?  @db.VarChar(255)
-  autoTags         String?  @map("auto_tags") @db.VarChar(255)
-  distension       String?  @db.Char(1) // 복부팽만 N/M/L
-  remainingFeeling String?  @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
-  urgency          String?  @db.Char(1) // 긴박감 N/M/L
-  takenTime        Int?     @map("taken_time") @db.TinyInt
-  amount           String?  @db.Char(1) // 적음S/보통N/많음M
-  color            String?  @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
-  status           String   @default("A") @db.Char(1)
+  id               BigInt    @id @default(autoincrement())
+  userId           BigInt    @map("user_id")
+  regDate          DateTime  @map("reg_date")
+  hasBowel         Boolean   @default(false) @map("has_bowel")
+  stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
+  stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
+  bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
+  stomach          String?   @db.Char(1) // 복통 N/M/L
+  distension       String?   @db.Char(1) // 복부팽만 N/M/L
+  remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
+  urgency          String?   @db.Char(1) // 긴박감 N/M/L
+  takenTime        Int?      @map("taken_time") @db.TinyInt
+  amount           String?   @db.Char(1) // 적음S/보통N/많음M
+  color            String?   @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
+  status           String    @default("A") @db.Char(1)
   updateDate       DateTime? @map("update_date")
 
-  user             Member       @relation(fields: [userId], references: [id])
-  boogleTags       BoogleTag[]
+  user Member @relation(fields: [userId], references: [id])
 
   @@map("boogle_record")
 }
 
-model BoogleTag {
-  tagId    BigInt @map("tag_id")
-  boogleId BigInt @map("boogle_id")
-
-  tag      Tag          @relation(fields: [tagId], references: [id])
-  boogle   BoogleRecord @relation(fields: [boogleId], references: [id])
-
-  @@id([tagId, boogleId])
-  @@map("boogle_tags")
-}
-
 model LifeRecord {
-  id          BigInt   @id @default(autoincrement())
-  userId      BigInt   @map("user_id")
-  regDate     DateTime @map("reg_date")
-  sleep       String?  @db.Char(1) // 좋음G/보통N/부족B
-  stress      String?  @db.Char(1) // 낮음L/보통N/높음H
-  water       String?  @db.Char(1) // 부족L/보통N/충분H
-  mealRegular String?  @map("meal_regular") @db.Char(1) // 규칙R/보통N/불규칙I
-  memo        String?  @db.VarChar(255)
-  autoTags    String?  @map("auto_tags") @db.VarChar(255)
-  sleepTime   Int?     @map("sleep_time") @db.TinyInt
-  exercise    String?  @db.Char(1) // 안함N/가볍게L/충분히H
-  caffeine    String?  @db.Char(1) // 없음N/1잔O/2잔이상M
-  outing      String?  @db.Char(1) // 평소와같음N/외출많음L/여행중T
-  hormone     String?  @db.Char(1) // 없음N/생리중M/변화있음E
-  status      String   @default("A") @db.Char(1)
+  id          BigInt    @id @default(autoincrement())
+  userId      BigInt    @map("user_id")
+  regDate     DateTime  @map("reg_date")
+  sleep       String?   @db.Char(1) // 좋음G/보통N/부족B
+  stress      String?   @db.Char(1) // 낮음L/보통N/높음H
+  water       String?   @db.Char(1) // 부족L/보통N/충분H
+  mealRegular String?   @map("meal_regular") @db.Char(1) // 규칙R/보통N/불규칙I
+  memo        String?   @db.VarChar(255)
+  autoTags    String?   @map("auto_tags") @db.VarChar(255)
+  sleepTime   Int?      @map("sleep_time") @db.TinyInt
+  exercise    String?   @db.Char(1) // 안함N/가볍게L/충분히H
+  caffeine    String?   @db.Char(1) // 없음N/1잔O/2잔이상M
+  outing      String?   @db.Char(1) // 평소와같음N/외출많음L/여행중T
+  hormone     String?   @db.Char(1) // 없음N/생리중M/변화있음E
+  status      String    @default("A") @db.Char(1)
   updateTime  DateTime? @map("update_time")
 
-  user        Member        @relation(fields: [userId], references: [id])
-  lifeTags    LifeTag[]
-  foodTags    LifeFoodTag[]
+  user         Member        @relation(fields: [userId], references: [id])
+  lifeTags     LifeTag[]
+  foodTags     LifeFoodTag[]
   medicineMaps MedicineMap[]
 
   @@unique([userId, regDate], map: "life_record_index_2")
@@ -169,8 +155,8 @@ model LifeTag {
   tagId  BigInt @map("tag_id")
   lifeId BigInt @map("life_id")
 
-  tag    Tag        @relation(fields: [tagId], references: [id])
-  life   LifeRecord @relation(fields: [lifeId], references: [id])
+  tag  Tag        @relation(fields: [tagId], references: [id])
+  life LifeRecord @relation(fields: [lifeId], references: [id])
 
   @@id([tagId, lifeId])
   @@map("life_tags")
@@ -180,8 +166,7 @@ model Tag {
   id   BigInt @id @default(autoincrement())
   name String @unique @db.VarChar(40)
 
-  boogleTags BoogleTag[]
-  lifeTags   LifeTag[]
+  lifeTags LifeTag[]
 
   @@map("tags")
 }
@@ -195,7 +180,7 @@ model WeeklyRecord {
   intervalAvg     Int?      @map("interval_avg")
   completionScore Float?    @map("completion_score") @db.Double
 
-  user            Member?   @relation(fields: [userId], references: [id])
+  user Member? @relation(fields: [userId], references: [id])
 
   @@unique([userId, weekStartDate], map: "weekly_record_index_3")
   @@map("weekly_record")
@@ -213,7 +198,7 @@ model MonthlyRecord {
   conditionScore  Int?      @map("condition_score")
   userType        String?   @map("user_type") @db.Char(1) // 규칙형/변비경향형/묽은변걍형/생활영향형/불규칙형/기록부족형
 
-  user            Member?   @relation(fields: [userId], references: [id])
+  user Member? @relation(fields: [userId], references: [id])
 
   @@unique([userId, monthStartDate], map: "monthly_record_index_4")
   @@map("monthly_record")
@@ -223,8 +208,8 @@ model LifeFoodTag {
   lifeId BigInt @map("life_id")
   foodId Int    @map("food_id")
 
-  life   LifeRecord @relation(fields: [lifeId], references: [id])
-  food   Food       @relation(fields: [foodId], references: [id])
+  life LifeRecord @relation(fields: [lifeId], references: [id])
+  food Food       @relation(fields: [foodId], references: [id])
 
   @@id([lifeId, foodId])
   @@map("life_food_tag")
@@ -240,11 +225,11 @@ model Food {
 }
 
 model GuideContent {
-  id       Int    @id @default(autoincrement())
-  title    String @db.VarChar(255)
+  id       Int     @id @default(autoincrement())
+  title    String  @db.VarChar(255)
   category String? @db.Char(1) // 패턴P/장건강H/주의W
-  content  String @db.Text
-  status   String @default("A") @db.Char(1)
+  content  String  @db.Text
+  status   String  @default("A") @db.Char(1)
 
   guideRules     GuideRule[]
   guideFeedbacks GuideFeedback[]
@@ -258,21 +243,21 @@ model GuideRule {
   ruleCode       String? @map("rule_code") @db.VarChar(40)
   condition      String? @db.Text
 
-  guideContent   GuideContent @relation(fields: [guideContentId], references: [id])
+  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
 
   @@map("guide_rule")
 }
 
 model GuideFeedback {
-  id             BigInt   @id @default(autoincrement())
-  userId         BigInt   @map("user_id")
-  guideContentId Int      @map("guide_content_id")
-  feedback       String   @db.Char(1) // 도움G/이미A/잘모름N
-  regDate        DateTime @default(now()) @map("reg_date")
+  id             BigInt    @id @default(autoincrement())
+  userId         BigInt    @map("user_id")
+  guideContentId Int       @map("guide_content_id")
+  feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
+  regDate        DateTime  @default(now()) @map("reg_date")
   updateDate     DateTime? @map("update_date") // 수정시 수정시각
 
-  user           Member       @relation(fields: [userId], references: [id])
-  guideContent   GuideContent @relation(fields: [guideContentId], references: [id])
+  user         Member       @relation(fields: [userId], references: [id])
+  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
 
   @@unique([userId, guideContentId], map: "guide_feedback_index_5")
   @@map("guide_feedback")

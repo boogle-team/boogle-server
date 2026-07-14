@@ -24,8 +24,6 @@ export interface BoogleRecordForPdf {
   takenTime: number | null;
   amount: string | null;
   color: string | null;
-  memo: string | null;
-  autoTags: string | null;
 }
 
 export interface LifeRecordForPdf {
