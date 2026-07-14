@@ -9,8 +9,7 @@ import {
   Patch,
   Post,
   Query,
-  Req,
-  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,8 +19,10 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
 // import { ResponseMessage } from '@/common/decorators/response-message.decorator';
-import type { Request } from 'express';
 import { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
 import { GuideScreenResponseDto } from './dto/guide-screen-response.dto';
 import { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
@@ -36,6 +37,7 @@ import { GuideService } from './guide.service';
 
 @ApiTags('Guides')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('guides')
 export class GuideController {
   constructor(private readonly guideService: GuideService) {}
@@ -63,9 +65,9 @@ export class GuideController {
   // @ResponseMessage('가이드 조회에 성공했습니다.')
   async getGuideScreen(
     @Query() query: GetGuideScreenQueryDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<GuideScreenResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.guideService.getGuideScreen(userId, query);
   }
@@ -100,9 +102,9 @@ export class GuideController {
   async getGuideDetail(
     @Param('guideContentId') guideContentId: string,
     @Query() query: GetGuideDetailQueryDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<GuideDetailResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.guideService.getGuideDetail(userId, guideContentId, query);
   }
@@ -143,9 +145,9 @@ export class GuideController {
   async createGuideFeedback(
     @Param('guideContentId') guideContentId: string,
     @Body() body: GuideFeedbackRequestDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<CreateGuideFeedbackResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.guideService.createGuideFeedback(userId, guideContentId, body);
   }
@@ -173,9 +175,9 @@ export class GuideController {
   async updateGuideFeedback(
     @Param('guideContentId') guideContentId: string,
     @Body() body: GuideFeedbackRequestDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<UpdateGuideFeedbackResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.guideService.updateGuideFeedback(userId, guideContentId, body);
   }
@@ -191,20 +193,10 @@ export class GuideController {
   })
   async deleteGuideFeedback(
     @Param('guideContentId') guideContentId: string,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<DeleteGuideFeedbackResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.guideService.deleteGuideFeedback(userId, guideContentId);
-  }
-
-  private extractUserId(req: Request): bigint {
-    const userId = req.user?.id;
-
-    if (userId === undefined) {
-      throw new UnauthorizedException();
-    }
-
-    return userId;
   }
 }

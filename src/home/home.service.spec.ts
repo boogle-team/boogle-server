@@ -36,11 +36,11 @@ describe('HomeService', () => {
   it('회원이 없으면 BusinessException(MEMBER_NOT_FOUND, 404)을 던진다', async () => {
     prisma.member.findUnique.mockResolvedValue(null);
 
-    await expect(service.getHome(1n, '2026-05-12')).rejects.toMatchObject({
+    await expect(service.getHome('1', '2026-05-12')).rejects.toMatchObject({
       errorCode: HomeErrorCode.MEMBER_NOT_FOUND,
       status: HttpStatus.NOT_FOUND,
     });
-    await expect(service.getHome(1n, '2026-05-12')).rejects.toBeInstanceOf(
+    await expect(service.getHome('1', '2026-05-12')).rejects.toBeInstanceOf(
       BusinessException,
     );
   });
@@ -54,7 +54,7 @@ describe('HomeService', () => {
     prisma.boogleRecord.findMany.mockResolvedValue([]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-    const result = await service.getHome(1n, '2026-05-12');
+    const result = await service.getHome('1', '2026-05-12');
 
     expect(result.user).toMatchObject({
       nickname: '땅콩잼',
@@ -80,7 +80,7 @@ describe('HomeService', () => {
     prisma.boogleRecord.findMany.mockResolvedValue([]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-    const result = await service.getHome(1n, '2026-05-12');
+    const result = await service.getHome('1', '2026-05-12');
 
     expect(result.user.userType).toBe('R');
     expect(result.user.userTypeLabel).toBe('규칙형');
@@ -105,7 +105,7 @@ describe('HomeService', () => {
     ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-    const result = await service.getHome(1n, '2026-05-12');
+    const result = await service.getHome('1', '2026-05-12');
 
     expect(result.boogleCount).toBe(1);
     expect(result.today.greeting).toBe('오늘 부글 신호를 보냈어요!');
@@ -133,7 +133,7 @@ describe('HomeService', () => {
       foodTags: [{ food: { id: 1, name: '자극적인 음식' } }],
     });
 
-    const result = await service.getHome(1n, '2026-05-12');
+    const result = await service.getHome('1', '2026-05-12');
 
     expect(result.lifeRecord).toMatchObject({
       id: 55,
@@ -155,7 +155,7 @@ describe('HomeService', () => {
     ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-    const result = await service.getHome(1n, '2026-05-12');
+    const result = await service.getHome('1', '2026-05-12');
 
     expect(result.streak).toBe(2);
   });
@@ -169,7 +169,7 @@ describe('HomeService', () => {
     prisma.boogleRecord.findMany.mockResolvedValue([]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-    await service.getHome(1n, '2026-05-12');
+    await service.getHome('1', '2026-05-12');
 
     expect(prisma.boogleRecord.findMany).toHaveBeenCalledTimes(1);
 

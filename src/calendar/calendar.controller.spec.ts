@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { CalendarController } from './calendar.controller';
 import { CalendarService } from './calendar.service';
 
@@ -15,7 +16,10 @@ describe('CalendarController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CalendarController],
       providers: [{ provide: CalendarService, useValue: service }],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<CalendarController>(CalendarController);
   });
@@ -25,30 +29,30 @@ describe('CalendarController', () => {
   });
 
   it('getMonthlyCalendar는 로그인 사용자 id와 쿼리를 그대로 서비스에 전달한다', async () => {
-    await controller.getMonthlyCalendar({ id: 1n }, { year: 2026, month: 6 });
+    await controller.getMonthlyCalendar({ id: '1' }, { year: 2026, month: 6 });
 
-    expect(service.getMonthlyCalendar).toHaveBeenCalledWith(1n, 2026, 6);
+    expect(service.getMonthlyCalendar).toHaveBeenCalledWith('1', 2026, 6);
   });
 
   it('getMonthlyCalendar는 서비스에서 발생한 예외를 그대로 전파한다', async () => {
     service.getMonthlyCalendar.mockRejectedValueOnce(new Error('boom'));
 
     await expect(
-      controller.getMonthlyCalendar({ id: 1n }, { year: 2026, month: 6 }),
+      controller.getMonthlyCalendar({ id: '1' }, { year: 2026, month: 6 }),
     ).rejects.toThrow('boom');
   });
 
   it('getDailyRecords는 로그인 사용자 id와 날짜를 그대로 서비스에 전달한다', async () => {
-    await controller.getDailyRecords({ id: 1n }, { date: '2026-06-17' });
+    await controller.getDailyRecords({ id: '1' }, { date: '2026-06-17' });
 
-    expect(service.getDailyRecords).toHaveBeenCalledWith(1n, '2026-06-17');
+    expect(service.getDailyRecords).toHaveBeenCalledWith('1', '2026-06-17');
   });
 
   it('getDailyRecords는 서비스에서 발생한 예외를 그대로 전파한다', async () => {
     service.getDailyRecords.mockRejectedValueOnce(new Error('boom'));
 
     await expect(
-      controller.getDailyRecords({ id: 1n }, { date: '2026-06-17' }),
+      controller.getDailyRecords({ id: '1' }, { date: '2026-06-17' }),
     ).rejects.toThrow('boom');
   });
 });

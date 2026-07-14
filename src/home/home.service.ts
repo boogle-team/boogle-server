@@ -62,11 +62,12 @@ function getTodayKstDateString(): string {
 export class HomeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getHome(userId: bigint, dateParam?: string): Promise<HomeResponseDto> {
+  async getHome(userId: string, dateParam?: string): Promise<HomeResponseDto> {
+    const memberId = BigInt(userId);
     const date = dateParam ?? getTodayKstDateString();
 
     const member = await this.prisma.member.findUnique({
-      where: { id: userId },
+      where: { id: memberId },
       select: { nickname: true, regDate: true },
     });
     if (!member) {
@@ -85,13 +86,13 @@ export class HomeService {
 
     const [monthlyRecord, allBoogleRecords, lifeRecord] = await Promise.all([
       this.prisma.monthlyRecord.findFirst({
-        where: { userId },
+        where: { userId: memberId },
         orderBy: { monthStartDate: 'desc' },
         select: { userType: true },
       }),
       this.prisma.boogleRecord.findMany({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: dayStart(lookbackStart), lt: nextDayStart(date) },
         },
@@ -108,7 +109,7 @@ export class HomeService {
       }),
       this.prisma.lifeRecord.findFirst({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: dayStart(date), lt: nextDayStart(date) },
         },
@@ -139,7 +140,7 @@ export class HomeService {
 
     return {
       user: {
-        id: Number(userId),
+        id: Number(memberId),
         nickname: member.nickname ?? '',
         userType: monthlyRecord?.userType ?? null,
         userTypeLabel: monthlyRecord?.userType

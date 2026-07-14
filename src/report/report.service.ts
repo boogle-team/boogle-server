@@ -1877,8 +1877,6 @@ export class ReportService {
         takenTime: true,
         amount: true,
         color: true,
-        memo: true,
-        autoTags: true,
       },
       orderBy: {
         regDate: 'asc',
@@ -2284,7 +2282,7 @@ export class ReportService {
 
       for (const record of boogleRecords) {
         doc.text(
-          `${this.toDateString(record.regDate)} | 배변 여부 ${record.hasBowel ? 'Y' : 'N'} | 변 상태 ${record.stoolSimple ?? '-'} | 배변감 ${record.bowelFeeling ?? '-'} | 메모 ${record.memo ?? '-'}`,
+          `${this.toDateString(record.regDate)} | 배변 여부 ${record.hasBowel ? 'Y' : 'N'} | 브리스톨 ${record.stoolBristol ?? '-'} | 변 상태 ${record.stoolSimple ?? '-'} | 배변감 ${record.bowelFeeling ?? '-'} | 복통 ${record.stomach ?? '-'} | 복부팽만 ${record.distension ?? '-'}`,
         );
       }
 

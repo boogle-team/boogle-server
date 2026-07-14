@@ -14,17 +14,18 @@ const NOTIFICATION_LIST_LIMIT = 100;
 export class NotificationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getNotifications(userId: bigint): Promise<NotificationListResponseDto> {
+  async getNotifications(userId: string): Promise<NotificationListResponseDto> {
+    const memberId = BigInt(userId);
     // unreadCount(뱃지)는 목록 상한과 별개로 정확해야 하므로 count를 따로 구한다.
     const [alarmMaps, unreadCount] = await Promise.all([
       this.prisma.alarmMap.findMany({
-        where: { userId },
+        where: { userId: memberId },
         orderBy: { regDate: 'desc' },
         include: { alarm: true },
         take: NOTIFICATION_LIST_LIMIT,
       }),
       this.prisma.alarmMap.count({
-        where: { userId, isRead: 'N' },
+        where: { userId: memberId, isRead: 'N' },
       }),
     ]);
 
