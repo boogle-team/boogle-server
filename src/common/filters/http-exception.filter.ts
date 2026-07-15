@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { BusinessException } from '@/common/exceptions/business.exception';
@@ -54,7 +55,11 @@ const DEFAULT_ERROR_BY_STATUS: Record<
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
+    this.logger.error(exception);
+
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
