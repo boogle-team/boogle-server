@@ -6,7 +6,7 @@ export class RefreshTokenRequestDto {
     example: 'refresh-token-value',
     description: '재발급에 사용할 refreshToken',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsString({ message: 'REFRESH_TOKEN_REQUIRED' })
+  @IsNotEmpty({ message: 'REFRESH_TOKEN_REQUIRED' })
   refreshToken: string;
 }

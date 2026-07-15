@@ -418,9 +418,14 @@ export class LifeRecordService {
   private assertValidLifeValues(
     dto: CreateLifeRecordDto | UpdateLifeRecordDto,
   ): void {
-    const hasInvalidChar = LIFE_VALUE_FIELDS.some(
-      (field) => !isValidLifeValue(field, dto[field]),
-    );
+    const hasInvalidChar = LIFE_VALUE_FIELDS.some((field) => {
+      const value: unknown = dto[field];
+      if (value != null && typeof value !== 'string') {
+        return true;
+      }
+
+      return !isValidLifeValue(field, value);
+    });
     const hasInvalidSleepTime =
       dto.sleepTime != null &&
       (!Number.isInteger(dto.sleepTime) || dto.sleepTime < 0);

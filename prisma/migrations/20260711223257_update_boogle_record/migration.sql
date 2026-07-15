@@ -1,20 +1,40 @@
 /*
-  Warnings:
-
-  - You are about to drop the column `auto_tags` on the `boogle_record` table. All the data in the column will be lost.
-  - You are about to drop the column `memo` on the `boogle_record` table. All the data in the column will be lost.
-  - You are about to drop the `boogle_tags` table. If the table is not empty, all the data it contains will be lost.
-
+  Legacy cleanup for databases created before the consolidated initial
+  migration. Fresh databases already have the target boogle_record shape.
 */
--- DropForeignKey
-ALTER TABLE `boogle_tags` DROP FOREIGN KEY `boogle_tags_boogle_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `boogle_tags` DROP FOREIGN KEY `boogle_tags_tag_id_fkey`;
+SET @drop_boogle_record_memo = (
+    SELECT IF(
+        EXISTS(
+            SELECT 1
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'boogle_record'
+              AND COLUMN_NAME = 'memo'
+        ),
+        'ALTER TABLE `boogle_record` DROP COLUMN `memo`',
+        'SELECT 1'
+    )
+);
+PREPARE drop_boogle_record_memo_stmt FROM @drop_boogle_record_memo;
+EXECUTE drop_boogle_record_memo_stmt;
+DEALLOCATE PREPARE drop_boogle_record_memo_stmt;
 
--- AlterTable
-ALTER TABLE `boogle_record` DROP COLUMN `auto_tags`,
-    DROP COLUMN `memo`;
+SET @drop_boogle_record_auto_tags = (
+    SELECT IF(
+        EXISTS(
+            SELECT 1
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'boogle_record'
+              AND COLUMN_NAME = 'auto_tags'
+        ),
+        'ALTER TABLE `boogle_record` DROP COLUMN `auto_tags`',
+        'SELECT 1'
+    )
+);
+PREPARE drop_boogle_record_auto_tags_stmt FROM @drop_boogle_record_auto_tags;
+EXECUTE drop_boogle_record_auto_tags_stmt;
+DEALLOCATE PREPARE drop_boogle_record_auto_tags_stmt;
 
--- DropTable
-DROP TABLE `boogle_tags`;
+DROP TABLE IF EXISTS `boogle_tags`;

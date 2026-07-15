@@ -33,14 +33,14 @@ describe('RecordService', () => {
   it('create()가 데이터를 가공하여 성공적으로 반환한다', async () => {
     const dto: Partial<CreateRecordDto> = {
       regDate: '2026-07-11',
-      hasBowel: true,
+      hasBowel: false,
     };
 
     const mockDbRecord = {
       id: 1,
       userId: 1,
       regDate: new Date('2026-07-11'),
-      hasBowel: true,
+      hasBowel: false,
       stoolBristol: 4,
       stoolSimple: 'good',
       bowelFeeling: 'good',

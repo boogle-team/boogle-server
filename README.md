@@ -120,6 +120,8 @@ pre-commit 훅(Husky + lint-staged)이 staged된 `*.ts` 파일에 ESLint / Prett
 
 ## 🧩 Package Manager
 
+- **Node.js 버전**
+  - 24.14.0 (`package.json`의 `engines` 및 `.nvmrc`로 고정)
 - **pnpm 버전**
   - 10.12.1 (`package.json`의 `packageManager` 필드로 고정)
 - **pnpm 버전 변경 방법**
@@ -193,6 +195,16 @@ npx prisma studio # DB GUI 실행
 ## 🔐 환경변수
 
 `.env.example`을 복사해 `.env`를 만들고 실제 값을 채워주세요. `.env.example`만 git에 커밋됩니다.
+
+소셜 로그인은 서버 주도 Authorization Code 방식입니다. 배포 환경에서는 다음 값을 반드시 실제 도메인 기준으로 설정해야 합니다.
+
+- `FRONTEND_OAUTH_CALLBACK_URL`: OAuth 처리 결과를 받을 프론트 화면 URL
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
+- `KAKAO_CLIENT_ID`, `KAKAO_REDIRECT_URI`
+- `KAKAO_CLIENT_SECRET`: Kakao 보안 설정에서 Client Secret을 활성화한 경우 필수
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: 서로 다른 충분히 긴 임의 문자열
+
+Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_REDIRECT_URI`, `KAKAO_REDIRECT_URI`와 문자 단위로 같아야 합니다. 운영 DB에는 배포 전에 `npx prisma migrate deploy`를 실행해야 합니다.
 
 <br>
 

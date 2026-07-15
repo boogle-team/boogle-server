@@ -1,15 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Equals, IsBoolean, IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { Equals, IsBoolean, IsNotEmpty, IsString } from 'class-validator';
 
 export class SignupRequestDto {
-  @ApiProperty({ enum: ['kakao', 'google'], example: 'kakao' })
-  @IsIn(['kakao', 'google'], { message: 'AUTH_INVALID_PROVIDER' })
-  provider!: 'kakao' | 'google';
-
-  @ApiProperty({ example: 'kakao-access-token' })
-  @IsString({ message: 'AUTH_SOCIAL_TOKEN_REQUIRED' })
-  @IsNotEmpty({ message: 'AUTH_SOCIAL_TOKEN_REQUIRED' })
-  socialToken!: string;
+  @ApiProperty({
+    example: 'signup-ticket-value',
+    description: 'AUTH-07에서 발급된 일회용 회원가입 티켓',
+  })
+  @IsString({ message: 'AUTH_SIGNUP_TICKET_REQUIRED' })
+  @IsNotEmpty({ message: 'AUTH_SIGNUP_TICKET_REQUIRED' })
+  signupTicket!: string;
 
   @ApiProperty({ example: true })
   @IsBoolean({ message: 'PRIVACY_POLICY_AGREEMENT_REQUIRED' })

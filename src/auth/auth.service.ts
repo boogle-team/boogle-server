@@ -1,18 +1,27 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'crypto';
+import type { Prisma } from '@/generated/prisma/client';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
-import type { Prisma } from '@/generated/prisma/client';
 import { AuthErrorCode } from './auth-error-code.enum';
-import { SocialLoginRequestDto } from './dto/social-login-request.dto';
-import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
+import { AuthTemporaryTokenService } from './auth-temporary-token.service';
 import { LogoutRequestDto } from './dto/logout-request.dto';
+import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
+import { OAuthResultExchangeRequestDto } from './dto/oauth-result-exchange-request.dto';
+import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
 import { SignupRequestDto } from './dto/signup-request.dto';
 import { SocialLinkRequestDto } from './dto/social-link-request.dto';
 import { AuthenticatedUser } from './types/authenticated-user.type';
 
 type OAuthProvider = 'kakao' | 'google';
 type OAuthProviderCode = 'K' | 'G';
+type OAuthResultKind = 'LOGIN' | 'SIGNUP' | 'LINK';
 
 interface JwtPayload {
   sub: string;
@@ -25,11 +34,24 @@ interface JwtPayload {
 }
 
 interface OAuthProfile {
+  provider: OAuthProvider;
   providerId: string;
   email: string | null;
   emailVerified: boolean;
   nickname: string | null;
   profileImage: string | null;
+}
+
+interface OAuthStatePayload {
+  provider: OAuthProvider;
+  redirectUri: string;
+  codeVerifier: string | null;
+}
+
+interface OAuthResultPayload extends OAuthProfile {
+  kind: OAuthResultKind;
+  memberId: string | null;
+  existingProvider: 'KAKAO' | 'GOOGLE' | null;
 }
 
 interface MemberResponseSource {
@@ -50,51 +72,215 @@ export class AuthService {
   private readonly socialProviderTimeoutMs = 5000;
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly temporaryTokens: AuthTemporaryTokenService,
+  ) {}
 
-  async socialLogin(dto: SocialLoginRequestDto) {
+  async createAuthorizationUrl(providerValue: string) {
+    const provider = this.assertProvider(providerValue);
+
     try {
-      const provider = this.assertProvider(dto.provider);
-      const providerCode = this.toProviderCode(provider);
-      const socialToken = this.assertSocialToken(dto.socialToken);
+      const clientId = this.getProviderClientId(provider);
+      const redirectUri = this.getProviderRedirectUri(provider);
+      const codeVerifier =
+        provider === 'google' ? randomBytes(48).toString('base64url') : null;
+      const state = await this.temporaryTokens.create(
+        'OAUTH_STATE',
+        { provider, redirectUri, codeVerifier },
+        this.getOAuthStateExpiresIn(),
+      );
 
-      const profile = await this.fetchOAuthProfile(provider, socialToken);
+      if (provider === 'google') {
+        const authorizationUrl = new URL(
+          process.env.GOOGLE_AUTHORIZATION_URL ??
+            'https://accounts.google.com/o/oauth2/v2/auth',
+        );
+        authorizationUrl.search = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+          scope: 'openid email profile',
+          state,
+          code_challenge: this.toCodeChallenge(codeVerifier as string),
+          code_challenge_method: 'S256',
+          access_type: 'online',
+          prompt: 'select_account',
+        }).toString();
+        return authorizationUrl.toString();
+      }
 
-      const socialAccount = await this.prisma.socialAccount.findFirst({
-        where: {
-          provider: providerCode,
-          providerId: profile.providerId,
+      const authorizationUrl = new URL(
+        process.env.KAKAO_AUTHORIZATION_URL ??
+          'https://kauth.kakao.com/oauth/authorize',
+      );
+      authorizationUrl.search = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        state,
+      }).toString();
+      return authorizationUrl.toString();
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+
+      this.logError('createAuthorizationUrl', error);
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_STATE_CREATE_FAILED,
+        '소셜 로그인 요청을 생성하지 못했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async createOAuthCallbackRedirect(
+    providerValue: string,
+    query: OAuthCallbackQueryDto,
+  ) {
+    try {
+      const provider = this.assertProvider(providerValue);
+
+      if (!query.state) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
+          '유효하지 않은 OAuth state입니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      const statePayload = await this.temporaryTokens.consume<unknown>(
+        query.state,
+        'OAUTH_STATE',
+        {
+          invalidCode: AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
+          invalidMessage: '유효하지 않은 OAuth state입니다.',
+          expiredCode: AuthErrorCode.AUTH_OAUTH_STATE_EXPIRED,
+          expiredMessage: 'OAuth 로그인 요청이 만료되었습니다.',
         },
-        include: {
-          user: true,
-        },
-      });
+      );
+      const state = this.parseOAuthState(statePayload);
 
-      if (socialAccount) {
-        this.assertActiveMember(socialAccount.user);
+      if (state.provider !== provider) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
+          '유효하지 않은 OAuth state입니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      if (query.error) {
+        throw new BusinessException(
+          query.error === 'access_denied'
+            ? AuthErrorCode.AUTH_OAUTH_ACCESS_DENIED
+            : AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
+          query.error === 'access_denied'
+            ? '소셜 로그인 동의가 취소되었습니다.'
+            : '소셜 로그인 제공자가 오류를 반환했습니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      if (!query.code) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_OAUTH_CODE_INVALID,
+          '유효하지 않은 authorization code입니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      const profile = await this.exchangeAuthorizationCode(
+        provider,
+        query.code,
+        state,
+      );
+      const result = await this.resolveOAuthResult(profile);
+      const oauthResultCode = await this.temporaryTokens.create(
+        'OAUTH_RESULT',
+        result,
+        this.getOAuthResultExpiresIn(),
+      );
+
+      return this.buildFrontendOAuthCallbackUrl({ oauthResultCode });
+    } catch (error) {
+      const errorCode = this.toOAuthCallbackErrorCode(error);
+
+      if (!(error instanceof BusinessException)) {
+        this.logError('createOAuthCallbackRedirect', error);
+      }
+
+      return this.buildFrontendOAuthCallbackUrl({ error: errorCode });
+    }
+  }
+
+  async exchangeOAuthResult(dto: OAuthResultExchangeRequestDto) {
+    try {
+      const rawPayload = await this.temporaryTokens.consume<unknown>(
+        dto.oauthResultCode,
+        'OAUTH_RESULT',
+        {
+          invalidCode: AuthErrorCode.AUTH_OAUTH_RESULT_INVALID,
+          invalidMessage:
+            '유효하지 않거나 이미 사용된 OAuth 로그인 결과 코드입니다.',
+          expiredCode: AuthErrorCode.AUTH_OAUTH_RESULT_EXPIRED,
+          expiredMessage:
+            'OAuth 로그인 결과 코드가 만료되었습니다. 소셜 로그인을 다시 진행해주세요.',
+        },
+      );
+      const result = this.parseOAuthResult(rawPayload);
+
+      if (result.kind === 'LOGIN') {
+        const member = await this.findOAuthMember(result.memberId);
+        this.assertActiveMember(member);
         const sensitiveInfoAgreed = await this.getSensitiveInfoAgreed(
-          socialAccount.user.id,
-          socialAccount.user.sensInfo,
+          member.id,
+          member.sensInfo,
         );
 
         return {
-          ...(await this.issueTokenPair(socialAccount.user)),
+          nextAction: 'LOGIN_COMPLETED' as const,
+          ...(await this.issueTokenPair(member)),
           isNewUser: false,
-          onboardingCompleted: this.isOnboardingCompleted(socialAccount.user),
-          user: this.toMemberResponse(socialAccount.user, sensitiveInfoAgreed),
+          onboardingCompleted: this.isOnboardingCompleted(member),
+          user: this.toMemberResponse(member, sensitiveInfoAgreed),
         };
       }
 
-      await this.assertAccountLinkNotRequired(
-        profile.emailVerified ? profile.email : null,
+      if (result.kind === 'LINK') {
+        const linkTicket = await this.temporaryTokens.create(
+          'LINK_TICKET',
+          result,
+          this.getAuthTicketExpiresIn(),
+        );
+
+        throw new BusinessException(
+          AuthErrorCode.AUTH_ACCOUNT_LINK_REQUIRED,
+          '동일한 이메일로 가입된 다른 소셜 계정이 존재합니다. 계정 연동이 필요합니다.',
+          HttpStatus.CONFLICT,
+          {
+            linkTicket,
+            linkTicketExpiresIn: this.getAuthTicketExpiresIn(),
+            existingProvider: result.existingProvider,
+            maskedEmail: this.maskEmail(result.email),
+          },
+        );
+      }
+
+      const signupTicket = await this.temporaryTokens.create(
+        'SIGNUP_TICKET',
+        result,
+        this.getAuthTicketExpiresIn(),
       );
 
       return {
         nextAction: 'SIGNUP_REQUIRED' as const,
-        provider: this.toProviderResponse(providerCode),
-        email: profile.email,
-        nickname: profile.nickname,
-        profileImage: profile.profileImage,
+        signupTicket,
+        signupTicketExpiresIn: this.getAuthTicketExpiresIn(),
+        provider: this.toProviderResponse(result.provider),
+        email: result.email,
+        nickname: result.nickname,
+        profileImage: result.profileImage,
         isNewUser: true,
         onboardingCompleted: false,
       };
@@ -103,21 +289,7 @@ export class AuthService {
         throw error;
       }
 
-      if (this.isUniqueConstraintError(error)) {
-        throw new BusinessException(
-          AuthErrorCode.AUTH_EMAIL_ALREADY_USED,
-          '동일한 이메일로 가입된 다른 소셜 계정이 존재합니다.',
-          HttpStatus.CONFLICT,
-        );
-      }
-
-      this.logger.error(
-        `AuthService.socialLogin failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        error instanceof Error ? error.stack : undefined,
-      );
-
+      this.logError('exchangeOAuthResult', error);
       throw new BusinessException(
         AuthErrorCode.SOCIAL_LOGIN_FAILED,
         '소셜 로그인 처리 중 오류가 발생했습니다.',
@@ -135,10 +307,28 @@ export class AuthService {
         );
       }
 
-      const provider = this.assertProvider(dto.provider);
-      const providerCode = this.toProviderCode(provider);
-      const socialToken = this.assertSocialToken(dto.socialToken);
-      const profile = await this.fetchOAuthProfile(provider, socialToken);
+      const rawPayload = await this.temporaryTokens.consume<unknown>(
+        dto.signupTicket,
+        'SIGNUP_TICKET',
+        {
+          invalidCode: AuthErrorCode.AUTH_SIGNUP_TICKET_INVALID,
+          invalidMessage: '유효하지 않거나 이미 사용된 회원가입 티켓입니다.',
+          expiredCode: AuthErrorCode.AUTH_SIGNUP_TICKET_EXPIRED,
+          expiredMessage:
+            '회원가입 티켓이 만료되었습니다. 소셜 로그인을 다시 진행해주세요.',
+        },
+      );
+      const profile = this.parseOAuthResult(rawPayload);
+
+      if (profile.kind !== 'SIGNUP') {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_SIGNUP_TICKET_INVALID,
+          '유효하지 않거나 이미 사용된 회원가입 티켓입니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      const providerCode = this.toProviderCode(profile.provider);
       const existingSocialAccount = await this.prisma.socialAccount.findFirst({
         where: {
           provider: providerCode,
@@ -154,9 +344,19 @@ export class AuthService {
         );
       }
 
-      await this.assertAccountLinkNotRequired(
-        profile.emailVerified ? profile.email : null,
-      );
+      if (profile.email) {
+        const existingMember = await this.prisma.member.findUnique({
+          where: { email: profile.email },
+        });
+
+        if (existingMember) {
+          throw new BusinessException(
+            AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_EXISTS,
+            '이미 가입된 이메일입니다. 소셜 로그인을 다시 진행해주세요.',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
 
       const now = new Date();
       const signupResult = await this.prisma.$transaction(async (tx) => {
@@ -226,12 +426,7 @@ export class AuthService {
         );
       }
 
-      this.logger.error(
-        `AuthService.signup failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        error instanceof Error ? error.stack : undefined,
-      );
+      this.logError('signup', error);
       throw new BusinessException(
         AuthErrorCode.SIGNUP_FAILED,
         '회원가입 처리 중 오류가 발생했습니다.',
@@ -242,23 +437,38 @@ export class AuthService {
 
   async socialLink(dto: SocialLinkRequestDto) {
     try {
-      const provider = this.assertProvider(dto.provider);
-      const providerCode = this.toProviderCode(provider);
-      const socialToken = this.assertSocialToken(dto.socialToken);
-      const profile = await this.fetchOAuthProfile(provider, socialToken);
+      const rawPayload = await this.temporaryTokens.consume<unknown>(
+        dto.linkTicket,
+        'LINK_TICKET',
+        {
+          invalidCode: AuthErrorCode.AUTH_LINK_TICKET_INVALID,
+          invalidMessage: '유효하지 않거나 이미 사용된 계정 연동 티켓입니다.',
+          expiredCode: AuthErrorCode.AUTH_LINK_TICKET_EXPIRED,
+          expiredMessage:
+            '계정 연동 티켓이 만료되었습니다. 소셜 로그인을 다시 진행해주세요.',
+        },
+      );
+      const profile = this.parseOAuthResult(rawPayload);
 
-      if (!profile.email || !profile.emailVerified) {
+      if (
+        profile.kind !== 'LINK' ||
+        !profile.memberId ||
+        !profile.email ||
+        !profile.emailVerified
+      ) {
         throw new BusinessException(
           AuthErrorCode.AUTH_VERIFIED_EMAIL_REQUIRED,
-          '인증된 이메일 정보가 필요합니다.',
+          '인증된 이메일을 확인할 수 없습니다.',
         );
       }
 
+      const providerCode = this.toProviderCode(profile.provider);
+      const memberId = this.toBigIntId(profile.memberId);
       const existingSocialAccount = await this.prisma.socialAccount.findFirst({
         where: {
           OR: [
             { provider: providerCode, providerId: profile.providerId },
-            { provider: providerCode, email: profile.email },
+            { userId: memberId, provider: providerCode },
           ],
         },
       });
@@ -266,19 +476,19 @@ export class AuthService {
       if (existingSocialAccount) {
         throw new BusinessException(
           AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_LINKED,
-          '이미 연동된 소셜 계정입니다.',
+          '이미 연결된 소셜 계정입니다.',
           HttpStatus.CONFLICT,
         );
       }
 
       const member = await this.prisma.member.findUnique({
-        where: { email: profile.email },
+        where: { id: memberId },
       });
 
-      if (!member) {
+      if (!member || member.email !== profile.email) {
         throw new BusinessException(
-          'USER_NOT_FOUND',
-          '연동할 기존 회원을 찾을 수 없습니다.',
+          AuthErrorCode.AUTH_USER_NOT_FOUND,
+          '계정 연동 대상 회원을 찾을 수 없습니다.',
           HttpStatus.NOT_FOUND,
         );
       }
@@ -309,7 +519,6 @@ export class AuthService {
         socialAccounts: linkResult.socialAccounts.map((account) => ({
           provider: this.toProviderResponse(account.provider),
           maskedEmail: this.maskEmail(account.email),
-          linkedAt: account.regDate.toISOString(),
         })),
       };
     } catch (error) {
@@ -320,20 +529,15 @@ export class AuthService {
       if (this.isUniqueConstraintError(error)) {
         throw new BusinessException(
           AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_LINKED,
-          '이미 연동된 소셜 계정입니다.',
+          '이미 연결된 소셜 계정입니다.',
           HttpStatus.CONFLICT,
         );
       }
 
-      this.logger.error(
-        `AuthService.socialLink failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        error instanceof Error ? error.stack : undefined,
-      );
+      this.logError('socialLink', error);
       throw new BusinessException(
         AuthErrorCode.SOCIAL_LINK_FAILED,
-        '소셜 계정 연동 처리 중 오류가 발생했습니다.',
+        '소셜 계정 연동 중 오류가 발생했습니다.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -349,24 +553,15 @@ export class AuthService {
           tokenHash: this.hashToken(dto.refreshToken),
           revokedAt: null,
         },
-        data: {
-          revokedAt: new Date(),
-        },
+        data: { revokedAt: new Date() },
       });
-
       return null;
     }
 
     await this.prisma.refreshToken.updateMany({
-      where: {
-        userId: memberId,
-        revokedAt: null,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
+      where: { userId: memberId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
-
     return null;
   }
 
@@ -411,12 +606,10 @@ export class AuthService {
     }
 
     this.assertActiveMember(savedToken.user);
-
     await this.prisma.refreshToken.update({
       where: { id: savedToken.id },
       data: { revokedAt: new Date() },
     });
-
     return this.issueTokenPair(savedToken.user);
   }
 
@@ -437,8 +630,364 @@ export class AuthService {
       AuthErrorCode.TOKEN_INVALID,
       AuthErrorCode.TOKEN_EXPIRED,
     );
-
     return { id: payload.sub };
+  }
+
+  private async exchangeAuthorizationCode(
+    provider: OAuthProvider,
+    code: string,
+    state: OAuthStatePayload,
+  ) {
+    return provider === 'google'
+      ? this.exchangeGoogleAuthorizationCode(code, state)
+      : this.exchangeKakaoAuthorizationCode(code, state);
+  }
+
+  private async exchangeGoogleAuthorizationCode(
+    code: string,
+    state: OAuthStatePayload,
+  ): Promise<OAuthProfile> {
+    const tokenResponse = await this.fetchOAuthToken(
+      process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
+      {
+        code,
+        client_id: this.getProviderClientId('google'),
+        client_secret: this.getRequiredOAuthEnv('GOOGLE_CLIENT_SECRET'),
+        redirect_uri: state.redirectUri,
+        grant_type: 'authorization_code',
+        code_verifier: state.codeVerifier ?? '',
+      },
+    );
+    const accessToken = this.getString(tokenResponse, 'access_token');
+
+    if (!accessToken) {
+      throw this.invalidAuthorizationCode();
+    }
+
+    const userInfo = await this.fetchProviderJson(
+      process.env.GOOGLE_USER_INFO_URL ??
+        'https://openidconnect.googleapis.com/v1/userinfo',
+      { headers: { Authorization: `${this.tokenType} ${accessToken}` } },
+    );
+    const providerId = this.getString(userInfo, 'sub');
+
+    if (!providerId) {
+      throw this.socialProviderError();
+    }
+
+    return this.normalizeProfile({
+      provider: 'google',
+      providerId,
+      email: this.getString(userInfo, 'email'),
+      emailVerified:
+        userInfo.email_verified === true || userInfo.email_verified === 'true',
+      nickname: this.getString(userInfo, 'name') ?? '사용자',
+      profileImage: this.getString(userInfo, 'picture'),
+    });
+  }
+
+  private async exchangeKakaoAuthorizationCode(
+    code: string,
+    state: OAuthStatePayload,
+  ): Promise<OAuthProfile> {
+    const params: Record<string, string> = {
+      code,
+      client_id: this.getProviderClientId('kakao'),
+      redirect_uri: state.redirectUri,
+      grant_type: 'authorization_code',
+    };
+    const clientSecret = process.env.KAKAO_CLIENT_SECRET?.trim();
+    if (clientSecret) {
+      params.client_secret = clientSecret;
+    }
+
+    const tokenResponse = await this.fetchOAuthToken(
+      process.env.KAKAO_TOKEN_URL ?? 'https://kauth.kakao.com/oauth/token',
+      params,
+    );
+    const accessToken = this.getString(tokenResponse, 'access_token');
+
+    if (!accessToken) {
+      throw this.invalidAuthorizationCode();
+    }
+
+    const userInfo = await this.fetchProviderJson(
+      process.env.KAKAO_USER_INFO_URL ?? 'https://kapi.kakao.com/v2/user/me',
+      { headers: { Authorization: `${this.tokenType} ${accessToken}` } },
+    );
+    const providerId =
+      typeof userInfo.id === 'number' || typeof userInfo.id === 'string'
+        ? String(userInfo.id)
+        : null;
+
+    if (!providerId) {
+      throw this.socialProviderError();
+    }
+
+    const kakaoAccount = this.getObject(userInfo, 'kakao_account');
+    const kakaoProfile = kakaoAccount
+      ? this.getObject(kakaoAccount, 'profile')
+      : null;
+
+    return this.normalizeProfile({
+      provider: 'kakao',
+      providerId,
+      email: kakaoAccount ? this.getString(kakaoAccount, 'email') : null,
+      emailVerified:
+        kakaoAccount?.is_email_verified === true &&
+        kakaoAccount.is_email_valid !== false,
+      nickname: kakaoProfile
+        ? (this.getString(kakaoProfile, 'nickname') ?? '사용자')
+        : '사용자',
+      profileImage: kakaoProfile
+        ? (this.getString(kakaoProfile, 'profile_image_url') ??
+          this.getString(kakaoProfile, 'thumbnail_image_url'))
+        : null,
+    });
+  }
+
+  private async fetchOAuthToken(url: string, params: Record<string, string>) {
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params),
+        signal: AbortSignal.timeout(this.socialProviderTimeoutMs),
+      });
+    } catch {
+      throw this.socialProviderError();
+    }
+
+    const json = (await response.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) {
+        throw this.invalidAuthorizationCode();
+      }
+      throw this.socialProviderError();
+    }
+
+    return json;
+  }
+
+  private async fetchProviderJson(url: string, init: RequestInit) {
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(this.socialProviderTimeoutMs),
+      });
+    } catch {
+      throw this.socialProviderError();
+    }
+
+    const json = (await response.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+
+    if (!response.ok) {
+      throw this.socialProviderError();
+    }
+
+    return json;
+  }
+
+  private async resolveOAuthResult(
+    profile: OAuthProfile,
+  ): Promise<OAuthResultPayload> {
+    const providerCode = this.toProviderCode(profile.provider);
+    const socialAccount = await this.prisma.socialAccount.findFirst({
+      where: { provider: providerCode, providerId: profile.providerId },
+      include: { user: true },
+    });
+
+    if (socialAccount) {
+      return {
+        ...profile,
+        kind: 'LOGIN',
+        memberId: socialAccount.user.id.toString(),
+        existingProvider: null,
+      };
+    }
+
+    if (profile.emailVerified && profile.email) {
+      const member = await this.prisma.member.findUnique({
+        where: { email: profile.email },
+        include: {
+          socialAccounts: { orderBy: { id: 'asc' }, take: 1 },
+        },
+      });
+
+      if (member) {
+        return {
+          ...profile,
+          kind: 'LINK',
+          memberId: member.id.toString(),
+          existingProvider: this.toProviderResponse(
+            member.socialAccounts[0]?.provider,
+          ),
+        };
+      }
+    }
+
+    return {
+      ...profile,
+      kind: 'SIGNUP',
+      memberId: null,
+      existingProvider: null,
+    };
+  }
+
+  private async findOAuthMember(memberId: string | null) {
+    if (!memberId || !/^\d+$/.test(memberId)) {
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_RESULT_INVALID,
+        '유효하지 않거나 이미 사용된 OAuth 로그인 결과 코드입니다.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    const member = await this.prisma.member.findUnique({
+      where: { id: this.toBigIntId(memberId) },
+    });
+
+    if (!member) {
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_RESULT_INVALID,
+        '유효하지 않거나 이미 사용된 OAuth 로그인 결과 코드입니다.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    return member;
+  }
+
+  private parseOAuthState(payload: unknown): OAuthStatePayload {
+    if (!this.isRecord(payload)) {
+      throw this.invalidOAuthState();
+    }
+
+    const provider = payload.provider;
+    const redirectUri = payload.redirectUri;
+    const codeVerifier = payload.codeVerifier;
+
+    if (
+      (provider !== 'google' && provider !== 'kakao') ||
+      typeof redirectUri !== 'string' ||
+      (codeVerifier !== null && typeof codeVerifier !== 'string')
+    ) {
+      throw this.invalidOAuthState();
+    }
+
+    return { provider, redirectUri, codeVerifier };
+  }
+
+  private parseOAuthResult(payload: unknown): OAuthResultPayload {
+    if (!this.isRecord(payload)) {
+      throw this.invalidOAuthResult();
+    }
+
+    const kind = payload.kind;
+    const provider = payload.provider;
+    const providerId = payload.providerId;
+    const email = payload.email;
+    const emailVerified = payload.emailVerified;
+    const nickname = payload.nickname;
+    const profileImage = payload.profileImage;
+    const memberId = payload.memberId;
+    const existingProvider = payload.existingProvider;
+
+    if (
+      (kind !== 'LOGIN' && kind !== 'SIGNUP' && kind !== 'LINK') ||
+      (provider !== 'google' && provider !== 'kakao') ||
+      typeof providerId !== 'string' ||
+      (email !== null && typeof email !== 'string') ||
+      typeof emailVerified !== 'boolean' ||
+      (nickname !== null && typeof nickname !== 'string') ||
+      (profileImage !== null && typeof profileImage !== 'string') ||
+      (memberId !== null && typeof memberId !== 'string') ||
+      (existingProvider !== null &&
+        existingProvider !== 'KAKAO' &&
+        existingProvider !== 'GOOGLE')
+    ) {
+      throw this.invalidOAuthResult();
+    }
+
+    return {
+      kind,
+      provider,
+      providerId,
+      email,
+      emailVerified,
+      nickname,
+      profileImage,
+      memberId,
+      existingProvider,
+    };
+  }
+
+  private normalizeProfile(profile: OAuthProfile): OAuthProfile {
+    return {
+      ...profile,
+      email: profile.emailVerified ? profile.email : null,
+    };
+  }
+
+  private buildFrontendOAuthCallbackUrl(params: Record<string, string>) {
+    const configuredUrl = process.env.FRONTEND_OAUTH_CALLBACK_URL?.trim();
+    const frontendOrigin = process.env.FRONTEND_ORIGIN?.split(',')[0]?.trim();
+    const rawUrl =
+      configuredUrl ||
+      (frontendOrigin ? `${frontendOrigin}/oauth/callback` : null);
+
+    if (!rawUrl) {
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+        'FRONTEND_OAUTH_CALLBACK_URL 환경변수가 필요합니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    try {
+      const url = new URL(rawUrl);
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+      return url.toString();
+    } catch {
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+        '프론트 OAuth 콜백 URL 설정이 올바르지 않습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private toOAuthCallbackErrorCode(error: unknown) {
+    const callbackCodes = new Set<string>([
+      AuthErrorCode.AUTH_OAUTH_ACCESS_DENIED,
+      AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
+      AuthErrorCode.AUTH_OAUTH_STATE_EXPIRED,
+      AuthErrorCode.AUTH_OAUTH_CODE_INVALID,
+      AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
+      AuthErrorCode.AUTH_OAUTH_CALLBACK_FAILED,
+    ]);
+
+    if (
+      error instanceof BusinessException &&
+      callbackCodes.has(error.errorCode)
+    ) {
+      return error.errorCode;
+    }
+
+    return AuthErrorCode.AUTH_OAUTH_CALLBACK_FAILED;
   }
 
   private assertProvider(provider?: string): OAuthProvider {
@@ -448,47 +997,15 @@ export class AuthService {
         '지원하지 않는 소셜 로그인 제공자입니다.',
       );
     }
-
     return provider;
   }
 
-  private assertSocialToken(socialToken?: string) {
-    if (!socialToken) {
+  private assertActiveMember(member: MemberResponseSource) {
+    if (member.status === 'D') {
       throw new BusinessException(
-        AuthErrorCode.AUTH_SOCIAL_TOKEN_REQUIRED,
-        '소셜 로그인 토큰은 필수입니다.',
-      );
-    }
-
-    return socialToken;
-  }
-
-  private async assertAccountLinkNotRequired(email: string | null) {
-    if (!email) {
-      return;
-    }
-
-    const member = await this.prisma.member.findUnique({
-      where: { email },
-      include: {
-        socialAccounts: {
-          orderBy: { id: 'asc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (member) {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_ACCOUNT_LINK_REQUIRED,
-        '동일한 이메일로 가입된 다른 소셜 계정이 존재합니다.',
-        HttpStatus.CONFLICT,
-        {
-          existingProvider: this.toProviderResponse(
-            member.socialAccounts[0]?.provider,
-          ),
-          maskedEmail: this.maskEmail(email),
-        },
+        AuthErrorCode.AUTH_WITHDRAWN_USER,
+        '탈퇴한 회원입니다.',
+        HttpStatus.FORBIDDEN,
       );
     }
   }
@@ -498,7 +1015,6 @@ export class AuthService {
       where: { userId, consentType: 'SENSITIVE' },
       orderBy: { id: 'desc' },
     });
-
     return consent?.agreed ?? this.toBoolean(fallback);
   }
 
@@ -532,7 +1048,7 @@ export class AuthService {
     member: MemberResponseSource,
     type: JwtPayload['type'],
     expiresIn: number,
-  ): string {
+  ) {
     const now = Math.floor(Date.now() / 1000);
     const payload: JwtPayload =
       type === 'access'
@@ -551,11 +1067,11 @@ export class AuthService {
             iat: now,
             exp: now + expiresIn,
           };
-    const header = { alg: 'HS256', typ: 'JWT' };
-    const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
+    const encodedHeader = this.base64UrlEncode(
+      JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
+    );
     const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
     const signature = this.sign(`${encodedHeader}.${encodedPayload}`, type);
-
     return `${encodedHeader}.${encodedPayload}.${signature}`;
   }
 
@@ -566,28 +1082,14 @@ export class AuthService {
     expiredCode: AuthErrorCode,
   ): JwtPayload {
     const parts = token.split('.');
-
     if (parts.length !== 3) {
-      throw new BusinessException(
-        invalidCode,
-        expectedType === 'refresh'
-          ? '유효하지 않은 refreshToken입니다.'
-          : '유효하지 않은 token입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw this.invalidJwt(expectedType, invalidCode);
     }
 
     const [header, payload, signature] = parts;
     const expectedSignature = this.sign(`${header}.${payload}`, expectedType);
-
     if (!this.isEqualSignature(signature, expectedSignature)) {
-      throw new BusinessException(
-        invalidCode,
-        expectedType === 'refresh'
-          ? '유효하지 않은 refreshToken입니다.'
-          : '유효하지 않은 token입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw this.invalidJwt(expectedType, invalidCode);
     }
 
     const parsedPayload = this.parseJwtPayload(
@@ -595,17 +1097,9 @@ export class AuthService {
       invalidCode,
       expectedType,
     );
-
     if (parsedPayload.type !== expectedType) {
-      throw new BusinessException(
-        invalidCode,
-        expectedType === 'refresh'
-          ? '유효하지 않은 refreshToken입니다.'
-          : '유효하지 않은 token입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw this.invalidJwt(expectedType, invalidCode);
     }
-
     if (parsedPayload.exp <= Math.floor(Date.now() / 1000)) {
       throw new BusinessException(
         expiredCode,
@@ -615,7 +1109,6 @@ export class AuthService {
         HttpStatus.UNAUTHORIZED,
       );
     }
-
     return parsedPayload;
   }
 
@@ -628,10 +1121,8 @@ export class AuthService {
       const payload = JSON.parse(
         Buffer.from(encodedPayload, 'base64url').toString('utf8'),
       ) as JwtPayload;
-
       if (
         typeof payload.sub !== 'string' ||
-        payload.sub.length === 0 ||
         !/^\d+$/.test(payload.sub) ||
         (payload.type !== 'access' && payload.type !== 'refresh') ||
         typeof payload.iat !== 'number' ||
@@ -639,178 +1130,52 @@ export class AuthService {
       ) {
         throw new Error('Invalid JWT payload');
       }
-
       return payload;
     } catch {
-      throw new BusinessException(
-        invalidCode,
-        expectedType === 'refresh'
-          ? '유효하지 않은 refreshToken입니다.'
-          : '유효하지 않은 token입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw this.invalidJwt(expectedType, invalidCode);
     }
   }
 
-  private base64UrlEncode(value: string): string {
-    return Buffer.from(value).toString('base64url');
-  }
-
-  private sign(value: string, type: JwtPayload['type']): string {
-    return createHmac('sha256', this.getJwtSecret(type))
-      .update(value)
-      .digest('base64url');
-  }
-
-  private isEqualSignature(signature: string, expectedSignature: string) {
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expectedSignature);
-
-    return (
-      signatureBuffer.length === expectedBuffer.length &&
-      timingSafeEqual(signatureBuffer, expectedBuffer)
+  private invalidJwt(type: JwtPayload['type'], code: AuthErrorCode) {
+    return new BusinessException(
+      code,
+      type === 'refresh'
+        ? '유효하지 않은 refreshToken입니다.'
+        : '유효하지 않은 token입니다.',
+      HttpStatus.UNAUTHORIZED,
     );
   }
 
-  private hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
+  private invalidOAuthState() {
+    return new BusinessException(
+      AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
+      '유효하지 않은 OAuth state입니다.',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 
-  private async fetchOAuthProfile(
-    provider: OAuthProvider,
-    socialToken: string,
-  ): Promise<OAuthProfile> {
-    return provider === 'google'
-      ? this.fetchGoogleProfile(socialToken)
-      : this.fetchKakaoProfile(socialToken);
+  private invalidOAuthResult() {
+    return new BusinessException(
+      AuthErrorCode.AUTH_OAUTH_RESULT_INVALID,
+      '유효하지 않거나 이미 사용된 OAuth 로그인 결과 코드입니다.',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 
-  private async fetchGoogleProfile(idToken: string): Promise<OAuthProfile> {
-    let response: Response;
-
-    try {
-      response = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
-          idToken,
-        )}`,
-        { signal: AbortSignal.timeout(this.socialProviderTimeoutMs) },
-      );
-    } catch {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
-        '소셜 로그인 제공자와 통신 중 오류가 발생했습니다.',
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    const json = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-
-    if (!response.ok) {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_INVALID_SOCIAL_TOKEN,
-        '유효하지 않은 소셜 로그인 토큰입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    const aud = this.getString(json, 'aud');
-    const providerId = this.getString(json, 'sub');
-
-    if (!providerId || aud !== this.getRequiredEnv('GOOGLE_CLIENT_ID')) {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_INVALID_SOCIAL_TOKEN,
-        '유효하지 않은 소셜 로그인 토큰입니다.',
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    return {
-      providerId,
-      email: this.getString(json, 'email'),
-      emailVerified:
-        json.email_verified === true || json.email_verified === 'true',
-      nickname: this.getString(json, 'name') ?? '사용자',
-      profileImage: this.getString(json, 'picture'),
-    };
+  private invalidAuthorizationCode() {
+    return new BusinessException(
+      AuthErrorCode.AUTH_OAUTH_CODE_INVALID,
+      '유효하지 않은 authorization code입니다.',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 
-  private async fetchKakaoProfile(accessToken: string): Promise<OAuthProfile> {
-    let response: Response;
-
-    try {
-      response = await fetch(
-        process.env.KAKAO_USER_INFO_URL ?? 'https://kapi.kakao.com/v2/user/me',
-        {
-          headers: {
-            Authorization: `${this.tokenType} ${accessToken}`,
-          },
-          signal: AbortSignal.timeout(this.socialProviderTimeoutMs),
-        },
-      );
-    } catch {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
-        '소셜 로그인 제공자와 통신 중 오류가 발생했습니다.',
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    const json = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-    const providerId =
-      typeof json.id === 'number' || typeof json.id === 'string'
-        ? String(json.id)
-        : null;
-
-    if (!response.ok || !providerId) {
-      const isInvalidSocialToken =
-        response.status === 401 || response.status === 403;
-
-      throw new BusinessException(
-        isInvalidSocialToken
-          ? AuthErrorCode.AUTH_INVALID_SOCIAL_TOKEN
-          : AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
-        isInvalidSocialToken
-          ? '유효하지 않은 소셜 로그인 토큰입니다.'
-          : '소셜 로그인 제공자와 통신 중 오류가 발생했습니다.',
-        isInvalidSocialToken ? HttpStatus.UNAUTHORIZED : HttpStatus.BAD_GATEWAY,
-      );
-    }
-
-    const kakaoAccount = this.getObject(json, 'kakao_account');
-    const profile = kakaoAccount
-      ? this.getObject(kakaoAccount, 'profile')
-      : null;
-
-    return {
-      providerId,
-      email: kakaoAccount ? this.getString(kakaoAccount, 'email') : null,
-      emailVerified:
-        kakaoAccount?.is_email_verified === true &&
-        kakaoAccount.is_email_valid !== false,
-      nickname: profile
-        ? (this.getString(profile, 'nickname') ?? '사용자')
-        : '사용자',
-      profileImage: profile
-        ? (this.getString(profile, 'profile_image_url') ??
-          this.getString(profile, 'thumbnail_image_url'))
-        : null,
-    };
-  }
-
-  private assertActiveMember(member: MemberResponseSource) {
-    if (member.status === 'D') {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_WITHDRAWN_USER,
-        '탈퇴한 회원은 로그인할 수 없습니다.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+  private socialProviderError() {
+    return new BusinessException(
+      AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
+      '소셜 로그인 제공자와 통신 중 오류가 발생했습니다.',
+      HttpStatus.BAD_GATEWAY,
+    );
   }
 
   private toMemberResponse(
@@ -838,49 +1203,90 @@ export class AuthService {
     );
   }
 
+  private getProviderClientId(provider: OAuthProvider) {
+    return this.getRequiredOAuthEnv(
+      provider === 'google' ? 'GOOGLE_CLIENT_ID' : 'KAKAO_CLIENT_ID',
+    );
+  }
+
+  private getProviderRedirectUri(provider: OAuthProvider) {
+    return this.getRequiredOAuthEnv(
+      provider === 'google' ? 'GOOGLE_REDIRECT_URI' : 'KAKAO_REDIRECT_URI',
+    );
+  }
+
+  private getRequiredOAuthEnv(key: string) {
+    const value = process.env[key]?.trim();
+    if (!value) {
+      throw new BusinessException(
+        AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+        `${key} 환경변수가 필요합니다.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return value;
+  }
+
+  private getOAuthStateExpiresIn() {
+    return this.parseExpiresIn(
+      process.env.OAUTH_STATE_EXPIRES_IN ?? '600',
+      600,
+    );
+  }
+
+  private getOAuthResultExpiresIn() {
+    return this.parseExpiresIn(process.env.OAUTH_RESULT_EXPIRES_IN ?? '60', 60);
+  }
+
+  private getAuthTicketExpiresIn() {
+    return this.parseExpiresIn(
+      process.env.AUTH_TICKET_EXPIRES_IN ?? '600',
+      600,
+    );
+  }
+
   private getAccessTokenExpiresIn() {
-    return this.parseExpiresIn(process.env.JWT_ACCESS_EXPIRES_IN ?? '3600');
+    return this.parseExpiresIn(
+      process.env.JWT_ACCESS_EXPIRES_IN ?? '3600',
+      3600,
+    );
   }
 
   private getRefreshTokenExpiresIn() {
-    return this.parseExpiresIn(process.env.JWT_REFRESH_EXPIRES_IN ?? '1209600');
+    return this.parseExpiresIn(
+      process.env.JWT_REFRESH_EXPIRES_IN ?? '1209600',
+      1209600,
+    );
   }
 
-  private parseExpiresIn(value: string): number {
+  private parseExpiresIn(value: string, fallback: number) {
     const trimmedValue = value.trim();
     const numericValue = Number(trimmedValue);
-
     if (Number.isFinite(numericValue) && numericValue > 0) {
       return numericValue;
     }
 
     const match = trimmedValue.match(/^(\d+)([smhd])$/);
-
     if (!match) {
-      return 3600;
+      return fallback;
     }
 
-    const amount = Number(match[1]);
-    const unit = match[2];
     const multiplierByUnit: Record<string, number> = {
       s: 1,
       m: 60,
-      h: 60 * 60,
-      d: 60 * 60 * 24,
+      h: 3600,
+      d: 86400,
     };
-
-    return amount * multiplierByUnit[unit];
+    return Number(match[1]) * multiplierByUnit[match[2]];
   }
 
   private getJwtSecret(type: JwtPayload['type']) {
     const envKey =
       type === 'access' ? 'JWT_ACCESS_SECRET' : 'JWT_REFRESH_SECRET';
-    const fallbackValue = process.env[envKey] ?? process.env.JWT_SECRET;
-
-    if (fallbackValue) {
-      return fallbackValue;
+    const value = process.env[envKey] ?? process.env.JWT_SECRET;
+    if (value) {
+      return value;
     }
-
     if (
       process.env.NODE_ENV === 'development' ||
       process.env.NODE_ENV === 'test'
@@ -889,7 +1295,6 @@ export class AuthService {
         ? 'local-dev-access-secret-change-me'
         : 'local-dev-refresh-secret-change-me';
     }
-
     throw new BusinessException(
       AuthErrorCode.TOKEN_INVALID,
       'JWT 설정이 올바르지 않습니다.',
@@ -897,18 +1302,31 @@ export class AuthService {
     );
   }
 
-  private getRequiredEnv(key: string) {
-    const value = process.env[key];
+  private toCodeChallenge(codeVerifier: string) {
+    return createHash('sha256').update(codeVerifier).digest('base64url');
+  }
 
-    if (!value) {
-      throw new BusinessException(
-        AuthErrorCode.AUTH_SOCIAL_PROVIDER_ERROR,
-        `${key} 환경변수가 필요합니다.`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+  private base64UrlEncode(value: string) {
+    return Buffer.from(value).toString('base64url');
+  }
 
-    return value;
+  private sign(value: string, type: JwtPayload['type']) {
+    return createHmac('sha256', this.getJwtSecret(type))
+      .update(value)
+      .digest('base64url');
+  }
+
+  private isEqualSignature(signature: string, expectedSignature: string) {
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    return (
+      signatureBuffer.length === expectedBuffer.length &&
+      timingSafeEqual(signatureBuffer, expectedBuffer)
+    );
+  }
+
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
   }
 
   private getString(source: Record<string, unknown>, key: string) {
@@ -923,6 +1341,10 @@ export class AuthService {
       : null;
   }
 
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
   private toProviderCode(provider: OAuthProvider): OAuthProviderCode {
     return provider === 'google' ? 'G' : 'K';
   }
@@ -931,11 +1353,9 @@ export class AuthService {
     if (provider === 'K' || provider === 'kakao') {
       return 'KAKAO' as const;
     }
-
     if (provider === 'G' || provider === 'google') {
       return 'GOOGLE' as const;
     }
-
     return null;
   }
 
@@ -943,12 +1363,10 @@ export class AuthService {
     if (!email) {
       return null;
     }
-
     const [localPart, domain] = email.split('@');
     if (!domain) {
       return email;
     }
-
     const visibleLength = Math.min(4, Math.max(1, localPart.length));
     return `${localPart.slice(0, visibleLength)}****@${domain}`;
   }
@@ -967,6 +1385,15 @@ export class AuthService {
       error !== null &&
       'code' in error &&
       (error as { code?: unknown }).code === 'P2002'
+    );
+  }
+
+  private logError(operation: string, error: unknown) {
+    this.logger.error(
+      `AuthService.${operation} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      error instanceof Error ? error.stack : undefined,
     );
   }
 }
