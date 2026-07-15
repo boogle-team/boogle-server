@@ -34,7 +34,7 @@ describe('CalendarService', () => {
       prisma.boogleRecord.findMany.mockResolvedValue([]);
       prisma.lifeRecord.findMany.mockResolvedValue([]);
 
-      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const result = await service.getMonthlyCalendar('1', 2026, 6);
 
       expect(result.days).toHaveLength(30);
       expect(result.days[0].date).toBe('2026-06-01');
@@ -61,7 +61,7 @@ describe('CalendarService', () => {
         { regDate: new Date('2026-06-05T09:00:00.000+09:00') },
       ]);
 
-      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const result = await service.getMonthlyCalendar('1', 2026, 6);
       const day5 = result.days.find((d) => d.date === '2026-06-05');
 
       expect(day5?.boogleStatus).toBe('BOWEL');
@@ -79,7 +79,7 @@ describe('CalendarService', () => {
       ]);
       prisma.lifeRecord.findMany.mockResolvedValue([]);
 
-      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const result = await service.getMonthlyCalendar('1', 2026, 6);
       const day2 = result.days.find((d) => d.date === '2026-06-02');
 
       expect(day2?.boogleStatus).toBe('NO_BOWEL');
@@ -107,7 +107,7 @@ describe('CalendarService', () => {
       ]);
       prisma.lifeRecord.findMany.mockResolvedValue([]);
 
-      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const result = await service.getMonthlyCalendar('1', 2026, 6);
 
       expect(result.summary.stoolDistribution.hard).toEqual({
         count: 1,
@@ -134,7 +134,7 @@ describe('CalendarService', () => {
       ]);
       prisma.lifeRecord.findMany.mockResolvedValue([]);
 
-      const result = await service.getMonthlyCalendar(1n, 2026, 6);
+      const result = await service.getMonthlyCalendar('1', 2026, 6);
       const day1 = result.days.find((d) => d.date === '2026-06-01');
 
       expect(day1?.boogleStatus).toBe('BOWEL');
@@ -146,7 +146,7 @@ describe('CalendarService', () => {
       prisma.boogleRecord.findMany.mockResolvedValue([]);
       prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-      const result = await service.getDailyRecords(1n, '2026-06-17');
+      const result = await service.getDailyRecords('1', '2026-06-17');
 
       expect(result.date).toBe('2026-06-17');
       expect(result.boogleRecords).toEqual([]);
@@ -157,7 +157,7 @@ describe('CalendarService', () => {
       prisma.boogleRecord.findMany.mockResolvedValue([]);
       prisma.lifeRecord.findFirst.mockResolvedValue(null);
 
-      await service.getDailyRecords(1n, '2026-06-17');
+      await service.getDailyRecords('1', '2026-06-17');
 
       const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
         unknown,
@@ -172,7 +172,7 @@ describe('CalendarService', () => {
       );
     });
 
-    it('부글/생활 기록을 응답 형태로 매핑한다 (태그·음식·약 포함)', async () => {
+    it('부글/생활 기록을 응답 형태로 매핑한다 (생활 태그·음식·약 포함)', async () => {
       prisma.boogleRecord.findMany.mockResolvedValue([
         {
           id: 100n,
@@ -211,7 +211,7 @@ describe('CalendarService', () => {
         medicineMaps: [{ medicine: { id: 1, name: '유산균' } }],
       });
 
-      const result = await service.getDailyRecords(1n, '2026-06-17');
+      const result = await service.getDailyRecords('1', '2026-06-17');
 
       expect(result.boogleRecords[0]).toMatchObject({
         id: 100,

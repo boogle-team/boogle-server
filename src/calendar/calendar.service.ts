@@ -42,10 +42,11 @@ export class CalendarService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getMonthlyCalendar(
-    userId: bigint,
+    userId: string,
     year: number,
     month: number,
   ): Promise<CalendarResponseDto> {
+    const memberId = BigInt(userId);
     const pad = (n: number) => String(n).padStart(2, '0');
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextMonthYear = month === 12 ? year + 1 : year;
@@ -59,7 +60,7 @@ export class CalendarService {
     const [boogleRecords, lifeRecords] = await Promise.all([
       this.prisma.boogleRecord.findMany({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: monthStart, lt: monthEnd },
         },
@@ -72,7 +73,7 @@ export class CalendarService {
       }),
       this.prisma.lifeRecord.findMany({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: monthStart, lt: monthEnd },
         },
@@ -149,16 +150,17 @@ export class CalendarService {
   }
 
   async getDailyRecords(
-    userId: bigint,
+    userId: string,
     date: string,
   ): Promise<CalendarDailyResponseDto> {
+    const memberId = BigInt(userId);
     const dayStart = kstDayStart(date);
     const dayEnd = kstDayEnd(date);
 
     const [boogleRecords, lifeRecord] = await Promise.all([
       this.prisma.boogleRecord.findMany({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: dayStart, lte: dayEnd },
         },
@@ -166,7 +168,7 @@ export class CalendarService {
       }),
       this.prisma.lifeRecord.findFirst({
         where: {
-          userId,
+          userId: memberId,
           status: 'A',
           regDate: { gte: dayStart, lte: dayEnd },
         },

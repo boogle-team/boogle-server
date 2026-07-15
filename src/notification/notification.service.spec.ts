@@ -31,7 +31,7 @@ describe('NotificationService', () => {
     prisma.alarmMap.findMany.mockResolvedValue([]);
     prisma.alarmMap.count.mockResolvedValue(0);
 
-    const result = await service.getNotifications(1n);
+    const result = await service.getNotifications('1');
 
     expect(result).toEqual({ unreadCount: 0, notifications: [] });
   });
@@ -71,7 +71,7 @@ describe('NotificationService', () => {
     ]);
     prisma.alarmMap.count.mockResolvedValue(1);
 
-    const result = await service.getNotifications(1n);
+    const result = await service.getNotifications('1');
 
     expect(result.unreadCount).toBe(1);
     expect(result.notifications).toHaveLength(3);
@@ -114,7 +114,7 @@ describe('NotificationService', () => {
     ]);
     prisma.alarmMap.count.mockResolvedValue(1);
 
-    const result = await service.getNotifications(1n);
+    const result = await service.getNotifications('1');
 
     expect(result.notifications).toHaveLength(1);
     expect(result.notifications[0].id).toBe(2);
@@ -135,7 +135,7 @@ describe('NotificationService', () => {
     ]);
     prisma.alarmMap.count.mockResolvedValue(1);
 
-    const result = await service.getNotifications(1n);
+    const result = await service.getNotifications('1');
 
     expect(result.notifications).toHaveLength(0);
   });
@@ -144,7 +144,7 @@ describe('NotificationService', () => {
     prisma.alarmMap.findMany.mockResolvedValue([]);
     prisma.alarmMap.count.mockResolvedValue(7);
 
-    const result = await service.getNotifications(1n);
+    const result = await service.getNotifications('1');
 
     expect(result.unreadCount).toBe(7);
     expect(prisma.alarmMap.findMany).toHaveBeenCalledWith(

@@ -1,18 +1,20 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
-import type { CurrentUserPayload } from '@/common/decorators/current-user.decorator';
-import { StubAuthGuard } from '@/common/guards/stub-auth.guard';
 import { HomeQueryDto } from './dto/home-query.dto';
 import { HomeService } from './home.service';
 
-@UseGuards(StubAuthGuard)
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 @Controller('home')
 export class HomeController {
   constructor(private readonly homeService: HomeService) {}
 
   @Get()
   getHome(
-    @CurrentUser() user: CurrentUserPayload,
+    @CurrentUser() user: AuthenticatedUser,
     @Query() query: HomeQueryDto,
   ) {
     return this.homeService.getHome(user.id, query.date);

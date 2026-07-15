@@ -8,6 +8,7 @@ import { UserModule } from './user/user.module';
 import { HomeModule } from './home/home.module';
 import { RecordModule } from './record/record.module';
 import { LifeRecordModule } from './life-record/life-record.module';
+import { FoodModule } from './food/food.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { ReportModule } from './report/report.module';
 import { GuideModule } from './guide/guide.module';
@@ -24,6 +25,7 @@ import { NotificationModule } from './notification/notification.module';
     HomeModule,
     RecordModule,
     LifeRecordModule,
+    FoodModule,
     CalendarModule,
     ReportModule,
     GuideModule,

@@ -82,24 +82,24 @@ model SocialAccount {
 }
 
 model BoogleRecord {
-  id               BigInt    @id @default(autoincrement())
-  userId           BigInt    @map("user_id")
-  regDate          DateTime  @map("reg_date")
-  hasBowel         Boolean   @default(false) @map("has_bowel")
-  stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
-  stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
-  bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
-  stomach          String?   @db.Char(1) // 복통 N/M/L
-  distension       String?   @db.Char(1) // 복부팽만 N/M/L
-  remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
-  urgency          String?   @db.Char(1) // 긴박감 N/M/L
-  takenTime        Int?      @map("taken_time") @db.TinyInt
-  amount           String?   @db.Char(1) // 적음S/보통N/많음M
-  color            String?   @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
-  status           String    @default("A") @db.Char(1)
-  updateDate       DateTime? @map("update_date")
+  id               BigInt   @id @default(autoincrement())
+  userId           BigInt   @map("user_id")
+  regDate          DateTime @map("reg_date")
+  hasBowel         Boolean  @default(false) @map("has_bowel")
+  stoolBristol     Int?     @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
+  stoolSimple      String?  @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
+  bowelFeeling     String?  @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
+  stomach          String?  @db.Char(1) // 복통 N/M/L
+  distension       String?  @db.Char(1) // 복부팽만 N/M/L
+  remainingFeeling String?  @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
+  urgency          String?  @db.Char(1) // 긴박감 N/M/L
+  takenTime        Int?     @map("taken_time") @db.TinyInt
+  amount           String?  @db.Char(1) // 적음S/보통N/많음M
+  color            String?  @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
+  status           String   @default("A") @db.Char(1)
+  updateDate       DateTime? @updatedAt @map("update_date")
 
-  user Member @relation(fields: [userId], references: [id])
+  user             Member       @relation(fields: [userId], references: [id])
 
   @@map("boogle_record")
 }
@@ -166,7 +166,7 @@ model Tag {
   id   BigInt @id @default(autoincrement())
   name String @unique @db.VarChar(40)
 
-  lifeTags LifeTag[]
+  lifeTags   LifeTag[]
 
   @@map("tags")
 }
