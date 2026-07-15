@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '@/generated/prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { LifeRecordService } from './life-record.service';
 import { GeminiTagExtractorService } from './gemini-tag-extractor.service';
@@ -145,6 +146,66 @@ describe('LifeRecordService', () => {
 
       await expect(
         service.create('1', { regDate: '2026-07-02' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
+      });
+    });
+
+    it('존재하지 않는 foodId가 포함되면 INVALID_FOOD_ID를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02', foodIds: [1, 999] }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_FOOD_ID,
+      });
+      expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+    });
+
+    it('존재하지 않는 medicineId가 포함되면 INVALID_MEDICINE_ID를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.medicine.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02', medicineIds: [999] }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_MEDICINE_ID,
+      });
+      expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+    });
+
+    it('동시 생성으로 인한 userId+regDate 유니크 충돌(P2002)은 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.8.0',
+          meta: { target: 'life_record_index_2' },
+        }),
+      );
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
+      });
+    });
+
+    it('Tag.name 유니크 충돌(P2002)은 날짜 중복이 아니므로 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.8.0',
+          meta: { target: 'tag_name_key' },
+        }),
+      );
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02', tagNames: ['야식'] }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });
@@ -306,6 +367,32 @@ describe('LifeRecordService', () => {
       expect(result.memo).toBe('수정된 메모');
       expect(result.foods).toEqual([{ id: 3, name: '카페인' }]);
       expect(result.medicines).toEqual([{ id: 5, name: '변비약' }]);
+    });
+
+    it('존재하지 않는 foodId로 수정하면 기존 연결을 지우지 않고 INVALID_FOOD_ID를 던진다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(baseRecord);
+      prisma.food.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.update('1', 15, { foodIds: [999] }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_FOOD_ID,
+      });
+      expect(prisma.lifeFoodTag.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
+    });
+
+    it('존재하지 않는 medicineId로 수정하면 기존 연결을 지우지 않고 INVALID_MEDICINE_ID를 던진다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(baseRecord);
+      prisma.medicine.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.update('1', 15, { medicineIds: [999] }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_MEDICINE_ID,
+      });
+      expect(prisma.medicineMap.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
     });
   });
 

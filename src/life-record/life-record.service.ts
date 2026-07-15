@@ -137,7 +137,8 @@ export class LifeRecordService {
       }
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
+        error.code === 'P2002' &&
+        this.isRegDateUniqueConflict(error.meta?.target)
       ) {
         throw new BusinessException(
           LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
@@ -396,6 +397,16 @@ export class LifeRecordService {
     }
   }
 
+  private isRegDateUniqueConflict(target: unknown): boolean {
+    if (typeof target === 'string') {
+      return target.includes('life_record_index_2');
+    }
+    if (Array.isArray(target)) {
+      return target.includes('userId') || target.includes('regDate');
+    }
+    return false;
+  }
+
   private throwInvalidDateFormat(): never {
     throw new BusinessException(
       LifeRecordErrorCode.INVALID_DATE_FORMAT,
@@ -428,10 +439,19 @@ export class LifeRecordService {
       return [];
     }
 
+    const uniqueFoodIds = [...new Set(foodIds)];
     const foods = await this.prisma.food.findMany({
-      where: { id: { in: foodIds } },
+      where: { id: { in: uniqueFoodIds } },
       select: { id: true },
     });
+
+    if (foods.length !== uniqueFoodIds.length) {
+      throw new BusinessException(
+        LifeRecordErrorCode.INVALID_FOOD_ID,
+        '존재하지 않는 foodId가 포함되어 있습니다.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     return foods.map((food) => food.id);
   }
@@ -443,10 +463,19 @@ export class LifeRecordService {
       return [];
     }
 
+    const uniqueMedicineIds = [...new Set(medicineIds)];
     const medicines = await this.prisma.medicine.findMany({
-      where: { id: { in: medicineIds } },
+      where: { id: { in: uniqueMedicineIds } },
       select: { id: true },
     });
+
+    if (medicines.length !== uniqueMedicineIds.length) {
+      throw new BusinessException(
+        LifeRecordErrorCode.INVALID_MEDICINE_ID,
+        '존재하지 않는 medicineId가 포함되어 있습니다.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     return medicines.map((medicine) => medicine.id);
   }

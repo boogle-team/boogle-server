@@ -58,7 +58,7 @@ export class LifeRecordController {
   @ApiOperation({
     summary: '생활기록 생성',
     description:
-      '하루에 한 건만 생성할 수 있습니다. 같은 날짜(regDate)로 이미 생성된 기록이 있으면 409가 반환되므로, 생성 전에 목록/상세 조회로 존재 여부를 확인해야 합니다. foodIds/medicineIds에 존재하지 않는 ID를 보내도 에러 없이 조용히 무시되므로 주의가 필요합니다.',
+      '하루에 한 건만 생성할 수 있습니다. 같은 날짜(regDate)로 이미 생성된 기록이 있으면 409가 반환되므로, 생성 전에 목록/상세 조회로 존재 여부를 확인해야 합니다. foodIds/medicineIds에 존재하지 않는 ID가 하나라도 포함되면 400이 반환됩니다.',
   })
   @ResponseMessage('생활 기록이 저장되었습니다.')
   @ApiCreatedResponse({
@@ -67,7 +67,7 @@ export class LifeRecordController {
   })
   @ApiBadRequestResponse({
     description:
-      'regDate 형식이 올바르지 않거나(INVALID_DATE_FORMAT), 생활 기록 항목 값이 올바르지 않음(INVALID_LIFE_VALUE)',
+      'regDate 형식이 올바르지 않거나(INVALID_DATE_FORMAT), 생활 기록 항목 값이 올바르지 않거나(INVALID_LIFE_VALUE), 존재하지 않는 foodId(INVALID_FOOD_ID)/medicineId(INVALID_MEDICINE_ID)가 포함됨',
   })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
   @ApiConflictResponse({
@@ -184,7 +184,7 @@ export class LifeRecordController {
   })
   @ApiBadRequestResponse({
     description:
-      'lifeId가 숫자 형식이 아니거나, 생활 기록 항목 값이 올바르지 않음(INVALID_LIFE_VALUE)',
+      'lifeId가 숫자 형식이 아니거나, 생활 기록 항목 값이 올바르지 않거나(INVALID_LIFE_VALUE), 존재하지 않는 foodId(INVALID_FOOD_ID)/medicineId(INVALID_MEDICINE_ID)가 포함됨',
   })
   @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
   @ApiForbiddenResponse({
