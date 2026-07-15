@@ -2,10 +2,13 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
+import type { Prisma } from '@/generated/prisma/client';
 import { AuthErrorCode } from './auth-error-code.enum';
 import { SocialLoginRequestDto } from './dto/social-login-request.dto';
 import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
 import { LogoutRequestDto } from './dto/logout-request.dto';
+import { SignupRequestDto } from './dto/signup-request.dto';
+import { SocialLinkRequestDto } from './dto/social-link-request.dto';
 import { AuthenticatedUser } from './types/authenticated-user.type';
 
 type OAuthProvider = 'kakao' | 'google';
@@ -24,6 +27,7 @@ interface JwtPayload {
 interface OAuthProfile {
   providerId: string;
   email: string | null;
+  emailVerified: boolean;
   nickname: string | null;
   profileImage: string | null;
 }
@@ -68,45 +72,31 @@ export class AuthService {
 
       if (socialAccount) {
         this.assertActiveMember(socialAccount.user);
+        const sensitiveInfoAgreed = await this.getSensitiveInfoAgreed(
+          socialAccount.user.id,
+          socialAccount.user.sensInfo,
+        );
 
         return {
           ...(await this.issueTokenPair(socialAccount.user)),
           isNewUser: false,
           onboardingCompleted: this.isOnboardingCompleted(socialAccount.user),
-          user: this.toMemberResponse(socialAccount.user),
+          user: this.toMemberResponse(socialAccount.user, sensitiveInfoAgreed),
         };
       }
 
-      await this.assertEmailNotUsed(profile.email);
-
-      const member = await this.prisma.$transaction(async (tx) => {
-        const createdMember = await tx.member.create({
-          data: {
-            email: profile.email,
-            nickname: profile.nickname ?? '사용자',
-            profileImg: profile.profileImage,
-            status: 'A',
-            sensInfo: 'F',
-          },
-        });
-
-        await tx.socialAccount.create({
-          data: {
-            userId: createdMember.id,
-            provider: providerCode,
-            providerId: profile.providerId,
-            email: profile.email,
-          },
-        });
-
-        return createdMember;
-      });
+      await this.assertAccountLinkNotRequired(
+        profile.emailVerified ? profile.email : null,
+      );
 
       return {
-        ...(await this.issueTokenPair(member)),
+        nextAction: 'SIGNUP_REQUIRED' as const,
+        provider: this.toProviderResponse(providerCode),
+        email: profile.email,
+        nickname: profile.nickname,
+        profileImage: profile.profileImage,
         isNewUser: true,
         onboardingCompleted: false,
-        user: this.toMemberResponse(member),
       };
     } catch (error) {
       if (error instanceof BusinessException) {
@@ -131,6 +121,219 @@ export class AuthService {
       throw new BusinessException(
         AuthErrorCode.SOCIAL_LOGIN_FAILED,
         '소셜 로그인 처리 중 오류가 발생했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async signup(dto: SignupRequestDto) {
+    try {
+      if (dto.privacyPolicyAgreed !== true) {
+        throw new BusinessException(
+          AuthErrorCode.PRIVACY_POLICY_AGREEMENT_REQUIRED,
+          '개인정보 수집 동의가 필요합니다.',
+        );
+      }
+
+      const provider = this.assertProvider(dto.provider);
+      const providerCode = this.toProviderCode(provider);
+      const socialToken = this.assertSocialToken(dto.socialToken);
+      const profile = await this.fetchOAuthProfile(provider, socialToken);
+      const existingSocialAccount = await this.prisma.socialAccount.findFirst({
+        where: {
+          provider: providerCode,
+          providerId: profile.providerId,
+        },
+      });
+
+      if (existingSocialAccount) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_EXISTS,
+          '이미 가입된 소셜 계정입니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      await this.assertAccountLinkNotRequired(
+        profile.emailVerified ? profile.email : null,
+      );
+
+      const now = new Date();
+      const signupResult = await this.prisma.$transaction(async (tx) => {
+        const createdMember = await tx.member.create({
+          data: {
+            email: profile.email,
+            nickname: profile.nickname ?? '사용자',
+            profileImg: profile.profileImage,
+            status: 'A',
+            sensInfo: dto.sensitiveInfoAgreed ? 'Y' : 'F',
+          },
+        });
+
+        await tx.socialAccount.create({
+          data: {
+            userId: createdMember.id,
+            provider: providerCode,
+            providerId: profile.providerId,
+            email: profile.email,
+          },
+        });
+
+        await tx.memberConsent.createMany({
+          data: [
+            {
+              userId: createdMember.id,
+              consentType: 'PRIVACY',
+              agreed: true,
+              policyVersion: dto.privacyPolicyVersion,
+              agreedAt: now,
+            },
+            {
+              userId: createdMember.id,
+              consentType: 'SENSITIVE',
+              agreed: dto.sensitiveInfoAgreed,
+              policyVersion: dto.sensitiveInfoPolicyVersion,
+              agreedAt: dto.sensitiveInfoAgreed ? now : null,
+            },
+          ],
+        });
+
+        return {
+          member: createdMember,
+          tokens: await this.issueTokenPair(createdMember, tx),
+        };
+      });
+
+      return {
+        ...signupResult.tokens,
+        isNewUser: true,
+        onboardingCompleted: false,
+        user: this.toMemberResponse(
+          signupResult.member,
+          dto.sensitiveInfoAgreed,
+        ),
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+
+      if (this.isUniqueConstraintError(error)) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_EXISTS,
+          '이미 가입된 소셜 계정입니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      this.logger.error(
+        `AuthService.signup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new BusinessException(
+        AuthErrorCode.SIGNUP_FAILED,
+        '회원가입 처리 중 오류가 발생했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async socialLink(dto: SocialLinkRequestDto) {
+    try {
+      const provider = this.assertProvider(dto.provider);
+      const providerCode = this.toProviderCode(provider);
+      const socialToken = this.assertSocialToken(dto.socialToken);
+      const profile = await this.fetchOAuthProfile(provider, socialToken);
+
+      if (!profile.email || !profile.emailVerified) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_VERIFIED_EMAIL_REQUIRED,
+          '인증된 이메일 정보가 필요합니다.',
+        );
+      }
+
+      const existingSocialAccount = await this.prisma.socialAccount.findFirst({
+        where: {
+          OR: [
+            { provider: providerCode, providerId: profile.providerId },
+            { provider: providerCode, email: profile.email },
+          ],
+        },
+      });
+
+      if (existingSocialAccount) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_LINKED,
+          '이미 연동된 소셜 계정입니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      const member = await this.prisma.member.findUnique({
+        where: { email: profile.email },
+      });
+
+      if (!member) {
+        throw new BusinessException(
+          'USER_NOT_FOUND',
+          '연동할 기존 회원을 찾을 수 없습니다.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      this.assertActiveMember(member);
+      const linkResult = await this.prisma.$transaction(async (tx) => {
+        await tx.socialAccount.create({
+          data: {
+            userId: member.id,
+            provider: providerCode,
+            providerId: profile.providerId,
+            email: profile.email,
+          },
+        });
+
+        return {
+          socialAccounts: await tx.socialAccount.findMany({
+            where: { userId: member.id },
+            orderBy: { id: 'asc' },
+          }),
+          tokens: await this.issueTokenPair(member, tx),
+        };
+      });
+
+      return {
+        ...linkResult.tokens,
+        onboardingCompleted: this.isOnboardingCompleted(member),
+        socialAccounts: linkResult.socialAccounts.map((account) => ({
+          provider: this.toProviderResponse(account.provider),
+          maskedEmail: this.maskEmail(account.email),
+          linkedAt: account.regDate.toISOString(),
+        })),
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+
+      if (this.isUniqueConstraintError(error)) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_SOCIAL_ACCOUNT_ALREADY_LINKED,
+          '이미 연동된 소셜 계정입니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      this.logger.error(
+        `AuthService.socialLink failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new BusinessException(
+        AuthErrorCode.SOCIAL_LINK_FAILED,
+        '소셜 계정 연동 처리 중 오류가 발생했습니다.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -260,31 +463,55 @@ export class AuthService {
     return socialToken;
   }
 
-  private async assertEmailNotUsed(email: string | null) {
+  private async assertAccountLinkNotRequired(email: string | null) {
     if (!email) {
       return;
     }
 
-    const member = await this.prisma.member.findFirst({
+    const member = await this.prisma.member.findUnique({
       where: { email },
+      include: {
+        socialAccounts: {
+          orderBy: { id: 'asc' },
+          take: 1,
+        },
+      },
     });
 
     if (member) {
       throw new BusinessException(
-        AuthErrorCode.AUTH_EMAIL_ALREADY_USED,
+        AuthErrorCode.AUTH_ACCOUNT_LINK_REQUIRED,
         '동일한 이메일로 가입된 다른 소셜 계정이 존재합니다.',
         HttpStatus.CONFLICT,
+        {
+          existingProvider: this.toProviderResponse(
+            member.socialAccounts[0]?.provider,
+          ),
+          maskedEmail: this.maskEmail(email),
+        },
       );
     }
   }
 
-  private async issueTokenPair(member: MemberResponseSource) {
+  private async getSensitiveInfoAgreed(userId: bigint, fallback: string) {
+    const consent = await this.prisma.memberConsent.findFirst({
+      where: { userId, consentType: 'SENSITIVE' },
+      orderBy: { id: 'desc' },
+    });
+
+    return consent?.agreed ?? this.toBoolean(fallback);
+  }
+
+  private async issueTokenPair(
+    member: MemberResponseSource,
+    client: Pick<Prisma.TransactionClient, 'refreshToken'> = this.prisma,
+  ) {
     const accessExpiresIn = this.getAccessTokenExpiresIn();
     const refreshExpiresIn = this.getRefreshTokenExpiresIn();
     const accessToken = this.signJwt(member, 'access', accessExpiresIn);
     const refreshToken = this.signJwt(member, 'refresh', refreshExpiresIn);
 
-    await this.prisma.refreshToken.create({
+    await client.refreshToken.create({
       data: {
         userId: member.id,
         tokenHash: this.hashToken(refreshToken),
@@ -503,6 +730,8 @@ export class AuthService {
     return {
       providerId,
       email: this.getString(json, 'email'),
+      emailVerified:
+        json.email_verified === true || json.email_verified === 'true',
       nickname: this.getString(json, 'name') ?? '사용자',
       profileImage: this.getString(json, 'picture'),
     };
@@ -561,6 +790,9 @@ export class AuthService {
     return {
       providerId,
       email: kakaoAccount ? this.getString(kakaoAccount, 'email') : null,
+      emailVerified:
+        kakaoAccount?.is_email_verified === true &&
+        kakaoAccount.is_email_valid !== false,
       nickname: profile
         ? (this.getString(profile, 'nickname') ?? '사용자')
         : '사용자',
@@ -581,7 +813,10 @@ export class AuthService {
     }
   }
 
-  private toMemberResponse(member: MemberResponseSource) {
+  private toMemberResponse(
+    member: MemberResponseSource,
+    sensitiveInfoAgreed = this.toBoolean(member.sensInfo),
+  ) {
     return {
       id: Number(member.id),
       email: member.email,
@@ -590,7 +825,7 @@ export class AuthService {
       gender: member.gender,
       ageGroup: member.ageGroup,
       baselineType: member.baselineType,
-      sensitiveInfoAgreed: this.toBoolean(member.sensInfo),
+      sensitiveInfoAgreed,
     };
   }
 
@@ -690,6 +925,32 @@ export class AuthService {
 
   private toProviderCode(provider: OAuthProvider): OAuthProviderCode {
     return provider === 'google' ? 'G' : 'K';
+  }
+
+  private toProviderResponse(provider?: string) {
+    if (provider === 'K' || provider === 'kakao') {
+      return 'KAKAO' as const;
+    }
+
+    if (provider === 'G' || provider === 'google') {
+      return 'GOOGLE' as const;
+    }
+
+    return null;
+  }
+
+  private maskEmail(email: string | null) {
+    if (!email) {
+      return null;
+    }
+
+    const [localPart, domain] = email.split('@');
+    if (!domain) {
+      return email;
+    }
+
+    const visibleLength = Math.min(4, Math.max(1, localPart.length));
+    return `${localPart.slice(0, visibleLength)}****@${domain}`;
   }
 
   private toBoolean(value: string) {

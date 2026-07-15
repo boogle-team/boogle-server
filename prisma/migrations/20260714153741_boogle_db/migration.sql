@@ -72,8 +72,6 @@ CREATE TABLE `boogle_record` (
     `stool_simple` CHAR(1) NULL,
     `bowel_feeling` CHAR(1) NULL,
     `stomach` CHAR(1) NULL,
-    `memo` VARCHAR(255) NULL,
-    `auto_tags` VARCHAR(255) NULL,
     `distension` CHAR(1) NULL,
     `remaining_feeling` CHAR(1) NULL,
     `urgency` CHAR(1) NULL,
@@ -84,14 +82,6 @@ CREATE TABLE `boogle_record` (
     `update_date` DATETIME(3) NULL,
 
     PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `boogle_tags` (
-    `tag_id` BIGINT NOT NULL,
-    `boogle_id` BIGINT NOT NULL,
-
-    PRIMARY KEY (`tag_id`, `boogle_id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
@@ -243,12 +233,6 @@ ALTER TABLE `social_account` ADD CONSTRAINT `social_account_user_id_fkey` FOREIG
 
 -- AddForeignKey
 ALTER TABLE `boogle_record` ADD CONSTRAINT `boogle_record_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `boogle_tags` ADD CONSTRAINT `boogle_tags_tag_id_fkey` FOREIGN KEY (`tag_id`) REFERENCES `tags`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `boogle_tags` ADD CONSTRAINT `boogle_tags_boogle_id_fkey` FOREIGN KEY (`boogle_id`) REFERENCES `boogle_record`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `life_record` ADD CONSTRAINT `life_record_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

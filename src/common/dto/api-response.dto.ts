@@ -8,4 +8,5 @@ export interface ErrorResponse {
   success: false;
   code: string;
   message: string;
+  data?: unknown;
 }

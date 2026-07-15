@@ -1,3 +1,3 @@
 export enum HomeErrorCode {
-  // TODO: e.g. HOME_001 = 'HOME_001',
+  MEMBER_NOT_FOUND = 'MEMBER_NOT_FOUND',
 }

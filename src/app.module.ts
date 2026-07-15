@@ -12,6 +12,7 @@ import { FoodModule } from './food/food.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { ReportModule } from './report/report.module';
 import { GuideModule } from './guide/guide.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GuideModule } from './guide/guide.module';
     CalendarModule,
     ReportModule,
     GuideModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
