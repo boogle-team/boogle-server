@@ -78,6 +78,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
             success: false,
             code: exception.errorCode,
             message: exception.message,
+            ...(exception.data === undefined ? {} : { data: exception.data }),
           }
         : {
             success: false,

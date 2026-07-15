@@ -230,7 +230,7 @@ Authorization: Bearer eyJhbGc...
 | `lifeRecord.foods` | array | 오늘 먹은 것 태그 (`life_food_tag` → `food`) |
 | `weeklyPattern` | object \| null | 이번 주 대표 패턴 1건. 없으면 `null` → 카드 숨김 |
 
-> 💡 부글 기록은 **하루 여러 건** 가능 → 배열(`boogleRecords`) + 건수(`boogleCount`)로 반환. 상세 항목(복부팽만·색상·메모 등)은 홈에서 생략, 상세는 `#6` 사용.
+> 💡 부글 기록은 **하루 여러 건** 가능 → 배열(`boogleRecords`) + 건수(`boogleCount`)로 반환. 상세 항목(복부팽만·색상 등)은 홈에서 생략, 상세는 `#6` 사용.
 > ⚠️ `weeklyPattern`은 **리포트/가이드 도메인(주간 패턴 산출) 데이터**에 의존합니다. 홈은 산출 결과를 읽어 표시만 함 → 해당 팀과 데이터 소스/포맷 협의 필요.
 
 ---
@@ -338,9 +338,6 @@ Authorization: Bearer eyJhbGc...
       "takenTime": 2,
       "amount": "N",
       "color": "B",
-      "memo": "어제 회식에서 술을 많이 마셨어요.",
-      "autoTags": ["음주", "야식"],
-      "tags": [{ "id": 3, "name": "회식" }],
       "updatedAt": null
     }
   ],
@@ -372,8 +369,8 @@ Authorization: Bearer eyJhbGc...
 | --- | --- | --- |
 | `boogleRecords` | array | 해당 날짜 부글 기록 **전체 리스트**(하루 여러 건 가능, 시간순). 없으면 `[]` |
 | `lifeRecord` | object \| null | 해당 날짜 생활 기록(하루 1건). 없으면 `null` |
-| `*.autoTags` | string[] | LLM 자동 추출 태그. `auto_tags`(콤마 문자열)를 배열로 파싱해 반환 |
-| `*.tags` | object[] | 연결된 태그 (`boogle_tags`/`life_tags` → `tags`) |
+| `lifeRecord.autoTags` | string[] | LLM 자동 추출 태그. `auto_tags`(콤마 문자열)를 배열로 파싱해 반환 |
+| `lifeRecord.tags` | object[] | 연결된 생활 태그 (`life_tags` → `tags`) |
 | `lifeRecord.foods` | object[] | 먹은 것 태그 (`life_food_tag` → `food`) |
 | `lifeRecord.hormone` 등 민감정보 | - | 민감정보 미동의 사용자는 해당 필드가 `null`로 저장되어 있음 |
 
@@ -407,7 +404,7 @@ Authorization: Bearer eyJhbGc...
   - 월 전체 날짜 배열은 서버에서 생성 후 병합: 날짜별 `boogleStatus`(부글) + `hasLifeRecord`(생활) 판정.
   - 하루 여러 건일 때 날짜 대표값(`stoolSimple`) 규칙 필요(§9).
   - `stoolDistribution`은 `has_bowel=true` 건들의 `stool_simple` 집계.
-- **calendar/daily**: 해당 날짜 `boogle_record` **여러 건** + `life_record` 1건(+ `boogle_tags`/`life_tags`/`life_food_tag` join). 경로는 부글 도메인 `/records` 충돌 회피 위해 `/calendar` 하위에 둠.
+- **calendar/daily**: 해당 날짜 `boogle_record` **여러 건** + `life_record` 1건(+ `life_tags`/`life_food_tag` join). 경로는 부글 도메인 `/records` 충돌 회피 위해 `/calendar` 하위에 둠.
 - 날짜 범위 조회 시 KST 기준 하루 경계(`00:00:00` ~ `23:59:59`) 주의. `reg_date`가 `datetime`이므로 날짜만으로 매칭 X.
 - `status='A'`(삭제 안 된 것)만 조회.
 

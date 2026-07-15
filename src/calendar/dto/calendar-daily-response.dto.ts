@@ -32,9 +32,6 @@ export interface BoogleRecordDetailDto {
   takenTime: number | null;
   amount: string | null;
   color: string | null;
-  memo: string | null;
-  autoTags: string[];
-  tags: TagDto[];
   updatedAt: Date | null;
 }
 

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { GuideController } from './guide.controller';
 import { GuideService } from './guide.service';
 
@@ -22,7 +23,10 @@ describe('GuideController', () => {
           useValue: guideServiceMock,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<GuideController>(GuideController);
   });

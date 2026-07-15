@@ -6,9 +6,8 @@ import {
   HttpStatus,
   Post,
   Query,
-  Req,
   Res,
-  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,8 +18,11 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
 // import { ResponseMessage } from '@/common/decorators/response-message.decorator';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { GetWeeklyReportQueryDto } from './dto/get-weekly-report-query.dto';
 import { WeeklyReportResponseDto } from './dto/weekly-report-response.dto';
 import { GetMonthlyReportQueryDto } from './dto/get-monthly-report-query.dto';
@@ -30,6 +32,7 @@ import { ReportService } from './report.service';
 
 @ApiTags('Reports')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('reports')
 export class ReportController {
   constructor(private readonly reportService: ReportService) {}
@@ -51,9 +54,9 @@ export class ReportController {
   // @ResponseMessage('주간 리포트 조회에 성공했습니다.')
   async getWeeklyReport(
     @Query() query: GetWeeklyReportQueryDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<WeeklyReportResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.reportService.getWeeklyReport(userId, query);
   }
@@ -75,21 +78,11 @@ export class ReportController {
   // @ResponseMessage('월간 리포트 조회에 성공했습니다.')
   async getMonthlyReport(
     @Query() query: GetMonthlyReportQueryDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<MonthlyReportResponseDto> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     return this.reportService.getMonthlyReport(userId, query);
-  }
-
-  private extractUserId(req: Request): bigint {
-    const userId = req.user?.id;
-
-    if (userId === undefined) {
-      throw new UnauthorizedException();
-    }
-
-    return userId;
   }
 
   @Post('pdf')
@@ -121,10 +114,10 @@ export class ReportController {
   })
   async createPdfReport(
     @Body() body: CreatePdfReportRequestDto,
-    @Req() req: Request,
+    @CurrentUser() user: AuthenticatedUser,
     @Res() res: Response,
   ): Promise<void> {
-    const userId = this.extractUserId(req);
+    const userId = BigInt(user.id);
 
     const { buffer, filename } = await this.reportService.createPdfReport(
       userId,
