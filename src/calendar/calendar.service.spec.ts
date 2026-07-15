@@ -218,6 +218,10 @@ describe('CalendarService', () => {
         hasBowel: true,
         stoolSimple: 'M',
       });
+      // 부글 기록은 태그 구조 삭제(#24)로 memo/autoTags/tags를 더 이상 포함하지 않는다.
+      expect(result.boogleRecords[0]).not.toHaveProperty('tags');
+      expect(result.boogleRecords[0]).not.toHaveProperty('memo');
+      expect(result.boogleRecords[0]).not.toHaveProperty('autoTags');
       expect(result.lifeRecord).toMatchObject({
         id: 55,
         autoTags: [],
