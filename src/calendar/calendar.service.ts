@@ -163,9 +163,6 @@ export class CalendarService {
           regDate: { gte: dayStart, lte: dayEnd },
         },
         orderBy: { regDate: 'asc' },
-        include: {
-          boogleTags: { include: { tag: true } },
-        },
       }),
       this.prisma.lifeRecord.findFirst({
         where: {
@@ -196,12 +193,6 @@ export class CalendarService {
         takenTime: record.takenTime,
         amount: record.amount,
         color: record.color,
-        memo: record.memo,
-        autoTags: parseAutoTags(record.autoTags),
-        tags: record.boogleTags.map((bt) => ({
-          id: Number(bt.tag.id),
-          name: bt.tag.name,
-        })),
         updatedAt: record.updateDate,
       }),
     );

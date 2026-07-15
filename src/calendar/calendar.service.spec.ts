@@ -188,10 +188,7 @@ describe('CalendarService', () => {
           takenTime: 2,
           amount: 'N',
           color: 'B',
-          memo: '회식 후 기록',
-          autoTags: '음주, 야식',
           updateDate: null,
-          boogleTags: [{ tag: { id: 3n, name: '회식' } }],
         },
       ]);
       prisma.lifeRecord.findFirst.mockResolvedValue({
@@ -220,9 +217,11 @@ describe('CalendarService', () => {
         id: 100,
         hasBowel: true,
         stoolSimple: 'M',
-        autoTags: ['음주', '야식'],
-        tags: [{ id: 3, name: '회식' }],
       });
+      // 부글 기록은 태그 구조 삭제(#24)로 memo/autoTags/tags를 더 이상 포함하지 않는다.
+      expect(result.boogleRecords[0]).not.toHaveProperty('tags');
+      expect(result.boogleRecords[0]).not.toHaveProperty('memo');
+      expect(result.boogleRecords[0]).not.toHaveProperty('autoTags');
       expect(result.lifeRecord).toMatchObject({
         id: 55,
         autoTags: [],
