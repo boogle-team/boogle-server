@@ -402,7 +402,7 @@ export class LifeRecordService {
       return target.includes('life_record_index_2');
     }
     if (Array.isArray(target)) {
-      return target.includes('userId') || target.includes('regDate');
+      return target.includes('userId') && target.includes('regDate');
     }
     return false;
   }

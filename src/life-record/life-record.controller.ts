@@ -30,6 +30,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { ResponseMessage } from '@/common/decorators/response-message.decorator';
+import { errorExamples } from '@/common/swagger/error-example.util';
 import { LifeRecordService } from './life-record.service';
 import { CreateLifeRecordDto } from './dto/create-life-record.dto';
 import { UpdateLifeRecordDto } from './dto/update-life-record.dto';
@@ -46,6 +47,16 @@ import {
 
 const TOKEN_UNAUTHORIZED_DESCRIPTION =
   'token 누락 또는 유효하지 않거나 만료된 token';
+
+const TOKEN_ERROR_EXAMPLES = {
+  TOKEN_REQUIRED: 'token이 필요합니다.',
+  TOKEN_INVALID: '유효하지 않은 token입니다.',
+  TOKEN_EXPIRED: 'token이 만료되었습니다.',
+};
+
+const LIFE_ID_NOT_A_NUMBER_EXAMPLES = {
+  BAD_REQUEST: '요청 값이 올바르지 않습니다.',
+};
 
 @ApiTags('생활 기록')
 @ApiBearerAuth()
@@ -68,14 +79,29 @@ export class LifeRecordController {
   @ApiBadRequestResponse({
     description:
       'regDate 형식이 올바르지 않거나(INVALID_DATE_FORMAT), 생활 기록 항목 값이 올바르지 않거나(INVALID_LIFE_VALUE), 존재하지 않는 foodId(INVALID_FOOD_ID)/medicineId(INVALID_MEDICINE_ID)가 포함됨',
+    examples: errorExamples({
+      INVALID_DATE_FORMAT: '날짜 형식이 올바르지 않습니다.',
+      INVALID_LIFE_VALUE: '생활 기록 항목 값이 올바르지 않습니다.',
+      INVALID_FOOD_ID: '존재하지 않는 foodId가 포함되어 있습니다.',
+      INVALID_MEDICINE_ID: '존재하지 않는 medicineId가 포함되어 있습니다.',
+    }),
   })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   @ApiConflictResponse({
     description:
       '해당 날짜의 생활 기록이 이미 존재함(LIFE_RECORD_ALREADY_EXISTS)',
+    examples: errorExamples({
+      LIFE_RECORD_ALREADY_EXISTS: '해당 날짜의 생활 기록이 이미 존재합니다.',
+    }),
   })
   @ApiInternalServerErrorResponse({
     description: '생활 기록 저장 중 오류 발생(LIFE_RECORD_CREATE_FAILED)',
+    examples: errorExamples({
+      LIFE_RECORD_CREATE_FAILED: '생활 기록 저장 중 오류가 발생했습니다.',
+    }),
   })
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -99,10 +125,20 @@ export class LifeRecordController {
   @ApiBadRequestResponse({
     description:
       '태그를 추출할 문장이 없거나(TEXT_REQUIRED), 255자를 초과함(TEXT_TOO_LONG)',
+    examples: errorExamples({
+      TEXT_REQUIRED: '태그를 추출할 문장이 필요합니다.',
+      TEXT_TOO_LONG: '입력 문장은 255자 이하로 입력해야 합니다.',
+    }),
   })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   @ApiInternalServerErrorResponse({
     description: 'AI 태그 추출 실패(TAG_EXTRACTION_FAILED)',
+    examples: errorExamples({
+      TAG_EXTRACTION_FAILED: '태그 추출 중 오류가 발생했습니다.',
+    }),
   })
   extractTags(
     @CurrentUser() _user: AuthenticatedUser,
@@ -124,8 +160,14 @@ export class LifeRecordController {
   })
   @ApiBadRequestResponse({
     description: 'startDate/endDate 형식이 올바르지 않음(INVALID_DATE_FORMAT)',
+    examples: errorExamples({
+      INVALID_DATE_FORMAT: '날짜 형식이 올바르지 않습니다.',
+    }),
   })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: LifeRecordListQueryDto,
@@ -150,13 +192,25 @@ export class LifeRecordController {
     type: LifeRecordDetailResponseDto,
     description: '생활 기록 상세 조회 성공',
   })
-  @ApiBadRequestResponse({ description: 'lifeId가 숫자 형식이 아님' })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiBadRequestResponse({
+    description: 'lifeId가 숫자 형식이 아님',
+    examples: errorExamples(LIFE_ID_NOT_A_NUMBER_EXAMPLES),
+  })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   @ApiForbiddenResponse({
     description: '다른 사용자의 생활 기록에 접근함(LIFE_RECORD_FORBIDDEN)',
+    examples: errorExamples({
+      LIFE_RECORD_FORBIDDEN: '해당 기록에 접근할 권한이 없습니다.',
+    }),
   })
   @ApiNotFoundResponse({
     description: '생활 기록을 찾을 수 없음(LIFE_RECORD_NOT_FOUND)',
+    examples: errorExamples({
+      LIFE_RECORD_NOT_FOUND: '생활 기록을 찾을 수 없습니다.',
+    }),
   })
   findOne(
     @CurrentUser() user: AuthenticatedUser,
@@ -185,13 +239,28 @@ export class LifeRecordController {
   @ApiBadRequestResponse({
     description:
       'lifeId가 숫자 형식이 아니거나, 생활 기록 항목 값이 올바르지 않거나(INVALID_LIFE_VALUE), 존재하지 않는 foodId(INVALID_FOOD_ID)/medicineId(INVALID_MEDICINE_ID)가 포함됨',
+    examples: errorExamples({
+      ...LIFE_ID_NOT_A_NUMBER_EXAMPLES,
+      INVALID_LIFE_VALUE: '생활 기록 항목 값이 올바르지 않습니다.',
+      INVALID_FOOD_ID: '존재하지 않는 foodId가 포함되어 있습니다.',
+      INVALID_MEDICINE_ID: '존재하지 않는 medicineId가 포함되어 있습니다.',
+    }),
   })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   @ApiForbiddenResponse({
     description: '다른 사용자의 생활 기록에 접근함(LIFE_RECORD_FORBIDDEN)',
+    examples: errorExamples({
+      LIFE_RECORD_FORBIDDEN: '해당 기록에 접근할 권한이 없습니다.',
+    }),
   })
   @ApiNotFoundResponse({
     description: '생활 기록을 찾을 수 없음(LIFE_RECORD_NOT_FOUND)',
+    examples: errorExamples({
+      LIFE_RECORD_NOT_FOUND: '생활 기록을 찾을 수 없습니다.',
+    }),
   })
   update(
     @CurrentUser() user: AuthenticatedUser,
@@ -215,13 +284,25 @@ export class LifeRecordController {
   })
   @ResponseMessage('생활 기록이 삭제되었습니다.')
   @ApiOkResponse({ description: '생활 기록 삭제 성공' })
-  @ApiBadRequestResponse({ description: 'lifeId가 숫자 형식이 아님' })
-  @ApiUnauthorizedResponse({ description: TOKEN_UNAUTHORIZED_DESCRIPTION })
+  @ApiBadRequestResponse({
+    description: 'lifeId가 숫자 형식이 아님',
+    examples: errorExamples(LIFE_ID_NOT_A_NUMBER_EXAMPLES),
+  })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
   @ApiForbiddenResponse({
     description: '다른 사용자의 생활 기록에 접근함(LIFE_RECORD_FORBIDDEN)',
+    examples: errorExamples({
+      LIFE_RECORD_FORBIDDEN: '해당 기록에 접근할 권한이 없습니다.',
+    }),
   })
   @ApiNotFoundResponse({
     description: '생활 기록을 찾을 수 없음(LIFE_RECORD_NOT_FOUND)',
+    examples: errorExamples({
+      LIFE_RECORD_NOT_FOUND: '생활 기록을 찾을 수 없습니다.',
+    }),
   })
   remove(
     @CurrentUser() user: AuthenticatedUser,

@@ -210,6 +210,42 @@ describe('LifeRecordService', () => {
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });
     });
+
+    it('target이 [userId, regDate] 배열(복합 충돌)이면 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.8.0',
+          meta: { target: ['userId', 'regDate'] },
+        }),
+      );
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
+      });
+    });
+
+    it('target 배열에 userId 또는 regDate 중 하나만 있으면 날짜 중복이 아니므로 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.8.0',
+          meta: { target: ['userId'] },
+        }),
+      );
+
+      await expect(
+        service.create('1', { regDate: '2026-07-02' }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
+      });
+    });
   });
 
   describe('extractTags', () => {
