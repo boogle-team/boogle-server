@@ -21,12 +21,15 @@ import {
   LifeRecordListResponseDto,
   LifeRecordUpdateResponseDto,
 } from './dto/life-record-response.dto';
+import { TodayTagsResponseDto } from './dto/today-tags-response.dto';
 import { GeminiTagExtractorService } from './gemini-tag-extractor.service';
 import {
   formatDateOnly,
   formatDateTime,
+  getTodayKstDateString,
   isValidLifeValue,
   isValidRegDate,
+  isValidSleepTime,
   LIFE_VALUE_CODES,
   toBigInt,
   toNumberId,
@@ -92,6 +95,7 @@ export class LifeRecordService {
           sleep: dto.sleep,
           stress: dto.stress,
           water: dto.water,
+          waterIntake: dto.waterIntake,
           mealRegular: dto.mealRegular,
           memo: dto.memo,
           autoTags: tagNames.length ? tagNames.join(',') : null,
@@ -259,6 +263,32 @@ export class LifeRecordService {
     return this.toDetailResponse(record);
   }
 
+  async getTodayTags(
+    userId: string,
+    dateParam?: string,
+  ): Promise<TodayTagsResponseDto> {
+    if (dateParam && !isValidRegDate(dateParam)) {
+      this.throwInvalidDateFormat();
+    }
+
+    const regDate = dateParam ?? getTodayKstDateString();
+    const record = await this.prisma.lifeRecord.findUnique({
+      where: {
+        userId_regDate: {
+          userId: toBigInt(userId),
+          regDate: this.toDate(regDate),
+        },
+      },
+      include: { lifeTags: { include: { tag: true } } },
+    });
+
+    if (!record || record.status === 'D') {
+      return { tagNames: [] };
+    }
+
+    return { tagNames: record.lifeTags.map((lifeTag) => lifeTag.tag.name) };
+  }
+
   async update(
     userId: string,
     lifeId: number,
@@ -301,6 +331,7 @@ export class LifeRecordService {
           sleep: dto.sleep,
           stress: dto.stress,
           water: dto.water,
+          waterIntake: dto.waterIntake,
           mealRegular: dto.mealRegular,
           memo: dto.memo,
           autoTags:
@@ -418,19 +449,16 @@ export class LifeRecordService {
   private assertValidLifeValues(
     dto: CreateLifeRecordDto | UpdateLifeRecordDto,
   ): void {
-    const hasInvalidChar = LIFE_VALUE_FIELDS.some((field) => {
-      const value: unknown = dto[field];
-      if (value != null && typeof value !== 'string') {
-        return true;
-      }
+    const hasInvalidChar = LIFE_VALUE_FIELDS.some(
+      (field) =>
+        !isValidLifeValue(field, dto[field] as string | null | undefined),
+    );
+    const hasInvalidSleepTime = !isValidSleepTime(dto.sleepTime);
+    const hasInvalidWaterIntake =
+      dto.waterIntake != null &&
+      (!Number.isInteger(dto.waterIntake) || dto.waterIntake < 0);
 
-      return !isValidLifeValue(field, value);
-    });
-    const hasInvalidSleepTime =
-      dto.sleepTime != null &&
-      (!Number.isInteger(dto.sleepTime) || dto.sleepTime < 0);
-
-    if (hasInvalidChar || hasInvalidSleepTime) {
+    if (hasInvalidChar || hasInvalidSleepTime || hasInvalidWaterIntake) {
       throw new BusinessException(
         LifeRecordErrorCode.INVALID_LIFE_VALUE,
         '생활 기록 항목 값이 올바르지 않습니다.',
@@ -499,6 +527,7 @@ export class LifeRecordService {
       sleep: record.sleep,
       stress: record.stress,
       water: record.water,
+      waterIntake: record.waterIntake,
       mealRegular: record.mealRegular,
       memo: record.memo,
       autoTags: record.autoTags,
@@ -531,6 +560,7 @@ export class LifeRecordService {
       sleep: record.sleep,
       stress: record.stress,
       water: record.water,
+      waterIntake: record.waterIntake,
       mealRegular: record.mealRegular,
       memo: record.memo,
       tagNames: record.lifeTags.map((lifeTag) => lifeTag.tag.name),

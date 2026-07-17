@@ -13,6 +13,7 @@ describe('LifeRecordController', () => {
     extractTags: jest.Mock;
     findAll: jest.Mock;
     findOne: jest.Mock;
+    getTodayTags: jest.Mock;
     update: jest.Mock;
     remove: jest.Mock;
   };
@@ -25,6 +26,7 @@ describe('LifeRecordController', () => {
       extractTags: jest.fn(),
       findAll: jest.fn(),
       findOne: jest.fn(),
+      getTodayTags: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
     };
@@ -45,7 +47,14 @@ describe('LifeRecordController', () => {
   });
 
   it('create는 userId와 dto를 그대로 서비스에 위임한다', async () => {
-    const dto = { regDate: '2026-07-02' };
+    const dto = {
+      regDate: '2026-07-02',
+      sleep: 'B',
+      stress: 'H',
+      water: 'N',
+      mealRegular: 'I',
+      foodIds: [1],
+    };
     await controller.create(user, dto);
     expect(service.create).toHaveBeenCalledWith('1', dto);
   });
@@ -64,6 +73,11 @@ describe('LifeRecordController', () => {
   it('findOne은 userId와 lifeId를 서비스에 위임한다', async () => {
     await controller.findOne(user, 15);
     expect(service.findOne).toHaveBeenCalledWith('1', 15);
+  });
+
+  it('getTodayTags는 userId와 date를 서비스에 위임한다', async () => {
+    await controller.getTodayTags(user, { date: '2026-07-02' });
+    expect(service.getTodayTags).toHaveBeenCalledWith('1', '2026-07-02');
   });
 
   it('update는 userId, lifeId, dto를 서비스에 위임한다', async () => {
@@ -86,7 +100,27 @@ describe('LifeRecordController', () => {
     service.create.mockRejectedValue(error);
 
     await expect(
-      controller.create(user, { regDate: '2026-07-02' }),
+      controller.create(user, {
+        regDate: '2026-07-02',
+        sleep: 'B',
+        stress: 'H',
+        water: 'N',
+        mealRegular: 'I',
+        foodIds: [1],
+      }),
+    ).rejects.toBe(error);
+  });
+
+  it('getTodayTags는 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.INVALID_DATE_FORMAT,
+      '날짜 형식이 올바르지 않습니다.',
+      HttpStatus.BAD_REQUEST,
+    );
+    service.getTodayTags.mockRejectedValue(error);
+
+    await expect(
+      controller.getTodayTags(user, { date: '2026/07/02' }),
     ).rejects.toBe(error);
   });
 

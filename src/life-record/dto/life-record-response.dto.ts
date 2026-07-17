@@ -28,6 +28,13 @@ export class LifeRecordDetailResponseDto {
   @ApiPropertyOptional({ nullable: true, example: 'N' })
   water: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 1,
+    description: '물 섭취량 (잔 수, 1잔 ≈ 200ml)',
+  })
+  waterIntake: number | null;
+
   @ApiPropertyOptional({ nullable: true, example: 'I' })
   mealRegular: string | null;
 
@@ -43,7 +50,11 @@ export class LifeRecordDetailResponseDto {
   @ApiProperty({ type: [String], example: ['야식', '매운 음식', '카페인'] })
   tagNames: string[];
 
-  @ApiPropertyOptional({ nullable: true, example: 4 })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 2,
+    description: '1 5시간 이하 / 2 5~7시간 / 3 7시간 이상',
+  })
   sleepTime: number | null;
 
   @ApiPropertyOptional({ nullable: true, example: 'N' })
@@ -70,8 +81,8 @@ export class LifeRecordDetailResponseDto {
   @ApiProperty({
     type: [FoodDto],
     example: [
-      { id: 1, name: '자극적인 음식' },
-      { id: 3, name: '카페인' },
+      { id: 3, name: '자극적인 음식' },
+      { id: 6, name: '채소·잡곡' },
     ],
   })
   foods: FoodDto[];
@@ -102,6 +113,9 @@ export class LifeRecordUpdateResponseDto {
   @ApiPropertyOptional({ nullable: true })
   water: string | null;
 
+  @ApiPropertyOptional({ nullable: true, example: 1 })
+  waterIntake: number | null;
+
   @ApiPropertyOptional({ nullable: true })
   mealRegular: string | null;
 
@@ -114,7 +128,11 @@ export class LifeRecordUpdateResponseDto {
   @ApiProperty({ type: [String], example: ['야식', '매운 음식', '카페인'] })
   tagNames: string[];
 
-  @ApiPropertyOptional({ nullable: true, example: 4 })
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 2,
+    description: '1 5시간 이하 / 2 5~7시간 / 3 7시간 이상',
+  })
   sleepTime: number | null;
 
   @ApiPropertyOptional({ nullable: true, example: 'N' })
@@ -141,8 +159,8 @@ export class LifeRecordUpdateResponseDto {
   @ApiProperty({
     type: [FoodDto],
     example: [
-      { id: 1, name: '자극적인 음식' },
-      { id: 3, name: '카페인' },
+      { id: 3, name: '자극적인 음식' },
+      { id: 6, name: '채소·잡곡' },
     ],
   })
   foods: FoodDto[];
@@ -185,8 +203,8 @@ export class LifeRecordListItemDto {
   @ApiProperty({
     type: [FoodDto],
     example: [
-      { id: 1, name: '자극적인 음식' },
-      { id: 3, name: '카페인' },
+      { id: 3, name: '자극적인 음식' },
+      { id: 6, name: '채소·잡곡' },
     ],
   })
   foods: FoodDto[];

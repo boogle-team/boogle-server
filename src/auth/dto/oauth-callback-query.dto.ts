@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
 import { IsOptional, IsString } from 'class-validator';
 
 export class OAuthCallbackQueryDto {
@@ -18,7 +19,8 @@ export class OAuthCallbackQueryDto {
   error?: string;
 
   @ApiPropertyOptional({ description: '소셜 제공자의 오류 설명' })
+  @Expose({ name: 'error_description' })
   @IsOptional()
   @IsString()
-  error_description?: string;
+  errorDescription?: string;
 }

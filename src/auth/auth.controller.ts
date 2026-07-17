@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -26,7 +27,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ResponseMessage } from '@/common/decorators/response-message.decorator';
 import { AuthService } from './auth.service';
@@ -56,8 +57,12 @@ export class AuthController {
     @Param('provider') provider: string,
     @Res() response: Response,
   ) {
-    const authorizationUrl =
+    const { authorizationUrl, state, stateExpiresIn } =
       await this.authService.createAuthorizationUrl(provider);
+    response.cookie(this.getOAuthStateCookieName(provider), state, {
+      ...this.getOAuthStateCookieOptions(provider),
+      maxAge: stateExpiresIn * 1000,
+    });
     return response.redirect(HttpStatus.FOUND, authorizationUrl);
   }
 
@@ -70,13 +75,23 @@ export class AuthController {
   async handleOAuthCallback(
     @Param('provider') provider: string,
     @Query() query: OAuthCallbackQueryDto,
+    @Req() request: Request,
     @Res() response: Response,
   ) {
-    const redirectUrl = await this.authService.createOAuthCallbackRedirect(
-      provider,
-      query,
-    );
-    return response.redirect(HttpStatus.FOUND, redirectUrl);
+    const cookieName = this.getOAuthStateCookieName(provider);
+    try {
+      const redirectUrl = await this.authService.createOAuthCallbackRedirect(
+        provider,
+        query,
+        this.readCookie(request, cookieName),
+      );
+      return response.redirect(HttpStatus.FOUND, redirectUrl);
+    } finally {
+      response.clearCookie(
+        cookieName,
+        this.getOAuthStateCookieOptions(provider),
+      );
+    }
   }
 
   @Post('oauth/exchange')
@@ -114,6 +129,8 @@ export class AuthController {
 
   @Post('social-link')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: '동일 이메일 소셜 계정 연동' })
   @ApiBody({ type: SocialLinkRequestDto })
   @ApiOkResponse({ description: '소셜 계정 연동 성공' })
@@ -121,11 +138,15 @@ export class AuthController {
     description: '계정 연동 티켓 또는 인증된 이메일 누락',
   })
   @ApiUnauthorizedResponse({ description: '유효하지 않거나 만료된 티켓' })
+  @ApiForbiddenResponse({ description: '기존 회원 인증 세션 불일치' })
   @ApiConflictResponse({ description: '이미 연동된 소셜 계정' })
   @ApiNotFoundResponse({ description: '연동할 기존 회원을 찾을 수 없음' })
   @ResponseMessage('소셜 계정이 연동되었습니다.')
-  socialLink(@Body() dto: SocialLinkRequestDto) {
-    return this.authService.socialLink(dto);
+  socialLink(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SocialLinkRequestDto,
+  ) {
+    return this.authService.socialLink(user.id, dto);
   }
 
   @Post('logout')
@@ -156,5 +177,34 @@ export class AuthController {
   @ResponseMessage('토큰이 재발급되었습니다.')
   refresh(@Body() dto: RefreshTokenRequestDto) {
     return this.authService.refresh(dto);
+  }
+
+  private getOAuthStateCookieName(provider: string) {
+    return `boogle_oauth_state_${provider}`;
+  }
+
+  private getOAuthStateCookieOptions(provider: string): CookieOptions {
+    return {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: `/api/v1/auth/oauth/${provider}/callback`,
+    };
+  }
+
+  private readCookie(request: Request, name: string) {
+    const cookieHeader = request.headers.cookie;
+    if (!cookieHeader) {
+      return undefined;
+    }
+
+    for (const cookie of cookieHeader.split(';')) {
+      const [cookieName, ...valueParts] = cookie.trim().split('=');
+      if (cookieName === name) {
+        return decodeURIComponent(valueParts.join('='));
+      }
+    }
+
+    return undefined;
   }
 }

@@ -1,3 +1,5 @@
+import { HttpStatus } from '@nestjs/common';
+import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AuthErrorCode } from './auth-error-code.enum';
 import { AuthTemporaryTokenService } from './auth-temporary-token.service';
@@ -85,13 +87,18 @@ describe('AuthService', () => {
   it('creates a Google authorization URL with state and PKCE', async () => {
     temporaryTokens.create.mockResolvedValue('state-value');
 
-    const result = new URL(await service.createAuthorizationUrl('google'));
+    const authorization = await service.createAuthorizationUrl('google');
+    const result = new URL(authorization.authorizationUrl);
 
     expect(result.origin + result.pathname).toBe(
       'https://accounts.google.com/o/oauth2/v2/auth',
     );
     expect(result.searchParams.get('state')).toBe('state-value');
     expect(result.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(authorization).toMatchObject({
+      state: 'state-value',
+      stateExpiresIn: 600,
+    });
     expect(temporaryTokens.create).toHaveBeenCalledWith(
       'OAUTH_STATE',
       expect.objectContaining({ provider: 'google' }),
@@ -129,10 +136,14 @@ describe('AuthService', () => {
     prisma.socialAccount.findFirst.mockResolvedValue({ user: member });
 
     await expect(
-      service.createOAuthCallbackRedirect('kakao', {
-        code: 'authorization-code',
-        state: 'state-value',
-      }),
+      service.createOAuthCallbackRedirect(
+        'kakao',
+        {
+          code: 'authorization-code',
+          state: 'state-value',
+        },
+        'state-value',
+      ),
     ).resolves.toBe(
       'https://frontend.example.com/oauth/callback?oauthResultCode=result-code',
     );
@@ -151,10 +162,14 @@ describe('AuthService', () => {
     });
 
     await expect(
-      service.createOAuthCallbackRedirect('kakao', {
-        state: 'state-value',
-        error: 'access_denied',
-      }),
+      service.createOAuthCallbackRedirect(
+        'kakao',
+        {
+          state: 'state-value',
+          error: 'access_denied',
+        },
+        'state-value',
+      ),
     ).resolves.toBe(
       'https://frontend.example.com/oauth/callback?error=AUTH_OAUTH_ACCESS_DENIED',
     );
@@ -253,11 +268,217 @@ describe('AuthService', () => {
     prisma.refreshToken.create.mockResolvedValue({});
 
     await expect(
-      service.socialLink({ linkTicket: 'link-ticket' }),
+      service.socialLink('1', { linkTicket: 'link-ticket' }),
     ).resolves.toMatchObject({
       socialAccounts: [
         { provider: 'KAKAO', maskedEmail: 'memb****@example.com' },
       ],
+    });
+  });
+
+  it('rejects account linking when the authenticated member does not match', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      ...signupResult,
+      kind: 'LINK',
+      memberId: '1',
+      existingProvider: 'GOOGLE',
+    });
+
+    await expect(
+      service.socialLink('2', { linkTicket: 'link-ticket' }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.AUTH_ACCOUNT_LINK_AUTHENTICATION_REQUIRED,
+      status: HttpStatus.FORBIDDEN,
+    });
+    expect(prisma.socialAccount.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('rejects a callback when browser-bound state does not match', async () => {
+    await expect(
+      service.createOAuthCallbackRedirect(
+        'google',
+        { code: 'code', state: 'returned-state' },
+        'browser-state',
+      ),
+    ).resolves.toBe(
+      'https://frontend.example.com/oauth/callback?error=AUTH_OAUTH_STATE_INVALID',
+    );
+    expect(temporaryTokens.consume).not.toHaveBeenCalled();
+  });
+
+  it('maps an unexpected authorization-state creation failure', async () => {
+    temporaryTokens.create.mockRejectedValue(new Error('database failed'));
+
+    await expect(
+      service.createAuthorizationUrl('google'),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.AUTH_OAUTH_STATE_CREATE_FAILED,
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+    });
+  });
+
+  it.each([
+    [AuthErrorCode.AUTH_OAUTH_STATE_INVALID, 'invalid or reused'],
+    [AuthErrorCode.AUTH_OAUTH_STATE_EXPIRED, 'expired'],
+  ])('maps %s callback token failures', async (errorCode) => {
+    temporaryTokens.consume.mockRejectedValue(
+      new BusinessException(errorCode, 'state failed', HttpStatus.UNAUTHORIZED),
+    );
+
+    await expect(
+      service.createOAuthCallbackRedirect(
+        'google',
+        { code: 'code', state: 'state-value' },
+        'state-value',
+      ),
+    ).resolves.toBe(
+      `https://frontend.example.com/oauth/callback?error=${errorCode}`,
+    );
+  });
+
+  it.each([
+    AuthErrorCode.AUTH_OAUTH_RESULT_INVALID,
+    AuthErrorCode.AUTH_OAUTH_RESULT_EXPIRED,
+  ])('propagates %s while exchanging an OAuth result', async (errorCode) => {
+    temporaryTokens.consume.mockRejectedValue(
+      new BusinessException(
+        errorCode,
+        'result failed',
+        HttpStatus.UNAUTHORIZED,
+      ),
+    );
+
+    await expect(
+      service.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
+    ).rejects.toMatchObject({
+      errorCode,
+      status: HttpStatus.UNAUTHORIZED,
+    });
+  });
+
+  it.each([
+    AuthErrorCode.AUTH_SIGNUP_TICKET_INVALID,
+    AuthErrorCode.AUTH_SIGNUP_TICKET_EXPIRED,
+  ])('propagates %s while signing up', async (errorCode) => {
+    temporaryTokens.consume.mockRejectedValue(
+      new BusinessException(
+        errorCode,
+        'signup failed',
+        HttpStatus.UNAUTHORIZED,
+      ),
+    );
+
+    await expect(
+      service.signup({
+        signupTicket: 'signup-ticket',
+        privacyPolicyAgreed: true,
+        privacyPolicyVersion: '2026.07.15',
+        sensitiveInfoAgreed: false,
+        sensitiveInfoPolicyVersion: '2026.07.15',
+      }),
+    ).rejects.toMatchObject({
+      errorCode,
+      status: HttpStatus.UNAUTHORIZED,
+    });
+  });
+
+  it.each([
+    AuthErrorCode.AUTH_LINK_TICKET_INVALID,
+    AuthErrorCode.AUTH_LINK_TICKET_EXPIRED,
+  ])('propagates %s while linking an account', async (errorCode) => {
+    temporaryTokens.consume.mockRejectedValue(
+      new BusinessException(errorCode, 'link failed', HttpStatus.UNAUTHORIZED),
+    );
+
+    await expect(
+      service.socialLink('1', { linkTicket: 'link-ticket' }),
+    ).rejects.toMatchObject({
+      errorCode,
+      status: HttpStatus.UNAUTHORIZED,
+    });
+  });
+
+  it('rotates a refresh token atomically', async () => {
+    temporaryTokens.consume.mockResolvedValue(signupResult);
+    prisma.socialAccount.findFirst.mockResolvedValue(null);
+    prisma.member.findUnique.mockResolvedValue(null);
+    prisma.member.create.mockResolvedValue(member);
+    prisma.socialAccount.create.mockResolvedValue({});
+    prisma.memberConsent.createMany.mockResolvedValue({ count: 2 });
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const signup = await service.signup({
+      signupTicket: 'signup-ticket',
+      privacyPolicyAgreed: true,
+      privacyPolicyVersion: '2026.07.15',
+      sensitiveInfoAgreed: false,
+      sensitiveInfoPolicyVersion: '2026.07.15',
+    });
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      id: 1n,
+      userId: member.id,
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      user: member,
+    });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+
+    const refreshed = await service.refresh({
+      refreshToken: signup.refreshToken,
+    });
+    expect(typeof refreshed.accessToken).toBe('string');
+    expect(typeof refreshed.refreshToken).toBe('string');
+    expect(prisma.$transaction).toHaveBeenCalled();
+    const updateCalls = prisma.refreshToken.updateMany.mock
+      .calls as unknown as Array<
+      [
+        {
+          where: {
+            id: bigint;
+            revokedAt: null;
+            expiresAt: { gt: Date };
+          };
+          data: { revokedAt: Date };
+        },
+      ]
+    >;
+    const updateInput = updateCalls[0][0];
+    expect(updateInput.where.id).toBe(1n);
+    expect(updateInput.where.revokedAt).toBeNull();
+    expect(updateInput.where.expiresAt.gt).toBeInstanceOf(Date);
+    expect(updateInput.data.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it('rejects a concurrent refresh-token reuse attempt', async () => {
+    temporaryTokens.consume.mockResolvedValue(signupResult);
+    prisma.socialAccount.findFirst.mockResolvedValue(null);
+    prisma.member.findUnique.mockResolvedValue(null);
+    prisma.member.create.mockResolvedValue(member);
+    prisma.socialAccount.create.mockResolvedValue({});
+    prisma.memberConsent.createMany.mockResolvedValue({ count: 2 });
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const signup = await service.signup({
+      signupTicket: 'signup-ticket',
+      privacyPolicyAgreed: true,
+      privacyPolicyVersion: '2026.07.15',
+      sensitiveInfoAgreed: false,
+      sensitiveInfoPolicyVersion: '2026.07.15',
+    });
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      id: 1n,
+      userId: member.id,
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      user: member,
+    });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.refresh({ refreshToken: signup.refreshToken }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.REFRESH_TOKEN_INVALID,
+      status: HttpStatus.UNAUTHORIZED,
     });
   });
 });

@@ -83,12 +83,13 @@ export class AuthService {
     try {
       const clientId = this.getProviderClientId(provider);
       const redirectUri = this.getProviderRedirectUri(provider);
+      const stateExpiresIn = this.getOAuthStateExpiresIn();
       const codeVerifier =
         provider === 'google' ? randomBytes(48).toString('base64url') : null;
       const state = await this.temporaryTokens.create(
         'OAUTH_STATE',
         { provider, redirectUri, codeVerifier },
-        this.getOAuthStateExpiresIn(),
+        stateExpiresIn,
       );
 
       if (provider === 'google') {
@@ -107,7 +108,11 @@ export class AuthService {
           access_type: 'online',
           prompt: 'select_account',
         }).toString();
-        return authorizationUrl.toString();
+        return {
+          authorizationUrl: authorizationUrl.toString(),
+          state,
+          stateExpiresIn,
+        };
       }
 
       const authorizationUrl = new URL(
@@ -120,7 +125,11 @@ export class AuthService {
         response_type: 'code',
         state,
       }).toString();
-      return authorizationUrl.toString();
+      return {
+        authorizationUrl: authorizationUrl.toString(),
+        state,
+        stateExpiresIn,
+      };
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;
@@ -138,11 +147,16 @@ export class AuthService {
   async createOAuthCallbackRedirect(
     providerValue: string,
     query: OAuthCallbackQueryDto,
+    browserState?: string,
   ) {
     try {
       const provider = this.assertProvider(providerValue);
 
-      if (!query.state) {
+      if (
+        !query.state ||
+        !browserState ||
+        !this.isEqualOpaqueValue(query.state, browserState)
+      ) {
         throw new BusinessException(
           AuthErrorCode.AUTH_OAUTH_STATE_INVALID,
           '유효하지 않은 OAuth state입니다.',
@@ -435,7 +449,7 @@ export class AuthService {
     }
   }
 
-  async socialLink(dto: SocialLinkRequestDto) {
+  async socialLink(userId: string, dto: SocialLinkRequestDto) {
     try {
       const rawPayload = await this.temporaryTokens.consume<unknown>(
         dto.linkTicket,
@@ -464,6 +478,14 @@ export class AuthService {
 
       const providerCode = this.toProviderCode(profile.provider);
       const memberId = this.toBigIntId(profile.memberId);
+      if (memberId !== this.toBigIntId(userId)) {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_ACCOUNT_LINK_AUTHENTICATION_REQUIRED,
+          '기존 계정으로 로그인한 후 소셜 계정을 연동해주세요.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
       const existingSocialAccount = await this.prisma.socialAccount.findFirst({
         where: {
           OR: [
@@ -606,11 +628,26 @@ export class AuthService {
     }
 
     this.assertActiveMember(savedToken.user);
-    await this.prisma.refreshToken.update({
-      where: { id: savedToken.id },
-      data: { revokedAt: new Date() },
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          id: savedToken.id,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { revokedAt: new Date() },
+      });
+
+      if (revoked.count !== 1) {
+        throw new BusinessException(
+          AuthErrorCode.REFRESH_TOKEN_INVALID,
+          '유효하지 않은 refreshToken입니다.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      return this.issueTokenPair(savedToken.user, tx);
     });
-    return this.issueTokenPair(savedToken.user);
   }
 
   authenticateAccessToken(authorization: string): AuthenticatedUser {
@@ -1322,6 +1359,15 @@ export class AuthService {
     return (
       signatureBuffer.length === expectedBuffer.length &&
       timingSafeEqual(signatureBuffer, expectedBuffer)
+    );
+  }
+
+  private isEqualOpaqueValue(value: string, expectedValue: string) {
+    const valueBuffer = Buffer.from(value);
+    const expectedBuffer = Buffer.from(expectedValue);
+    return (
+      valueBuffer.length === expectedBuffer.length &&
+      timingSafeEqual(valueBuffer, expectedBuffer)
     );
   }
 

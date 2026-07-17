@@ -157,6 +157,7 @@ model LifeRecord {
   sleep       String?   @db.Char(1) // 좋음G/보통N/부족B
   stress      String?   @db.Char(1) // 낮음L/보통N/높음H
   water       String?   @db.Char(1) // 부족L/보통N/충분H
+  waterIntake Int?      @map("water_intake") @db.TinyInt // 물 섭취량(잔 수, 1잔≈200ml)
   mealRegular String?   @map("meal_regular") @db.Char(1) // 규칙R/보통N/불규칙I
   memo        String?   @db.VarChar(255)
   autoTags    String?   @map("auto_tags") @db.VarChar(255)
