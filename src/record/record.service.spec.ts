@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RecordService } from './record.service';
 import { PrismaService } from '@/prisma/prisma.service';
+import { RecordErrorCode } from './record-error-code.enum';
 import { CreateRecordDto } from './dto/boogle-record.dto';
 
 describe('RecordService', () => {
@@ -14,6 +15,7 @@ describe('RecordService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RecordService,
@@ -43,7 +45,7 @@ describe('RecordService', () => {
       id: 1,
       userId: 1,
       regDate: new Date('2026-07-11'),
-      hasBowel: true,
+      hasBowel: false,
       stoolBristol: 4,
       stoolSimple: 'good',
       bowelFeeling: 'good',
@@ -76,5 +78,20 @@ describe('RecordService', () => {
 
     expect(result.regDate).toBe('2026-07-11');
     expect(result.id).toBe(1);
+  });
+
+  it('배변한 경우 필수 정보가 누락되면 생성을 거부한다', async () => {
+    const dto: Partial<CreateRecordDto> = {
+      regDate: '2026-07-11',
+      hasBowel: true,
+    };
+
+    await expect(
+      service.create(1, dto as CreateRecordDto),
+    ).rejects.toMatchObject({
+      errorCode: RecordErrorCode.INVALID_BOWEL_REQUEST,
+      status: 400,
+    });
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

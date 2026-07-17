@@ -450,7 +450,8 @@ export class LifeRecordService {
     dto: CreateLifeRecordDto | UpdateLifeRecordDto,
   ): void {
     const hasInvalidChar = LIFE_VALUE_FIELDS.some(
-      (field) => !isValidLifeValue(field, dto[field]),
+      (field) =>
+        !isValidLifeValue(field, dto[field] as string | null | undefined),
     );
     const hasInvalidSleepTime = !isValidSleepTime(dto.sleepTime);
     const hasInvalidWaterIntake =

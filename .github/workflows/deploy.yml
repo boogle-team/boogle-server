@@ -75,5 +75,6 @@ jobs:
             chmod 600 .env
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
+            docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
             docker compose up -d
             docker image prune -f

@@ -48,9 +48,13 @@ async function bootstrap() {
 const AUTH_VALIDATION_ERROR_MESSAGE: Partial<Record<AuthErrorCode, string>> = {
   [AuthErrorCode.AUTH_INVALID_PROVIDER]:
     '지원하지 않는 소셜 로그인 제공자입니다.',
-  [AuthErrorCode.AUTH_SOCIAL_TOKEN_REQUIRED]: '소셜 로그인 토큰은 필수입니다.',
+  [AuthErrorCode.AUTH_OAUTH_RESULT_REQUIRED]:
+    'OAuth 로그인 결과 코드는 필수입니다.',
+  [AuthErrorCode.AUTH_SIGNUP_TICKET_REQUIRED]: '회원가입 티켓은 필수입니다.',
+  [AuthErrorCode.AUTH_LINK_TICKET_REQUIRED]: '계정 연동 티켓은 필수입니다.',
   [AuthErrorCode.PRIVACY_POLICY_AGREEMENT_REQUIRED]:
     '개인정보 수집 동의가 필요합니다.',
+  [AuthErrorCode.REFRESH_TOKEN_REQUIRED]: 'refreshToken은 필수입니다.',
 };
 
 function createValidationException(errors: ValidationError[]) {

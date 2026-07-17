@@ -18,6 +18,9 @@ pnpm-debug.log*
 # coverage
 /coverage
 
+# temporary files
+/tmp
+
 # OS
 .DS_Store
 
