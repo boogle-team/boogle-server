@@ -32,6 +32,14 @@ export class CreateLifeRecordDto {
   water?: string;
 
   @ApiPropertyOptional({
+    example: 1,
+    description: '물 섭취량 (잔 수, 1잔 ≈ 200ml)',
+  })
+  @IsOptional()
+  @IsInt()
+  waterIntake?: number;
+
+  @ApiPropertyOptional({
     example: 'I',
     description: '규칙 R / 보통 N / 불규칙 I',
   })

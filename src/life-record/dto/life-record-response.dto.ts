@@ -28,6 +28,13 @@ export class LifeRecordDetailResponseDto {
   @ApiPropertyOptional({ nullable: true, example: 'N' })
   water: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 1,
+    description: '물 섭취량 (잔 수, 1잔 ≈ 200ml)',
+  })
+  waterIntake: number | null;
+
   @ApiPropertyOptional({ nullable: true, example: 'I' })
   mealRegular: string | null;
 
@@ -101,6 +108,9 @@ export class LifeRecordUpdateResponseDto {
 
   @ApiPropertyOptional({ nullable: true })
   water: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: 1 })
+  waterIntake: number | null;
 
   @ApiPropertyOptional({ nullable: true })
   mealRegular: string | null;

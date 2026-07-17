@@ -92,6 +92,7 @@ export class LifeRecordService {
           sleep: dto.sleep,
           stress: dto.stress,
           water: dto.water,
+          waterIntake: dto.waterIntake,
           mealRegular: dto.mealRegular,
           memo: dto.memo,
           autoTags: tagNames.length ? tagNames.join(',') : null,
@@ -301,6 +302,7 @@ export class LifeRecordService {
           sleep: dto.sleep,
           stress: dto.stress,
           water: dto.water,
+          waterIntake: dto.waterIntake,
           mealRegular: dto.mealRegular,
           memo: dto.memo,
           autoTags:
@@ -424,8 +426,11 @@ export class LifeRecordService {
     const hasInvalidSleepTime =
       dto.sleepTime != null &&
       (!Number.isInteger(dto.sleepTime) || dto.sleepTime < 0);
+    const hasInvalidWaterIntake =
+      dto.waterIntake != null &&
+      (!Number.isInteger(dto.waterIntake) || dto.waterIntake < 0);
 
-    if (hasInvalidChar || hasInvalidSleepTime) {
+    if (hasInvalidChar || hasInvalidSleepTime || hasInvalidWaterIntake) {
       throw new BusinessException(
         LifeRecordErrorCode.INVALID_LIFE_VALUE,
         '생활 기록 항목 값이 올바르지 않습니다.',
@@ -494,6 +499,7 @@ export class LifeRecordService {
       sleep: record.sleep,
       stress: record.stress,
       water: record.water,
+      waterIntake: record.waterIntake,
       mealRegular: record.mealRegular,
       memo: record.memo,
       autoTags: record.autoTags,
@@ -526,6 +532,7 @@ export class LifeRecordService {
       sleep: record.sleep,
       stress: record.stress,
       water: record.water,
+      waterIntake: record.waterIntake,
       mealRegular: record.mealRegular,
       memo: record.memo,
       tagNames: record.lifeTags.map((lifeTag) => lifeTag.tag.name),
