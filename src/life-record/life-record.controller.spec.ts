@@ -45,7 +45,14 @@ describe('LifeRecordController', () => {
   });
 
   it('create는 userId와 dto를 그대로 서비스에 위임한다', async () => {
-    const dto = { regDate: '2026-07-02' };
+    const dto = {
+      regDate: '2026-07-02',
+      sleep: 'B',
+      stress: 'H',
+      water: 'N',
+      mealRegular: 'I',
+      foodIds: [1],
+    };
     await controller.create(user, dto);
     expect(service.create).toHaveBeenCalledWith('1', dto);
   });
@@ -86,7 +93,14 @@ describe('LifeRecordController', () => {
     service.create.mockRejectedValue(error);
 
     await expect(
-      controller.create(user, { regDate: '2026-07-02' }),
+      controller.create(user, {
+        regDate: '2026-07-02',
+        sleep: 'B',
+        stress: 'H',
+        water: 'N',
+        mealRegular: 'I',
+        foodIds: [1],
+      }),
     ).rejects.toBe(error);
   });
 

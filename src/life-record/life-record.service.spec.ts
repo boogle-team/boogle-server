@@ -4,6 +4,18 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { LifeRecordService } from './life-record.service';
 import { GeminiTagExtractorService } from './gemini-tag-extractor.service';
 import { LifeRecordErrorCode } from './life-record-error-code.enum';
+import { CreateLifeRecordDto } from './dto/create-life-record.dto';
+
+const validCreateFields: Pick<
+  CreateLifeRecordDto,
+  'sleep' | 'stress' | 'water' | 'mealRegular' | 'foodIds'
+> = {
+  sleep: 'B',
+  stress: 'H',
+  water: 'N',
+  mealRegular: 'I',
+  foodIds: [1],
+};
 
 describe('LifeRecordService', () => {
   let service: LifeRecordService;
@@ -84,7 +96,7 @@ describe('LifeRecordService', () => {
   describe('create', () => {
     it('regDate 형식이 올바르지 않으면 INVALID_DATE_FORMAT을 던진다', async () => {
       await expect(
-        service.create('1', { regDate: '2026/07/02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026/07/02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.INVALID_DATE_FORMAT,
       });
@@ -93,6 +105,7 @@ describe('LifeRecordService', () => {
     it('생활 값이 두 글자 이상이면 INVALID_LIFE_VALUE를 던진다', async () => {
       await expect(
         service.create('1', {
+          ...validCreateFields,
           regDate: '2026-07-02',
           sleep: 'BB',
         }),
@@ -104,6 +117,7 @@ describe('LifeRecordService', () => {
     it('한 글자여도 필드별 허용 코드가 아니면 INVALID_LIFE_VALUE를 던진다', async () => {
       await expect(
         service.create('1', {
+          ...validCreateFields,
           regDate: '2026-07-02',
           sleep: 'A',
         }),
@@ -116,7 +130,7 @@ describe('LifeRecordService', () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(baseRecord);
 
       await expect(
-        service.create('1', { regDate: '2026-07-02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026-07-02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
       });
@@ -128,6 +142,7 @@ describe('LifeRecordService', () => {
       prisma.lifeRecord.create.mockResolvedValue(baseRecord);
 
       const result = await service.create('1', {
+        ...validCreateFields,
         regDate: '2026-07-02',
         tagNames: ['야식'],
         foodIds: [1],
@@ -141,11 +156,11 @@ describe('LifeRecordService', () => {
 
     it('DB 저장 중 오류가 발생하면 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
-      prisma.food.findMany.mockResolvedValue([]);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.lifeRecord.create.mockRejectedValue(new Error('db error'));
 
       await expect(
-        service.create('1', { regDate: '2026-07-02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026-07-02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });
@@ -156,7 +171,11 @@ describe('LifeRecordService', () => {
       prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
 
       await expect(
-        service.create('1', { regDate: '2026-07-02', foodIds: [1, 999] }),
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+          foodIds: [1, 999],
+        }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.INVALID_FOOD_ID,
       });
@@ -165,10 +184,15 @@ describe('LifeRecordService', () => {
 
     it('존재하지 않는 medicineId가 포함되면 INVALID_MEDICINE_ID를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.medicine.findMany.mockResolvedValue([]);
 
       await expect(
-        service.create('1', { regDate: '2026-07-02', medicineIds: [999] }),
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+          medicineIds: [999],
+        }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.INVALID_MEDICINE_ID,
       });
@@ -177,7 +201,7 @@ describe('LifeRecordService', () => {
 
     it('동시 생성으로 인한 userId+regDate 유니크 충돌(P2002)은 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
-      prisma.food.findMany.mockResolvedValue([]);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.lifeRecord.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
           code: 'P2002',
@@ -187,7 +211,7 @@ describe('LifeRecordService', () => {
       );
 
       await expect(
-        service.create('1', { regDate: '2026-07-02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026-07-02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
       });
@@ -195,7 +219,7 @@ describe('LifeRecordService', () => {
 
     it('Tag.name 유니크 충돌(P2002)은 날짜 중복이 아니므로 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
-      prisma.food.findMany.mockResolvedValue([]);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.lifeRecord.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
           code: 'P2002',
@@ -205,7 +229,11 @@ describe('LifeRecordService', () => {
       );
 
       await expect(
-        service.create('1', { regDate: '2026-07-02', tagNames: ['야식'] }),
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+          tagNames: ['야식'],
+        }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });
@@ -213,7 +241,7 @@ describe('LifeRecordService', () => {
 
     it('target이 [userId, regDate] 배열(복합 충돌)이면 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
-      prisma.food.findMany.mockResolvedValue([]);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.lifeRecord.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
           code: 'P2002',
@@ -223,7 +251,7 @@ describe('LifeRecordService', () => {
       );
 
       await expect(
-        service.create('1', { regDate: '2026-07-02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026-07-02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
       });
@@ -231,7 +259,7 @@ describe('LifeRecordService', () => {
 
     it('target 배열에 userId 또는 regDate 중 하나만 있으면 날짜 중복이 아니므로 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
-      prisma.food.findMany.mockResolvedValue([]);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
       prisma.lifeRecord.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
           code: 'P2002',
@@ -241,7 +269,7 @@ describe('LifeRecordService', () => {
       );
 
       await expect(
-        service.create('1', { regDate: '2026-07-02' }),
+        service.create('1', { ...validCreateFields, regDate: '2026-07-02' }),
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });

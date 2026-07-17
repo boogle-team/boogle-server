@@ -1,5 +1,11 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ArrayNotEmpty,
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateLifeRecordDto {
   @ApiPropertyOptional({ example: '2026-07-02', description: 'YYYY-MM-DD' })
@@ -7,29 +13,26 @@ export class CreateLifeRecordDto {
   @IsString()
   regDate?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'B',
     description: '좋음 G / 보통 N / 부족 B',
   })
-  @IsOptional()
   @IsString()
-  sleep?: string;
+  sleep: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'H',
     description: '낮음 L / 보통 N / 높음 H',
   })
-  @IsOptional()
   @IsString()
-  stress?: string;
+  stress: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'N',
     description: '부족 L / 보통 N / 충분 H',
   })
-  @IsOptional()
   @IsString()
-  water?: string;
+  water: string;
 
   @ApiPropertyOptional({
     example: 1,
@@ -39,13 +42,12 @@ export class CreateLifeRecordDto {
   @IsInt()
   waterIntake?: number;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'I',
     description: '규칙 R / 보통 N / 불규칙 I',
   })
-  @IsOptional()
   @IsString()
-  mealRegular?: string;
+  mealRegular: string;
 
   @ApiPropertyOptional({
     example: '어제 야식으로 매운 음식을 먹고 커피를 마셨다.',
@@ -113,14 +115,14 @@ export class CreateLifeRecordDto {
   @IsString()
   hormone?: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: [Number],
     example: [1, 3],
     description:
-      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 자극적인 음식 / 3 카페인)',
+      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 자극적인 음식 / 3 카페인). 최소 1개 이상 필요합니다.',
   })
-  @IsOptional()
   @IsArray()
+  @ArrayNotEmpty()
   @IsInt({ each: true })
-  foodIds?: number[];
+  foodIds: number[];
 }
