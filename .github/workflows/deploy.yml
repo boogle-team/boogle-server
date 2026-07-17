@@ -28,4 +28,8 @@ jobs:
             git fetch origin
             git checkout develop
             git pull origin develop
+            cat > .env <<'PROD_ENV_EOF'
+            ${{ secrets.PROD_ENV_FILE }}
+            PROD_ENV_EOF
+            chmod 600 .env
             docker compose up -d --build
