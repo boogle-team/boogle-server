@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateLifeRecordDto {
@@ -51,9 +52,11 @@ export class CreateLifeRecordDto {
 
   @ApiPropertyOptional({
     example: '어제 야식으로 매운 음식을 먹고 커피를 마셨다.',
+    description: '최대 101자',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(101)
   memo?: string;
 
   @ApiPropertyOptional({

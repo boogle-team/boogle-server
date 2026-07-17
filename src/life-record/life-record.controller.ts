@@ -44,6 +44,8 @@ import {
   LifeRecordListResponseDto,
   LifeRecordUpdateResponseDto,
 } from './dto/life-record-response.dto';
+import { TodayTagsQueryDto } from './dto/today-tags-query.dto';
+import { TodayTagsResponseDto } from './dto/today-tags-response.dto';
 
 const TOKEN_UNAUTHORIZED_DESCRIPTION =
   'token 누락 또는 유효하지 않거나 만료된 token';
@@ -173,6 +175,34 @@ export class LifeRecordController {
     @Query() query: LifeRecordListQueryDto,
   ) {
     return this.lifeRecordService.findAll(user.id, query);
+  }
+
+  @Get('today/tags')
+  @ApiOperation({
+    summary: '오늘(또는 특정 날짜) 확정 태그 조회',
+    description:
+      '해당 날짜의 생활기록에 사용자가 최종 선택/입력해 저장한 태그만 반환합니다. AI가 추천했지만 사용자가 선택하지 않은 태그는 애초에 저장되지 않으므로 포함되지 않습니다. 홈 화면에 오늘의 AI 태그를 보여줄 때 사용합니다. date를 생략하면 오늘(KST) 기준으로 조회하며, 해당 날짜에 기록이 없으면 빈 배열을 반환합니다.',
+  })
+  @ResponseMessage('태그 조회에 성공했습니다.')
+  @ApiOkResponse({
+    type: TodayTagsResponseDto,
+    description: '태그 조회 성공 (기록이 없으면 빈 배열)',
+  })
+  @ApiBadRequestResponse({
+    description: 'date 형식이 올바르지 않음(INVALID_DATE_FORMAT)',
+    examples: errorExamples({
+      INVALID_DATE_FORMAT: '날짜 형식이 올바르지 않습니다.',
+    }),
+  })
+  @ApiUnauthorizedResponse({
+    description: TOKEN_UNAUTHORIZED_DESCRIPTION,
+    examples: errorExamples(TOKEN_ERROR_EXAMPLES),
+  })
+  getTodayTags(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: TodayTagsQueryDto,
+  ) {
+    return this.lifeRecordService.getTodayTags(user.id, query.date);
   }
 
   @Get(':lifeId')

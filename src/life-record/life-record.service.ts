@@ -21,10 +21,12 @@ import {
   LifeRecordListResponseDto,
   LifeRecordUpdateResponseDto,
 } from './dto/life-record-response.dto';
+import { TodayTagsResponseDto } from './dto/today-tags-response.dto';
 import { GeminiTagExtractorService } from './gemini-tag-extractor.service';
 import {
   formatDateOnly,
   formatDateTime,
+  getTodayKstDateString,
   isValidLifeValue,
   isValidRegDate,
   isValidSleepTime,
@@ -259,6 +261,32 @@ export class LifeRecordService {
     this.assertOwner(record, userId, LifeRecordErrorCode.LIFE_RECORD_FORBIDDEN);
 
     return this.toDetailResponse(record);
+  }
+
+  async getTodayTags(
+    userId: string,
+    dateParam?: string,
+  ): Promise<TodayTagsResponseDto> {
+    if (dateParam && !isValidRegDate(dateParam)) {
+      this.throwInvalidDateFormat();
+    }
+
+    const regDate = dateParam ?? getTodayKstDateString();
+    const record = await this.prisma.lifeRecord.findUnique({
+      where: {
+        userId_regDate: {
+          userId: toBigInt(userId),
+          regDate: this.toDate(regDate),
+        },
+      },
+      include: { lifeTags: { include: { tag: true } } },
+    });
+
+    if (!record || record.status === 'D') {
+      return { tagNames: [] };
+    }
+
+    return { tagNames: record.lifeTags.map((lifeTag) => lifeTag.tag.name) };
   }
 
   async update(

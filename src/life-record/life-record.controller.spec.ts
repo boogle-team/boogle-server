@@ -13,6 +13,7 @@ describe('LifeRecordController', () => {
     extractTags: jest.Mock;
     findAll: jest.Mock;
     findOne: jest.Mock;
+    getTodayTags: jest.Mock;
     update: jest.Mock;
     remove: jest.Mock;
   };
@@ -25,6 +26,7 @@ describe('LifeRecordController', () => {
       extractTags: jest.fn(),
       findAll: jest.fn(),
       findOne: jest.fn(),
+      getTodayTags: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
     };
@@ -71,6 +73,11 @@ describe('LifeRecordController', () => {
   it('findOne은 userId와 lifeId를 서비스에 위임한다', async () => {
     await controller.findOne(user, 15);
     expect(service.findOne).toHaveBeenCalledWith('1', 15);
+  });
+
+  it('getTodayTags는 userId와 date를 서비스에 위임한다', async () => {
+    await controller.getTodayTags(user, { date: '2026-07-02' });
+    expect(service.getTodayTags).toHaveBeenCalledWith('1', '2026-07-02');
   });
 
   it('update는 userId, lifeId, dto를 서비스에 위임한다', async () => {

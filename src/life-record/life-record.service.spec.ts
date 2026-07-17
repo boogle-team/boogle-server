@@ -380,6 +380,54 @@ describe('LifeRecordService', () => {
     });
   });
 
+  describe('getTodayTags', () => {
+    it('date 형식이 올바르지 않으면 INVALID_DATE_FORMAT을 던진다', async () => {
+      await expect(
+        service.getTodayTags('1', '2026/07/02'),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_DATE_FORMAT,
+      });
+    });
+
+    it('해당 날짜에 기록이 없으면 빈 배열을 반환한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+
+      const result = await service.getTodayTags('1', '2026-07-02');
+
+      expect(result).toEqual({ tagNames: [] });
+    });
+
+    it('기록이 삭제 상태(D)면 빈 배열을 반환한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        status: 'D',
+      });
+
+      const result = await service.getTodayTags('1', '2026-07-02');
+
+      expect(result).toEqual({ tagNames: [] });
+    });
+
+    it('정상 조회 시 저장된 태그 이름만 반환한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(baseRecord);
+
+      const result = await service.getTodayTags('1', '2026-07-02');
+
+      expect(result).toEqual({ tagNames: ['야식'] });
+    });
+
+    it('date를 생략하면 오늘(KST) 날짜로 조회한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+
+      await service.getTodayTags('1');
+
+      const [[callArgs]] = prisma.lifeRecord.findUnique.mock.calls as [
+        [{ where: { userId_regDate: { userId: bigint; regDate: Date } } }],
+      ];
+      expect(callArgs.where.userId_regDate.userId).toBe(1n);
+    });
+  });
+
   describe('update', () => {
     it('생활 값이 올바르지 않으면 INVALID_LIFE_VALUE를 던진다', async () => {
       await expect(
