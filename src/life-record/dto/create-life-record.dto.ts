@@ -65,7 +65,10 @@ export class CreateLifeRecordDto {
   @IsString({ each: true })
   tagNames?: string[];
 
-  @ApiPropertyOptional({ example: 4, description: '수면 시간(시간 단위)' })
+  @ApiPropertyOptional({
+    example: 2,
+    description: '1 5시간 이하 / 2 5~7시간 / 3 7시간 이상',
+  })
   @IsOptional()
   @IsInt()
   sleepTime?: number;

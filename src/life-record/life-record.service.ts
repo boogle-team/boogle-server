@@ -27,6 +27,7 @@ import {
   formatDateTime,
   isValidLifeValue,
   isValidRegDate,
+  isValidSleepTime,
   LIFE_VALUE_CODES,
   toBigInt,
   toNumberId,
@@ -423,9 +424,7 @@ export class LifeRecordService {
     const hasInvalidChar = LIFE_VALUE_FIELDS.some(
       (field) => !isValidLifeValue(field, dto[field]),
     );
-    const hasInvalidSleepTime =
-      dto.sleepTime != null &&
-      (!Number.isInteger(dto.sleepTime) || dto.sleepTime < 0);
+    const hasInvalidSleepTime = !isValidSleepTime(dto.sleepTime);
     const hasInvalidWaterIntake =
       dto.waterIntake != null &&
       (!Number.isInteger(dto.waterIntake) || dto.waterIntake < 0);

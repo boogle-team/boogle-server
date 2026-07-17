@@ -126,6 +126,18 @@ describe('LifeRecordService', () => {
       });
     });
 
+    it('sleepTime이 1/2/3이 아니면 INVALID_LIFE_VALUE를 던진다', async () => {
+      await expect(
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+          sleepTime: 4,
+        }),
+      ).rejects.toMatchObject({
+        errorCode: LifeRecordErrorCode.INVALID_LIFE_VALUE,
+      });
+    });
+
     it('같은 날짜의 기록이 이미 있으면 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(baseRecord);
 
