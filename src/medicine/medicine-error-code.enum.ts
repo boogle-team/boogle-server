@@ -1,0 +1,3 @@
+export enum MedicineErrorCode {
+  MEDICINE_LIST_READ_FAILED = 'MEDICINE_LIST_READ_FAILED',
+}

@@ -13,11 +13,12 @@ const prisma = new PrismaClient({
 });
 
 const FOODS = [
-  { id: 1, name: '자극적인 음식' },
-  { id: 2, name: '기름진 음식' },
-  { id: 3, name: '카페인' },
-  { id: 4, name: '유제품' },
-  { id: 5, name: '식이섬유 충분' },
+  { id: 1, name: '음주' },
+  { id: 2, name: '야식' },
+  { id: 3, name: '자극적인 음식' },
+  { id: 4, name: '기름진 음식' },
+  { id: 5, name: '유제품' },
+  { id: 6, name: '채소·잡곡' },
 ];
 
 const MEDICINES = [
@@ -26,7 +27,7 @@ const MEDICINES = [
   { id: 3, name: '유산균' },
   { id: 4, name: '철분제' },
   { id: 5, name: '변비약' },
-  { id: 6, name: '기타' },
+  { id: 6, name: '해당 없음' },
 ];
 
 async function main() {

@@ -90,7 +90,7 @@ export class CreateLifeRecordDto {
     type: [Number],
     example: [1, 3],
     description:
-      '복용한 약 ID 목록 (medicine 테이블 참조: 1 감기약 / 2 항생제 / 3 유산균 / 4 철분제 / 5 변비약 / 6 기타)',
+      '복용한 약/영양제 ID 목록 (medicine 목록 조회 API로 확인 가능, 1 감기약 / 2 항생제 / 3 유산균 / 4 철분제 / 5 변비약 / 6 해당 없음)',
   })
   @IsOptional()
   @IsArray()
@@ -119,7 +119,7 @@ export class CreateLifeRecordDto {
     type: [Number],
     example: [1, 3],
     description:
-      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 자극적인 음식 / 3 카페인). 최소 1개 이상 필요합니다.',
+      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 음주 / 3 자극적인 음식). 최소 1개 이상 필요합니다.',
   })
   @IsArray()
   @ArrayNotEmpty()
