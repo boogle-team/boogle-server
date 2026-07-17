@@ -326,7 +326,7 @@ Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_RED
 
 ## 🚀 배포 / 롤백
 
-- **배포 파이프라인**: `develop` 브랜치에 push되면 `.github/workflows/deploy.yml`의 `build` 잡이 GitHub Actions 러너에서 Docker 이미지를 빌드해 GHCR(`ghcr.io/boogle-team/boogle-server`)에 push하고, 이어서 `deploy` 잡이 EC2에 SSH로 접속해 `git pull`(compose 파일 동기화) → `PROD_ENV_FILE` 시크릿으로 `.env` 재생성 → GHCR 로그인 → `docker compose pull` → `docker compose up -d` 순서로 재배포합니다. **이미지 빌드는 EC2가 아니라 GitHub Actions에서 수행합니다** — t3.micro(RAM 1GB)에서 직접 빌드하면 메모리 부족으로 인스턴스 전체가 응답 불능 상태가 되는 문제가 반복돼서, 빌드를 러너로 옮기고 EC2는 완성된 이미지를 pull만 하도록 구조를 바꿨습니다.
+- **배포 파이프라인**: `develop` 브랜치에 push되면 `.github/workflows/deploy.yml`의 `build` 잡이 GitHub Actions 러너에서 Docker 이미지를 빌드해 GHCR(`ghcr.io/boogle-team/boogle-server`)에 push하고, 이어서 `deploy` 잡이 EC2에 SSH로 접속해 `git pull`(compose 파일 동기화) → `PROD_ENV_FILE` 시크릿으로 `.env` 재생성 → GHCR 로그인 → `docker compose pull` → 일회성 컨테이너에서 `prisma migrate deploy` → `docker compose up -d` 순서로 재배포합니다. 애플리케이션 컨테이너 시작과 DB 마이그레이션을 분리해 여러 컨테이너가 동시에 마이그레이션을 실행하지 않도록 했습니다. **이미지 빌드는 EC2가 아니라 GitHub Actions에서 수행합니다** — t3.micro(RAM 1GB)에서 직접 빌드하면 메모리 부족으로 인스턴스 전체가 응답 불능 상태가 되는 문제가 반복돼서, 빌드를 러너로 옮기고 EC2는 완성된 이미지를 pull만 하도록 구조를 바꿨습니다.
 - **운영 환경변수 변경**: EC2에 직접 SSH로 들어가 `.env`를 수정하지 않습니다. 로컬에서 새 `.env` 파일을 만들고 base64로 인코딩해 시크릿을 갱신한 뒤, `develop`에 재배포를 트리거합니다.
 
   ```bash

@@ -108,6 +108,34 @@ describe('AuthController', () => {
     );
   });
 
+  it('treats a malformed browser state cookie as an invalid state', async () => {
+    authService.createOAuthCallbackRedirect.mockResolvedValue(
+      'https://frontend.example.com/oauth/callback?error=AUTH_OAUTH_STATE_INVALID',
+    );
+    const request = {
+      headers: { cookie: 'boogle_oauth_state_google=%' },
+    } as Request;
+    const { response, redirect, clearCookie } = createResponse();
+
+    await controller.handleOAuthCallback(
+      'google',
+      { code: 'code', state: 'state-value' },
+      request,
+      response,
+    );
+
+    expect(authService.createOAuthCallbackRedirect).toHaveBeenCalledWith(
+      'google',
+      { code: 'code', state: 'state-value' },
+      undefined,
+    );
+    expect(clearCookie).toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith(
+      HttpStatus.FOUND,
+      'https://frontend.example.com/oauth/callback?error=AUTH_OAUTH_STATE_INVALID',
+    );
+  });
+
   it('clears the browser cookie and propagates a callback service error', async () => {
     const error = new Error('callback failed');
     authService.createOAuthCallbackRedirect.mockRejectedValue(error);

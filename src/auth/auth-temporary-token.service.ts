@@ -112,7 +112,7 @@ export class AuthTemporaryTokenService
       Date.now() - this.getRetentionSeconds() * 1000,
     );
 
-    return this.prisma.authTemporaryToken.deleteMany({
+    return await this.prisma.authTemporaryToken.deleteMany({
       where: {
         OR: [
           { usedAt: { lte: retentionCutoff } },

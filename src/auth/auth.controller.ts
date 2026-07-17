@@ -201,7 +201,11 @@ export class AuthController {
     for (const cookie of cookieHeader.split(';')) {
       const [cookieName, ...valueParts] = cookie.trim().split('=');
       if (cookieName === name) {
-        return decodeURIComponent(valueParts.join('='));
+        try {
+          return decodeURIComponent(valueParts.join('='));
+        } catch {
+          return undefined;
+        }
       }
     }
 
