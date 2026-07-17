@@ -4,6 +4,13 @@ on:
   push:
     branches: [develop]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to EC2
