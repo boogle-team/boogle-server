@@ -298,3 +298,45 @@ npx prisma studio # DB GUI 실행
   - generated/prisma - `prisma generate`로 자동 생성되는 Prisma Client (직접 수정 X)
   - prisma - 전역으로 주입되는 `PrismaService` / `PrismaModule`
   - (추후 기능이 늘어나면 도메인별 모듈 하위에 컨트롤러/서비스 로직과 dto를 채워나감)
+
+<br>
+
+## 🚀 배포 / 롤백
+
+- **배포 파이프라인**: `develop` 브랜치에 push되면 `.github/workflows/deploy.yml`이 EC2에 SSH로 접속해 `git pull` → `PROD_ENV_FILE` 시크릿으로 `.env` 재생성 → `docker compose up -d --build` 순서로 재배포합니다.
+- **운영 환경변수 변경**: EC2에 직접 SSH로 들어가 `.env`를 수정하지 않습니다. 로컬에서 새 `.env` 파일을 만들고 base64로 인코딩해 시크릿을 갱신한 뒤, `develop`에 재배포를 트리거합니다.
+
+  ```bash
+  base64 -i 새.env파일 | tr -d '\n' > 새.env파일.b64
+  gh secret set PROD_ENV_FILE --repo boogle-team/boogle-server < 새.env파일.b64
+  rm 새.env파일 새.env파일.b64
+  ```
+
+### 배포 후 장애 발생 시 롤백 절차
+
+1. `develop`에서 문제가 된 커밋(들)을 되돌립니다.
+
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git revert <문제_커밋_SHA>   # 여러 개면 가장 최근 것부터 순서대로, 또는 -m 1로 머지 커밋 revert
+   git push origin develop
+   ```
+
+2. push되면 Deploy 워크플로우가 자동으로 돌면서 되돌려진 상태로 재배포됩니다. 진행 상황은 `gh run list --workflow deploy.yml`, `gh run watch <run-id>`로 확인합니다.
+3. 배포 완료 후 헬스체크로 정상화를 확인합니다.
+
+   ```bash
+   curl -s https://api.glgc.cloud/api/v1/health
+   ```
+
+4. 만약 CD 파이프라인 자체가 죽어 있거나(예: EC2 무응답) 위 방법으로 재배포가 안 되면, EC2에 직접 SSH로 접속해 같은 순서를 수동으로 실행합니다.
+
+   ```bash
+   cd ~/boogle-server
+   git fetch origin
+   git checkout <되돌아갈_커밋_또는_브랜치>
+   docker compose up -d --build
+   ```
+
+- 되돌리기 전에 먼저 `docker compose logs -f app`, `/api/v1/health` 상태를 확인해 정말 배포가 원인인지(vs DB, 인프라 문제) 먼저 판단하는 것을 권장합니다.
