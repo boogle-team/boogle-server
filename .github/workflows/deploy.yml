@@ -24,8 +24,17 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
             cd ~/boogle-server
             git fetch origin
             git checkout develop
             git pull origin develop
+            echo '${{ secrets.PROD_ENV_FILE }}' | base64 -d > .env.new
+            if [ ! -s .env.new ]; then
+              echo "PROD_ENV_FILE secret is empty or invalid, aborting" >&2
+              rm -f .env.new
+              exit 1
+            fi
+            mv .env.new .env
+            chmod 600 .env
             docker compose up -d --build
