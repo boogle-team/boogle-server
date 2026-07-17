@@ -111,6 +111,19 @@ describe('LifeRecordController', () => {
     ).rejects.toBe(error);
   });
 
+  it('getTodayTags는 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
+    const error = new BusinessException(
+      LifeRecordErrorCode.INVALID_DATE_FORMAT,
+      '날짜 형식이 올바르지 않습니다.',
+      HttpStatus.BAD_REQUEST,
+    );
+    service.getTodayTags.mockRejectedValue(error);
+
+    await expect(
+      controller.getTodayTags(user, { date: '2026/07/02' }),
+    ).rejects.toBe(error);
+  });
+
   it('findOne은 서비스에서 던진 BusinessException을 그대로 전파한다', async () => {
     const error = new BusinessException(
       LifeRecordErrorCode.LIFE_RECORD_NOT_FOUND,
