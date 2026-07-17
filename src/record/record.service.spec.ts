@@ -34,6 +34,9 @@ describe('RecordService', () => {
     const dto: Partial<CreateRecordDto> = {
       regDate: '2026-07-11',
       hasBowel: true,
+      stoolBristol: 4,
+      bowelFeeling: 'good',
+      stomach: 'good',
     };
 
     const mockDbRecord = {
@@ -62,7 +65,11 @@ describe('RecordService', () => {
     expect(mockCreate).toHaveBeenCalledWith({
       data: {
         userId: 1,
-        hasBowel: false,
+        hasBowel: true,
+        stoolBristol: 4,
+        bowelFeeling: 'good',
+        stomach: 'good',
+        stoolSimple: 'M',
         regDate: new Date('2026-07-11'),
       },
     });
