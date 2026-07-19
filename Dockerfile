@@ -24,6 +24,7 @@ COPY --from=builder --chown=node:node /app/prisma ./prisma
 COPY --from=builder --chown=node:node /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder --chown=node:node /app/package.json ./package.json
 COPY --from=builder --chown=node:node /app/src/assets ./dist/src/assets
+COPY --from=builder --chown=node:node /app/src/generated ./src/generated
 
 USER node
 
