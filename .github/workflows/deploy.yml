@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [develop]
+  workflow_dispatch: {}
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -14,6 +15,7 @@ env:
 jobs:
   build:
     name: Build and push image
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,6 +49,7 @@ jobs:
   deploy:
     name: Deploy to EC2
     needs: build
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,5 +79,6 @@ jobs:
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull
             docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
+            docker compose run --rm --no-deps app npx prisma db seed
             docker compose up -d
             docker image prune -f

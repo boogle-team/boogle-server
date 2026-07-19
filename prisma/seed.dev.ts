@@ -15,6 +15,22 @@ const prisma = new PrismaClient({
 
 async function main() {
   await seedReferenceData(prisma);
+
+  await prisma.member.upsert({
+    where: { id: 1n },
+    create: {
+      id: 1n,
+      loginId: 'test_user',
+      password: 'test_password',
+      nickname: '테스트유저',
+      email: 'test@boogle.dev',
+      name: '테스트',
+      sensInfo: 'N',
+      status: 'A',
+      subscription: 'N',
+    },
+    update: {},
+  });
 }
 
 main()
