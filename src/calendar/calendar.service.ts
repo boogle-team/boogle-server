@@ -206,6 +206,7 @@ export class CalendarService {
           sleep: lifeRecord.sleep,
           stress: lifeRecord.stress,
           water: lifeRecord.water,
+          waterIntake: lifeRecord.waterIntake,
           mealRegular: lifeRecord.mealRegular,
           sleepTime: lifeRecord.sleepTime,
           exercise: lifeRecord.exercise,

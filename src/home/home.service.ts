@@ -174,6 +174,7 @@ export class HomeService {
             sleep: lifeRecord.sleep,
             stress: lifeRecord.stress,
             water: lifeRecord.water,
+            waterIntake: lifeRecord.waterIntake,
             mealRegular: lifeRecord.mealRegular,
             foods: lifeRecord.foodTags.map((ft) => ({
               id: ft.food.id,

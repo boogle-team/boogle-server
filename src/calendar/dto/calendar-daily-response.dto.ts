@@ -41,6 +41,7 @@ export interface LifeRecordDetailDto {
   sleep: string | null;
   stress: string | null;
   water: string | null;
+  waterIntake: number | null;
   mealRegular: string | null;
   sleepTime: number | null;
   exercise: string | null;

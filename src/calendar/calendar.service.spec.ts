@@ -197,6 +197,7 @@ describe('CalendarService', () => {
         sleep: 'N',
         stress: 'L',
         water: 'H',
+        waterIntake: 3,
         mealRegular: 'R',
         sleepTime: 2,
         exercise: 'L',
@@ -224,6 +225,8 @@ describe('CalendarService', () => {
       expect(result.boogleRecords[0]).not.toHaveProperty('autoTags');
       expect(result.lifeRecord).toMatchObject({
         id: 55,
+        water: 'H',
+        waterIntake: 3,
         autoTags: [],
         foods: [{ id: 2, name: '기름진 음식' }],
         medicines: [{ id: 1, name: '유산균' }],

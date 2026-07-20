@@ -37,6 +37,7 @@ export interface HomeLifeRecordDto {
   sleep: string | null;
   stress: string | null;
   water: string | null;
+  waterIntake: number | null;
   mealRegular: string | null;
   foods: HomeFoodDto[];
 }

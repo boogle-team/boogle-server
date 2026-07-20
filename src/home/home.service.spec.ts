@@ -129,6 +129,7 @@ describe('HomeService', () => {
       sleep: 'B',
       stress: 'L',
       water: 'L',
+      waterIntake: 2,
       mealRegular: 'R',
       foodTags: [{ food: { id: 1, name: '자극적인 음식' } }],
     });
@@ -138,6 +139,7 @@ describe('HomeService', () => {
     expect(result.lifeRecord).toMatchObject({
       id: 55,
       sleep: 'B',
+      waterIntake: 2,
       foods: [{ id: 1, name: '자극적인 음식' }],
     });
   });
