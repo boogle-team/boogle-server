@@ -84,6 +84,7 @@
 | `sleep` | `G` 좋음 / `N` 보통 / `B` 부족 |
 | `stress` | `L` 낮음 / `N` 보통 / `H` 높음 |
 | `water` | `L` 부족 / `N` 보통 / `H` 충분 |
+| `waterIntake` | 물 섭취량(잔 수, `int`, 1잔≈200ml). `water`(3단계)와 별개 필드 |
 | `mealRegular` | `R` 규칙 / `N` 보통 / `I` 불규칙 |
 | `sleepTime` | `1` 5시간 이하 / `2` 5~7시간 / `3` 7시간 이상 |
 | `exercise` | `N` 안함 / `L` 가볍게 / `H` 충분히 |
@@ -191,6 +192,7 @@ Authorization: Bearer eyJhbGc...
     "sleep": "B",
     "stress": "L",
     "water": "L",
+    "waterIntake": 1,
     "mealRegular": "R",
     "foods": [
       { "id": 7, "name": "야식" },
@@ -227,6 +229,7 @@ Authorization: Bearer eyJhbGc...
 | `boogleCount` | int | 오늘 부글 기록 건수 ("오늘 N회 기록했어요") |
 | `boogleRecords` | array | 오늘 부글 기록 **요약 리스트** (시간 오름차순). 없으면 `[]` → '기록하기' 유도 |
 | `lifeRecord` | object \| null | 오늘 생활 기록 **요약**(+음식 태그). 없으면 `null` → '생활도 기록할까요?' 유도 |
+| `lifeRecord.waterIntake` | int \| null | 물 섭취량(잔 수, 1잔≈200ml). `water`(3단계)와 별개 필드 |
 | `lifeRecord.foods` | array | 오늘 먹은 것 태그 (`life_food_tag` → `food`) |
 | `weeklyPattern` | object \| null | 이번 주 대표 패턴 1건. 없으면 `null` → 카드 숨김 |
 
@@ -347,6 +350,7 @@ Authorization: Bearer eyJhbGc...
     "sleep": "N",
     "stress": "L",
     "water": "H",
+    "waterIntake": 3,
     "mealRegular": "R",
     "sleepTime": 2,
     "exercise": "L",
@@ -369,6 +373,7 @@ Authorization: Bearer eyJhbGc...
 | --- | --- | --- |
 | `boogleRecords` | array | 해당 날짜 부글 기록 **전체 리스트**(하루 여러 건 가능, 시간순). 없으면 `[]` |
 | `lifeRecord` | object \| null | 해당 날짜 생활 기록(하루 1건). 없으면 `null` |
+| `lifeRecord.waterIntake` | int \| null | 물 섭취량(잔 수, 1잔≈200ml). `water`(3단계)와 별개 필드 |
 | `lifeRecord.autoTags` | string[] | LLM 자동 추출 태그. `auto_tags`(콤마 문자열)를 배열로 파싱해 반환 |
 | `lifeRecord.tags` | object[] | 연결된 생활 태그 (`life_tags` → `tags`) |
 | `lifeRecord.foods` | object[] | 먹은 것 태그 (`life_food_tag` → `food`) |
