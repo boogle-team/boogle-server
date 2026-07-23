@@ -272,41 +272,54 @@ model Food {
   @@map("food")
 }
 
+model Guide {
+  id  Int   @id @default(autoincrement())
+  title String @db.VarChar(255)
+  summary   String @db.VarChar(255)
+  category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
+  regDate   DateTime @default(now())
+  updateAt  DateTime? @map("update_date") 
+  status    String @db.Char(1) @default("A")
+
+  guideContents   GuideContent[]
+  guideAdvices    GuideAdvice[]
+  guideFeedbacks  GuideFeedback[]
+
+  @@map("guide")
+}
+
 model GuideContent {
   id       Int     @id @default(autoincrement())
-  title    String  @db.VarChar(255)
-  category String? @db.Char(1) // 패턴P/장건강H/주의W
-  content  String  @db.Text
-  status   String  @default("A") @db.Char(1)
+  guideId   Int     @map("guide_id")
+  subtitle  String? @db.VarChar(255)
+  content   String  @db.Text
 
-  guideRules     GuideRule[]
-  guideFeedbacks GuideFeedback[]
+  guide Guide @relation(fields: [guideId], references: [id])
 
   @@map("guide_content")
 }
 
-model GuideRule {
-  id             Int     @id @default(autoincrement())
-  guideContentId Int     @map("guide_content_id")
-  ruleCode       String? @map("rule_code") @db.VarChar(40)
-  condition      String? @db.Text
+model GuideAdvice {
+  id      Int     @id @default(autoincrement())
+  guideId Int     @map("guide_id")
+  content String  @db.Text
 
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide   Guide   @relation(fields: [guideId], references: [id])
 
-  @@map("guide_rule")
+  @@map("guide_advice")
 }
 
 model GuideFeedback {
   id             BigInt    @id @default(autoincrement())
   userId         BigInt    @map("user_id")
-  guideContentId Int       @map("guide_content_id")
+  guideId        Int       @map("guide_id")
   feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
   regDate        DateTime  @default(now()) @map("reg_date")
   updateDate     DateTime? @map("update_date") // 수정시 수정시각
 
   user         Member       @relation(fields: [userId], references: [id])
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide Guide @relation(fields: [guideId], references: [id])
 
-  @@unique([userId, guideContentId], map: "guide_feedback_index_5")
+  @@unique([userId, guideId], map: "guide_feedback_index_5")
   @@map("guide_feedback")
 }
