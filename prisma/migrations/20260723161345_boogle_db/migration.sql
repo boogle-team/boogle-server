@@ -337,3 +337,11 @@ ALTER TABLE `guide_feedback` ADD CONSTRAINT `guide_feedback_user_id_fkey` FOREIG
 
 -- AddForeignKey
 ALTER TABLE `guide_feedback` ADD CONSTRAINT `guide_feedback_guide_id_fkey` FOREIGN KEY (`guide_id`) REFERENCES `guide`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE `boogle_record`
+  ADD CONSTRAINT `chk_has_bowel_stool_bristol`
+  CHECK (
+    (`has_bowel` = 0 AND `stool_bristol` IS NULL)
+    OR
+    (`has_bowel` = 1 AND `stool_bristol` BETWEEN 1 AND 7)
+ );
