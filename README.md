@@ -217,6 +217,33 @@ Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_RED
 
 운영 `FRONTEND_ORIGIN`과 `FRONTEND_OAUTH_CALLBACK_URL`에는 API 도메인이 아니라 실제 배포된 프론트엔드 도메인을 입력합니다. `FRONTEND_ORIGIN`은 쉼표로 여러 허용 Origin을 지정할 수 있습니다.
 
+### 프로필 이미지 S3 저장
+
+사용자가 업로드한 프로필 이미지는 EC2 로컬 디스크가 아닌 비공개 S3 버킷에 저장하며, DB에는 `profile-images/users/{userId}/{uuid}.{확장자}` 형식의 Object Key만 저장합니다. EC2에는 AWS Access Key를 넣지 않고 Instance IAM Role을 연결해 AWS SDK 기본 자격 증명 체인을 사용합니다.
+
+- `AWS_REGION`: S3 버킷 리전
+- `AWS_S3_BUCKET`: 비공개 프로필 이미지 버킷 이름
+- `AWS_CLOUDFRONT_BASE_URL`: CloudFront를 사용하는 경우 배포 도메인, 사용하지 않으면 빈 값
+- `AWS_S3_SIGNED_URL_EXPIRES_IN`: CloudFront 미사용 시 GET 서명 URL 만료 시간(초)
+- `PROFILE_IMAGE_MAX_SIZE_BYTES`: 업로드 최대 크기(기본 5MB)
+
+EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책처럼 프로필 이미지 경로만 허용합니다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/profile-images/*"
+    }
+  ]
+}
+```
+
+운영 배포 시 스키마 변경은 `pnpm exec prisma migrate deploy`로 적용하며 `prisma db push`를 사용하지 않습니다.
+
 <br>
 
 ## ⌨️ Code Styling
