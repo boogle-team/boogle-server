@@ -7,12 +7,14 @@ import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import { UserErrorCode } from './user-error-code.enum';
+import { ProfileImageFile, ProfileImageService } from './profile-image.service';
 
 interface MemberResponseSource {
   id: bigint;
   email: string | null;
   nickname: string | null;
   profileImg: string | null;
+  profileImageKey: string | null;
   gender: string | null;
   ageGroup: number | null;
   baselineType: string | null;
@@ -38,12 +40,20 @@ interface MemberWithSocialAccountsResponseSource extends MemberResponseSource {
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly profileImages: ProfileImageService,
+  ) {}
 
-  async saveOnboarding(userId: string, dto: SaveOnboardingRequestDto) {
+  async saveOnboarding(
+    userId: string,
+    dto: SaveOnboardingRequestDto,
+    profileImage?: ProfileImageFile,
+  ) {
     this.assertNickname(dto.nickname);
 
     const member = await this.findActiveMemberOrThrow(userId);
+    await this.assertNicknameAvailable(dto.nickname, member.id);
 
     if (this.isOnboardingCompleted(member)) {
       throw new BusinessException(
@@ -53,37 +63,73 @@ export class UserService {
       );
     }
 
+    const sensitiveInfoAvailable = this.isSensitiveInfoAvailable(dto.gender);
+    this.assertOnboardingSensitiveInfo(dto, sensitiveInfoAvailable);
+    const sensitiveInfoAgreed = sensitiveInfoAvailable
+      ? (dto.sensitiveInfoAgreed as boolean)
+      : false;
+    const storedProfileImageKey = profileImage
+      ? await this.profileImages.save(userId, profileImage)
+      : undefined;
     const onboardingData: {
       nickname: string;
-      profileImg?: string | null;
+      profileImageKey?: string | null;
       gender: string;
       ageGroup: number;
       baselineType: string;
+      sensInfo: string;
     } = {
       nickname: dto.nickname,
       gender: dto.gender,
       ageGroup: dto.ageGroup,
       baselineType: dto.baselineType,
+      sensInfo: sensitiveInfoAgreed ? 'Y' : 'F',
     };
 
-    if (dto.profileImage !== undefined) {
-      onboardingData.profileImg = dto.profileImage;
+    if (storedProfileImageKey !== undefined) {
+      onboardingData.profileImageKey = storedProfileImageKey;
     }
 
-    const updatedMember = await this.prisma.member.update({
-      where: { id: this.toBigIntId(userId) },
-      data: onboardingData,
-    });
+    let updatedMember: MemberResponseSource;
+    try {
+      updatedMember = await this.prisma.$transaction(async (tx) => {
+        const savedMember = await tx.member.update({
+          where: { id: member.id },
+          data: onboardingData,
+        });
+
+        if (sensitiveInfoAvailable) {
+          await tx.memberConsent.create({
+            data: {
+              userId: member.id,
+              consentType: 'SENSITIVE',
+              agreed: sensitiveInfoAgreed,
+              policyVersion: dto.sensitiveInfoPolicyVersion as string,
+              agreedAt: sensitiveInfoAgreed ? new Date() : null,
+            },
+          });
+        }
+
+        return savedMember;
+      });
+    } catch (error) {
+      await this.profileImages.deleteBestEffort(storedProfileImageKey);
+      this.rethrowNicknameConflict(error);
+      throw error;
+    }
+
+    if (storedProfileImageKey) {
+      await this.profileImages.deleteBestEffort(member.profileImageKey);
+    }
+
+    const { onboardingCompleted, ...user } = await this.toProfileResponse(
+      updatedMember,
+      sensitiveInfoAgreed,
+    );
 
     return {
-      ...this.toProfileResponse(
-        updatedMember,
-        await this.getSensitiveInfoAgreed(
-          updatedMember.id,
-          updatedMember.sensInfo,
-        ),
-      ),
-      onboardingCompleted: true,
+      onboardingCompleted,
+      user,
     };
   }
 
@@ -93,14 +139,15 @@ export class UserService {
     return {
       id: Number(member.id),
       nickname: member.nickname,
-      profileImage: member.profileImg,
+      profileImage: await this.resolveProfileImage(member),
+      profileImageSource: this.getProfileImageSource(member),
       gender: member.gender,
       ageGroup: member.ageGroup,
       baselineType: member.baselineType,
-      sensitiveInfoAgreed: await this.getSensitiveInfoAgreed(
-        member.id,
-        member.sensInfo,
-      ),
+      sensitiveInfoAgreed:
+        member.gender === 'M'
+          ? false
+          : await this.getSensitiveInfoAgreed(member.id, member.sensInfo),
       onboardingCompleted: this.isOnboardingCompleted(member),
     };
   }
@@ -112,7 +159,8 @@ export class UserService {
   }
 
   async getSensitiveInfoConsent(userId: string) {
-    const member = await this.findMemberOrThrow(userId);
+    const member = await this.findActiveMemberOrThrow(userId);
+    this.assertSensitiveInfoAvailable(member.gender);
 
     const consent = await this.prisma.memberConsent.findFirst({
       where: {
@@ -155,13 +203,7 @@ export class UserService {
     }
 
     const member = await this.findActiveMemberOrThrow(userId);
-    if (member.gender !== 'F') {
-      throw new BusinessException(
-        UserErrorCode.SENSITIVE_INFO_NOT_AVAILABLE,
-        '민감정보 수집 동의 기능을 사용할 수 없는 사용자입니다.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    this.assertSensitiveInfoAvailable(member.gender);
 
     const now = new Date();
     const consent = await this.prisma.$transaction(async (tx) => {
@@ -226,29 +268,44 @@ export class UserService {
     };
   }
 
-  async updateMe(userId: string, dto: UpdateMeRequestDto) {
+  async updateMe(
+    userId: string,
+    dto: UpdateMeRequestDto,
+    profileImage?: ProfileImageFile,
+  ) {
     this.assertNickname(dto.nickname);
 
     const member = await this.findActiveMemberOrThrow(userId);
+    if (dto.nickname !== undefined) {
+      await this.assertNicknameAvailable(dto.nickname, member.id);
+    }
+
+    const storedProfileImageKey = profileImage
+      ? await this.profileImages.save(userId, profileImage)
+      : undefined;
 
     const updateData: {
       nickname?: string;
-      profileImg?: string | null;
+      profileImageKey?: string | null;
       gender?: string;
       ageGroup?: number;
       baselineType?: string;
+      sensInfo?: string;
     } = {};
 
     if (dto.nickname !== undefined) {
       updateData.nickname = dto.nickname;
     }
 
-    if (dto.profileImage !== undefined) {
-      updateData.profileImg = dto.profileImage;
+    if (storedProfileImageKey !== undefined) {
+      updateData.profileImageKey = storedProfileImageKey;
     }
 
     if (dto.gender !== undefined) {
       updateData.gender = dto.gender;
+      if (dto.gender === 'M') {
+        updateData.sensInfo = 'F';
+      }
     }
 
     if (dto.ageGroup !== undefined) {
@@ -266,21 +323,125 @@ export class UserService {
       );
     }
 
-    const updatedMember = await this.prisma.member.update({
-      where: { id: this.toBigIntId(userId) },
-      data: updateData,
-    });
+    let updatedMember: MemberResponseSource;
+    try {
+      updatedMember = await this.prisma.$transaction(async (tx) => {
+        const savedMember = await tx.member.update({
+          where: { id: member.id },
+          data: updateData,
+        });
+
+        if (dto.gender === 'M') {
+          const latestConsent = await tx.memberConsent.findFirst({
+            where: { userId: member.id, consentType: 'SENSITIVE' },
+            orderBy: { id: 'desc' },
+          });
+
+          if (latestConsent?.agreed) {
+            await tx.memberConsent.update({
+              where: { id: latestConsent.id },
+              data: {
+                agreed: false,
+                withdrawnAt: new Date(),
+              },
+            });
+          }
+
+          await tx.lifeRecord.updateMany({
+            where: { userId: member.id },
+            data: { hormone: null },
+          });
+        }
+
+        return savedMember;
+      });
+    } catch (error) {
+      await this.profileImages.deleteBestEffort(storedProfileImageKey);
+      this.rethrowNicknameConflict(error);
+      throw error;
+    }
+
+    if (storedProfileImageKey) {
+      await this.profileImages.deleteBestEffort(member.profileImageKey);
+    }
 
     return this.toProfileResponse(
       updatedMember,
-      await this.getSensitiveInfoAgreed(
-        updatedMember.id,
-        updatedMember.sensInfo,
-      ),
+      dto.gender === 'M'
+        ? false
+        : await this.getSensitiveInfoAgreed(
+            updatedMember.id,
+            updatedMember.sensInfo,
+          ),
     );
   }
 
+  async updateProfileImage(
+    userId: string,
+    profileImage: ProfileImageFile | undefined,
+  ) {
+    this.profileImages.assertRequired(profileImage);
+    const member = await this.findActiveMemberOrThrow(userId);
+    const newKey = await this.profileImages.save(userId, profileImage);
+
+    let updatedMember: MemberResponseSource;
+    try {
+      updatedMember = await this.prisma.member.update({
+        where: { id: member.id },
+        data: { profileImageKey: newKey },
+      });
+    } catch {
+      await this.profileImages.deleteBestEffort(newKey);
+      throw new BusinessException(
+        UserErrorCode.PROFILE_IMAGE_UPDATE_FAILED,
+        '프로필 이미지 정보를 변경하지 못했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    await this.profileImages.deleteBestEffort(member.profileImageKey);
+    return this.toProfileImageResponse(updatedMember);
+  }
+
+  async deleteProfileImage(userId: string) {
+    const member = await this.findActiveMemberOrThrow(userId);
+    if (!member.profileImageKey) {
+      return this.toProfileImageResponse(member);
+    }
+
+    let updatedMember: MemberResponseSource;
+    try {
+      updatedMember = await this.prisma.member.update({
+        where: { id: member.id },
+        data: { profileImageKey: null },
+      });
+    } catch {
+      throw new BusinessException(
+        UserErrorCode.PROFILE_IMAGE_UPDATE_FAILED,
+        '프로필 이미지 정보를 변경하지 못했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    await this.profileImages.deleteBestEffort(member.profileImageKey);
+    return this.toProfileImageResponse(updatedMember);
+  }
+
   async deleteMe(userId: string, dto: DeleteMeRequestDto) {
+    if (!dto.reason) {
+      throw new BusinessException(
+        UserErrorCode.WITHDRAWAL_REASON_REQUIRED,
+        '회원탈퇴 사유는 필수입니다.',
+      );
+    }
+
+    if (dto.reason === 'OTHER' && !dto.reasonDetail?.trim()) {
+      throw new BusinessException(
+        UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
+        '기타 사유를 선택한 경우 상세 사유를 입력해주세요.',
+      );
+    }
+
     if (dto.confirmation !== '탈퇴합니다') {
       throw new BusinessException(
         UserErrorCode.WITHDRAWAL_CONFIRMATION_INVALID,
@@ -311,6 +472,8 @@ export class UserService {
       await tx.lifeRecord.deleteMany({ where: { userId: member.id } });
       await tx.member.delete({ where: { id: member.id } });
     });
+
+    await this.profileImages.deleteBestEffort(member.profileImageKey);
 
     return null;
   }
@@ -391,7 +554,80 @@ export class UserService {
     }
   }
 
-  private toProfileResponse(
+  private async assertNicknameAvailable(nickname: string, memberId: bigint) {
+    const duplicated = await this.prisma.member.findFirst({
+      where: {
+        nickname,
+        id: { not: memberId },
+      },
+      select: { id: true },
+    });
+
+    if (duplicated) {
+      throw new BusinessException(
+        UserErrorCode.NICKNAME_ALREADY_EXISTS,
+        '이미 사용 중인 닉네임입니다.',
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  private rethrowNicknameConflict(error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'P2002'
+    ) {
+      throw new BusinessException(
+        UserErrorCode.NICKNAME_ALREADY_EXISTS,
+        '이미 사용 중인 닉네임입니다.',
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  private isSensitiveInfoAvailable(gender: string | null) {
+    return gender === 'F' || gender === 'N';
+  }
+
+  private assertSensitiveInfoAvailable(gender: string | null) {
+    if (!this.isSensitiveInfoAvailable(gender)) {
+      throw new BusinessException(
+        UserErrorCode.SENSITIVE_INFO_NOT_AVAILABLE,
+        '현재 성별 설정에서는 민감정보 수집 동의 기능을 사용할 수 없습니다.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
+  private assertOnboardingSensitiveInfo(
+    dto: SaveOnboardingRequestDto,
+    sensitiveInfoAvailable: boolean,
+  ) {
+    if (!sensitiveInfoAvailable) {
+      return;
+    }
+
+    if (typeof dto.sensitiveInfoAgreed !== 'boolean') {
+      throw new BusinessException(
+        UserErrorCode.SENSITIVE_INFO_AGREEMENT_INVALID,
+        '민감정보 수집 동의 여부를 선택해주세요.',
+      );
+    }
+
+    if (
+      typeof dto.sensitiveInfoPolicyVersion !== 'string' ||
+      !dto.sensitiveInfoPolicyVersion.trim()
+    ) {
+      throw new BusinessException(
+        UserErrorCode.POLICY_VERSION_REQUIRED,
+        '민감정보 동의문 버전은 필수입니다.',
+      );
+    }
+  }
+
+  private async toProfileResponse(
     member: MemberResponseSource,
     sensitiveInfoAgreed = this.toBoolean(member.sensInfo),
   ) {
@@ -399,7 +635,8 @@ export class UserService {
       id: Number(member.id),
       email: member.email,
       nickname: member.nickname,
-      profileImage: member.profileImg,
+      profileImage: await this.resolveProfileImage(member),
+      profileImageSource: this.getProfileImageSource(member),
       gender: member.gender,
       ageGroup: member.ageGroup,
       baselineType: member.baselineType,
@@ -408,12 +645,15 @@ export class UserService {
     };
   }
 
-  private toMeResponse(member: MemberWithSocialAccountsResponseSource) {
+  private async toMeResponse(member: MemberWithSocialAccountsResponseSource) {
     return {
-      ...this.toProfileResponse(
+      ...(await this.toProfileResponse(
         member,
-        member.memberConsents?.[0]?.agreed ?? this.toBoolean(member.sensInfo),
-      ),
+        member.gender === 'M'
+          ? false
+          : (member.memberConsents?.[0]?.agreed ??
+              this.toBoolean(member.sensInfo)),
+      )),
       socialAccounts: (member.socialAccounts ?? []).map((account) => ({
         provider: this.toProviderResponse(account.provider),
         maskedEmail: this.maskEmail(account.email),
@@ -421,6 +661,26 @@ export class UserService {
       })),
       regDate: member.regDate,
     };
+  }
+
+  private async toProfileImageResponse(member: MemberResponseSource) {
+    return {
+      profileImage: await this.resolveProfileImage(member),
+      profileImageSource: this.getProfileImageSource(member),
+    };
+  }
+
+  private resolveProfileImage(member: MemberResponseSource) {
+    return member.profileImageKey
+      ? this.profileImages.getUrl(member.profileImageKey)
+      : Promise.resolve(member.profileImg);
+  }
+
+  private getProfileImageSource(member: MemberResponseSource) {
+    if (member.profileImageKey) {
+      return 'CUSTOM';
+    }
+    return member.profileImg ? 'SOCIAL' : null;
   }
 
   private toProviderResponse(provider?: string) {

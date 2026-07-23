@@ -12,8 +12,9 @@ model Member {
   id               BigInt    @id @default(autoincrement()) // pk
   loginId          String?   @unique @map("login_id") @db.VarChar(20) // 일반 로그인 id
   password         String?   @db.VarChar(255) // hash값
-  nickname         String?   @db.VarChar(40) // 닉네임
-  profileImg       String?   @map("profile_img") @db.VarChar(255) // 프로필 이미지 파일명
+  nickname         String?   @unique @db.VarChar(10) // 닉네임
+  profileImg       String?   @map("profile_img") @db.VarChar(255) // 소셜 제공자 프로필 이미지 URL
+  profileImageKey  String?   @map("profile_image_key") @db.VarChar(255) // 사용자 업로드 S3 Object Key
   email            String?   @unique @db.VarChar(255)
   name             String?   @db.VarChar(20)
   gender           String?   @db.Char(1) // M/F/N

@@ -1,12 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Allow } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
 
 export class UpdateSensitiveInfoConsentRequestDto {
   @ApiProperty({ example: true })
-  @Allow()
+  @IsBoolean({ message: 'SENSITIVE_INFO_AGREEMENT_INVALID' })
   agreed!: boolean;
 
   @ApiProperty({ example: '2026.07.15' })
-  @Allow()
+  @IsString({ message: 'POLICY_VERSION_REQUIRED' })
+  @IsNotEmpty({ message: 'POLICY_VERSION_REQUIRED' })
   policyVersion!: string;
 }

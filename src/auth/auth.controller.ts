@@ -15,12 +15,9 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
-  ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiFoundResponse,
   ApiInternalServerErrorResponse,
-  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -36,8 +33,6 @@ import { LogoutRequestDto } from './dto/logout-request.dto';
 import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
 import { OAuthResultExchangeRequestDto } from './dto/oauth-result-exchange-request.dto';
 import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
-import { SignupRequestDto } from './dto/signup-request.dto';
-import { SocialLinkRequestDto } from './dto/social-link-request.dto';
 import type { AuthenticatedUser } from './types/authenticated-user.type';
 
 @ApiTags('회원가입, 로그인')
@@ -98,55 +93,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '소셜 로그인 결과 교환' })
   @ApiBody({ type: OAuthResultExchangeRequestDto })
-  @ApiOkResponse({ description: '로그인 성공 또는 신규 회원가입 필요' })
+  @ApiOkResponse({
+    description: '로그인 성공 및 HOME 또는 ONBOARDING_REQUIRED 이동 정보',
+  })
   @ApiBadRequestResponse({ description: 'OAuth 결과 코드 누락' })
-  @ApiUnauthorizedResponse({ description: '유효하지 않거나 만료된 결과 코드' })
-  @ApiConflictResponse({ description: '동일 이메일 계정 연동 필요' })
+  @ApiUnauthorizedResponse({
+    description: '유효하지 않거나 만료된 결과 코드 또는 미검증 이메일',
+  })
   @ApiForbiddenResponse({ description: '탈퇴한 회원' })
-  @ResponseMessage<{ nextAction: 'LOGIN_COMPLETED' | 'SIGNUP_REQUIRED' }>(
-    (data) =>
-      data.nextAction === 'SIGNUP_REQUIRED'
-        ? '신규 회원가입이 필요합니다.'
-        : '로그인에 성공했습니다.',
+  @ResponseMessage<{ nextAction: 'HOME' | 'ONBOARDING_REQUIRED' }>((data) =>
+    data.nextAction === 'ONBOARDING_REQUIRED'
+      ? '로그인했습니다. 프로필을 입력해주세요.'
+      : '로그인했습니다.',
   )
   exchangeOAuthResult(@Body() dto: OAuthResultExchangeRequestDto) {
     return this.authService.exchangeOAuthResult(dto);
-  }
-
-  @Post('signup')
-  @ApiOperation({ summary: '개인정보 동의 후 회원가입 완료' })
-  @ApiBody({ type: SignupRequestDto })
-  @ApiCreatedResponse({ description: '회원가입 성공' })
-  @ApiBadRequestResponse({
-    description: '회원가입 티켓 누락 또는 개인정보 필수 동의 누락',
-  })
-  @ApiUnauthorizedResponse({ description: '유효하지 않거나 만료된 티켓' })
-  @ApiConflictResponse({ description: '이미 가입된 소셜 계정' })
-  @ResponseMessage('회원가입이 완료되었습니다. 온보딩을 진행해주세요.')
-  signup(@Body() dto: SignupRequestDto) {
-    return this.authService.signup(dto);
-  }
-
-  @Post('social-link')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: '동일 이메일 소셜 계정 연동' })
-  @ApiBody({ type: SocialLinkRequestDto })
-  @ApiOkResponse({ description: '소셜 계정 연동 성공' })
-  @ApiBadRequestResponse({
-    description: '계정 연동 티켓 또는 인증된 이메일 누락',
-  })
-  @ApiUnauthorizedResponse({ description: '유효하지 않거나 만료된 티켓' })
-  @ApiForbiddenResponse({ description: '기존 회원 인증 세션 불일치' })
-  @ApiConflictResponse({ description: '이미 연동된 소셜 계정' })
-  @ApiNotFoundResponse({ description: '연동할 기존 회원을 찾을 수 없음' })
-  @ResponseMessage('소셜 계정이 연동되었습니다.')
-  socialLink(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: SocialLinkRequestDto,
-  ) {
-    return this.authService.socialLink(user.id, dto);
   }
 
   @Post('logout')
@@ -154,7 +115,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '로그아웃' })
-  @ApiBody({ type: LogoutRequestDto, required: false })
+  @ApiBody({ type: LogoutRequestDto })
   @ApiOkResponse({ description: '로그아웃 성공' })
   @ApiUnauthorizedResponse({ description: '누락·유효하지 않음·만료된 토큰' })
   @ResponseMessage('로그아웃되었습니다.')
@@ -162,7 +123,7 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: LogoutRequestDto,
   ) {
-    return this.authService.logout(user.id, dto ?? {});
+    return this.authService.logout(user.id, dto);
   }
 
   @Post('refresh')

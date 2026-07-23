@@ -45,7 +45,7 @@ describe('AuthTemporaryTokenService', () => {
   it('atomically marks a valid token as used', async () => {
     prisma.authTemporaryToken.findUnique.mockResolvedValue({
       id: 1n,
-      tokenType: 'SIGNUP_TICKET',
+      tokenType: 'OAUTH_RESULT',
       payload: { provider: 'kakao' },
       expiresAt: new Date(Date.now() + 60_000),
       usedAt: null,
@@ -53,7 +53,7 @@ describe('AuthTemporaryTokenService', () => {
     prisma.authTemporaryToken.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(
-      service.consume('ticket', 'SIGNUP_TICKET', {
+      service.consume('ticket', 'OAUTH_RESULT', {
         invalidCode: 'INVALID',
         invalidMessage: 'invalid',
         expiredCode: 'EXPIRED',
@@ -104,14 +104,14 @@ describe('AuthTemporaryTokenService', () => {
   it('rejects an already-used token', async () => {
     prisma.authTemporaryToken.findUnique.mockResolvedValue({
       id: 1n,
-      tokenType: 'LINK_TICKET',
+      tokenType: 'OAUTH_RESULT',
       payload: {},
       expiresAt: new Date(Date.now() + 60_000),
       usedAt: new Date(),
     });
 
     await expect(
-      service.consume('used', 'LINK_TICKET', {
+      service.consume('used', 'OAUTH_RESULT', {
         invalidCode: 'INVALID',
         invalidMessage: 'invalid',
         expiredCode: 'EXPIRED',
@@ -124,7 +124,7 @@ describe('AuthTemporaryTokenService', () => {
   it('rejects a token consumed concurrently by another request', async () => {
     prisma.authTemporaryToken.findUnique.mockResolvedValue({
       id: 1n,
-      tokenType: 'SIGNUP_TICKET',
+      tokenType: 'OAUTH_RESULT',
       payload: {},
       expiresAt: new Date(Date.now() + 60_000),
       usedAt: null,
@@ -132,7 +132,7 @@ describe('AuthTemporaryTokenService', () => {
     prisma.authTemporaryToken.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
-      service.consume('raced', 'SIGNUP_TICKET', {
+      service.consume('raced', 'OAUTH_RESULT', {
         invalidCode: 'INVALID',
         invalidMessage: 'invalid',
         expiredCode: 'EXPIRED',
