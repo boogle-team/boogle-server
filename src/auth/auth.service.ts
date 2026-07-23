@@ -17,6 +17,11 @@ import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
 import { OAuthResultExchangeRequestDto } from './dto/oauth-result-exchange-request.dto';
 import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
 import { AuthenticatedUser } from './types/authenticated-user.type';
+import type {
+  AuthTokenPairResponse,
+  OAuthExchangeUserResponse,
+  OAuthResultExchangeResponse,
+} from './types/oauth-result-exchange-response.type';
 
 type OAuthProvider = 'kakao' | 'google';
 type OAuthProviderCode = 'K' | 'G';
@@ -223,7 +228,9 @@ export class AuthService {
     }
   }
 
-  async exchangeOAuthResult(dto: OAuthResultExchangeRequestDto) {
+  async exchangeOAuthResult(
+    dto: OAuthResultExchangeRequestDto,
+  ): Promise<OAuthResultExchangeResponse> {
     try {
       const rawPayload = await this.temporaryTokens.consume<unknown>(
         dto.oauthResultCode,
@@ -338,18 +345,26 @@ export class AuthService {
               exchangeResult.member.sensInfo,
             );
 
-      return {
-        nextAction: onboardingCompleted
-          ? ('HOME' as const)
-          : ('ONBOARDING_REQUIRED' as const),
+      const response = {
         ...exchangeResult.tokens,
         isNewUser: exchangeResult.isNewUser,
-        onboardingCompleted,
         user: await this.toMemberResponse(
           exchangeResult.member,
           sensitiveInfoAgreed,
         ),
       };
+
+      return onboardingCompleted
+        ? {
+            ...response,
+            nextAction: 'HOME',
+            onboardingCompleted: true,
+          }
+        : {
+            ...response,
+            nextAction: 'ONBOARDING_REQUIRED',
+            onboardingCompleted: false,
+          };
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;
@@ -823,7 +838,7 @@ export class AuthService {
   private async issueTokenPair(
     member: MemberResponseSource,
     client: Pick<Prisma.TransactionClient, 'refreshToken'> = this.prisma,
-  ) {
+  ): Promise<AuthTokenPairResponse> {
     const accessExpiresIn = this.getAccessTokenExpiresIn();
     const refreshExpiresIn = this.getRefreshTokenExpiresIn();
     const accessToken = this.signJwt(member, 'access', accessExpiresIn);
@@ -979,7 +994,7 @@ export class AuthService {
   private async toMemberResponse(
     member: MemberResponseSource,
     sensitiveInfoAgreed = this.toBoolean(member.sensInfo),
-  ) {
+  ): Promise<OAuthExchangeUserResponse> {
     let profileImage = member.profileImg;
     let profileImageSource: 'CUSTOM' | 'SOCIAL' | null = member.profileImg
       ? 'SOCIAL'

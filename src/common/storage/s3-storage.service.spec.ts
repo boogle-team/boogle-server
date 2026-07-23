@@ -50,6 +50,32 @@ describe('S3StorageService', () => {
     });
   });
 
+  it('propagates an S3 upload failure', async () => {
+    const error = new Error('S3 upload failed');
+    send.mockRejectedValueOnce(error);
+
+    await expect(
+      service.upload({
+        key: 'profile-images/users/1/image.png',
+        body: Buffer.from('image'),
+        contentType: 'image/png',
+      }),
+    ).rejects.toBe(error);
+  });
+
+  it('rejects upload when the bucket configuration is missing', async () => {
+    delete process.env.AWS_S3_BUCKET;
+
+    await expect(
+      service.upload({
+        key: 'profile-images/users/1/image.png',
+        body: Buffer.from('image'),
+        contentType: 'image/png',
+      }),
+    ).rejects.toThrow('AWS_S3_BUCKET environment variable is required.');
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('deletes an object by key', async () => {
     await service.delete('profile-images/users/1/old.png');
 
@@ -58,6 +84,15 @@ describe('S3StorageService', () => {
       Bucket: 'test-private-bucket',
       Key: 'profile-images/users/1/old.png',
     });
+  });
+
+  it('propagates an S3 delete failure used by image cleanup', async () => {
+    const error = new Error('S3 delete failed');
+    send.mockRejectedValueOnce(error);
+
+    await expect(service.delete('profile-images/users/1/old.png')).rejects.toBe(
+      error,
+    );
   });
 
   it('uses CloudFront when a base URL is configured', async () => {
@@ -80,5 +115,15 @@ describe('S3StorageService', () => {
       expect.anything(),
       { expiresIn: 3600 },
     );
+  });
+
+  it('propagates a presigned URL generation failure', async () => {
+    delete process.env.AWS_CLOUDFRONT_BASE_URL;
+    const error = new Error('presign failed');
+    jest.mocked(getSignedUrl).mockRejectedValueOnce(error);
+
+    await expect(
+      service.getPublicUrl('profile-images/users/1/image.png'),
+    ).rejects.toBe(error);
   });
 });

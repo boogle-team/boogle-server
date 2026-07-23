@@ -158,6 +158,9 @@ export class UserController {
   @ApiNotFoundResponse({
     description: '사용자를 찾을 수 없음',
   })
+  @ApiForbiddenResponse({
+    description: '민감정보 동의 기능 사용 불가',
+  })
   @ApiUnauthorizedResponse({
     description: '로그인이 필요함',
   })

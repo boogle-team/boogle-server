@@ -208,6 +208,51 @@ describe('AuthService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects OAuth login for a withdrawn member', async () => {
+    temporaryTokens.consume.mockResolvedValue(oauthProfile);
+    prisma.socialAccount.findFirst.mockResolvedValue({
+      userId: 1n,
+      provider: 'G',
+      providerId: 'google-123',
+      user: { ...completeMember, status: 'D' },
+    });
+
+    await expect(
+      service.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.AUTH_WITHDRAWN_USER,
+      status: HttpStatus.FORBIDDEN,
+    });
+  });
+
+  it('rejects OAuth login when the provider is already linked', async () => {
+    temporaryTokens.consume.mockResolvedValue(oauthProfile);
+    prisma.socialAccount.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 2n });
+    prisma.member.findUnique.mockResolvedValue(completeMember);
+
+    await expect(
+      service.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.SOCIAL_LOGIN_FAILED,
+      status: HttpStatus.CONFLICT,
+    });
+    expect(prisma.socialAccount.create).not.toHaveBeenCalled();
+  });
+
+  it('maps a concurrent OAuth unique-constraint failure to a conflict', async () => {
+    temporaryTokens.consume.mockResolvedValue(oauthProfile);
+    prisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+
+    await expect(
+      service.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.SOCIAL_LOGIN_FAILED,
+      status: HttpStatus.CONFLICT,
+    });
+  });
+
   it('rejects logout without a refresh token', async () => {
     await expect(
       service.logout('1', { refreshToken: '' }),

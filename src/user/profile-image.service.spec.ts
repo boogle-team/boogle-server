@@ -34,6 +34,22 @@ describe('ProfileImageService', () => {
     expect(uploadInput.contentType).toBe('image/png');
   });
 
+  it('maps an S3 upload failure to PROFILE_IMAGE_UPLOAD_FAILED', async () => {
+    storage.upload.mockRejectedValue(new Error('S3 unavailable'));
+
+    await expect(
+      service.save('1', {
+        originalname: 'profile.png',
+        mimetype: 'image/png',
+        size: 3,
+        buffer: Buffer.from('png'),
+      }),
+    ).rejects.toMatchObject({
+      errorCode: UserErrorCode.PROFILE_IMAGE_UPLOAD_FAILED,
+      status: 500,
+    });
+  });
+
   it('rejects unsupported image formats', async () => {
     await expect(
       service.save('1', {
@@ -72,6 +88,15 @@ describe('ProfileImageService', () => {
     await expect(service.getUrl('private/image.jpg')).resolves.toBe(
       'https://cdn.example.com/image.jpg',
     );
+  });
+
+  it('maps a URL issue failure to PROFILE_IMAGE_ACCESS_FAILED', async () => {
+    storage.getPublicUrl.mockRejectedValue(new Error('S3 unavailable'));
+
+    await expect(service.getUrl('private/image.jpg')).rejects.toMatchObject({
+      errorCode: UserErrorCode.PROFILE_IMAGE_ACCESS_FAILED,
+      status: 500,
+    });
   });
 
   it('does not fail the request when old object cleanup fails', async () => {

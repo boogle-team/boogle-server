@@ -63,6 +63,16 @@ describe('AuthController', () => {
     );
   });
 
+  it('propagates an authorization-start service error', async () => {
+    const error = new Error('authorization failed');
+    authService.createAuthorizationUrl.mockRejectedValue(error);
+    const { response, redirect, cookie } = createResponse();
+
+    await expect(controller.startOAuth('google', response)).rejects.toBe(error);
+    expect(cookie).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it('passes the browser state cookie to the OAuth callback', async () => {
     authService.createOAuthCallbackRedirect.mockResolvedValue(
       'https://frontend.example.com/oauth/callback?oauthResultCode=result',
@@ -91,6 +101,54 @@ describe('AuthController', () => {
     );
   });
 
+  it('passes an invalid malformed state cookie as undefined', async () => {
+    authService.createOAuthCallbackRedirect.mockResolvedValue(
+      'https://frontend.example.com/oauth/callback?error=AUTH_INVALID_STATE',
+    );
+    const request = {
+      headers: { cookie: 'boogle_oauth_state_google=%' },
+    } as Request;
+    const { response, redirect, clearCookie } = createResponse();
+
+    await controller.handleOAuthCallback(
+      'google',
+      { code: 'code', state: 'state-value' },
+      request,
+      response,
+    );
+
+    expect(authService.createOAuthCallbackRedirect).toHaveBeenCalledWith(
+      'google',
+      { code: 'code', state: 'state-value' },
+      undefined,
+    );
+    expect(clearCookie).toHaveBeenCalled();
+    expect(redirect).toHaveBeenCalledWith(
+      HttpStatus.FOUND,
+      'https://frontend.example.com/oauth/callback?error=AUTH_INVALID_STATE',
+    );
+  });
+
+  it('clears the state cookie and propagates a callback service error', async () => {
+    const error = new Error('callback failed');
+    authService.createOAuthCallbackRedirect.mockRejectedValue(error);
+    const request = {
+      headers: { cookie: 'boogle_oauth_state_google=state-value' },
+    } as Request;
+    const { response, redirect, clearCookie } = createResponse();
+
+    await expect(
+      controller.handleOAuthCallback(
+        'google',
+        { code: 'code', state: 'state-value' },
+        request,
+        response,
+      ),
+    ).rejects.toBe(error);
+    expect(clearCookie).toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it('passes the one-time result code to the exchange service', async () => {
     const result = { nextAction: 'ONBOARDING_REQUIRED' };
     authService.exchangeOAuthResult.mockResolvedValue(result);
@@ -101,6 +159,15 @@ describe('AuthController', () => {
     expect(authService.exchangeOAuthResult).toHaveBeenCalledWith({
       oauthResultCode: 'result-code',
     });
+  });
+
+  it('propagates an OAuth-result exchange error', async () => {
+    const error = new Error('exchange failed');
+    authService.exchangeOAuthResult.mockRejectedValue(error);
+
+    await expect(
+      controller.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
+    ).rejects.toBe(error);
   });
 
   it('requires and forwards the current refresh token on logout', async () => {
@@ -121,5 +188,14 @@ describe('AuthController', () => {
     expect(authService.refresh).toHaveBeenCalledWith({
       refreshToken: 'refresh-token',
     });
+  });
+
+  it('propagates a refresh-token rotation error', async () => {
+    const error = new Error('refresh failed');
+    authService.refresh.mockRejectedValue(error);
+
+    await expect(
+      controller.refresh({ refreshToken: 'refresh-token' }),
+    ).rejects.toBe(error);
   });
 });
