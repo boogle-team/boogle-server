@@ -27,7 +27,8 @@
 | N105 | 연속 기록 독려 알림 | `R` | `STREAK` | `HOME` |
 
 - `linkTo`는 DB 컬럼이 아니라 `category` 값으로부터 서버가 코드로 매핑해 내려준다 (`NOTIFICATION_LINK_TO` 상수).
-- `type`은 `alarm.type` 컬럼에 저장된 의미 코드를 그대로 내려준다. **아이콘 매핑용** — `category`(W/R/P, 3종/점 색)로는 5종 아이콘을 구분할 수 없어 별도 필드로 둔다. 프론트가 `type` → 아이콘으로 매핑한다.
+- `type`은 `alarm.type` 컬럼에 저장된 의미 코드다. **아이콘 매핑용** — `category`(W/R/P, 3종/점 색)로는 5종 아이콘을 구분할 수 없어 별도 필드로 둔다. 프론트가 `type` → 아이콘으로 매핑한다.
+- `alarm.type`은 DB상 자유 문자열이라, 서버는 위 5종만 그대로 내려주고 **값이 없거나(null) 계약 밖 값이면 `null`로 폴백**한다. 즉 응답의 `type`은 항상 5종 중 하나 또는 `null`이다.
 
 ---
 
@@ -82,7 +83,7 @@ Authorization: Bearer eyJhbGc...
 | notifications | array | Y | 알림 목록(reg_date 내림차순). 없으면 `[]` |
 | notifications[].id | number | Y | 알림 ID (`alarm_map.id`) |
 | notifications[].category | string | Y | `W`(위험) / `R`(기록) / `P`(리포트) — 점 색 표시용 |
-| notifications[].type | string \| null | Y | 아이콘 매핑용 의미 코드 (`WARNING`/`RECORD_REMINDER`/`REPORT_READY`/`PDF_SAVED`/`STREAK`). 원본에 값이 없으면 `null` → 프론트 기본 아이콘 폴백 |
+| notifications[].type | string \| null | Y | 아이콘 매핑용 의미 코드 (`WARNING`/`RECORD_REMINDER`/`REPORT_READY`/`PDF_SAVED`/`STREAK`). 값이 없거나 계약 밖 값이면 `null` → 프론트 기본 아이콘 폴백 |
 | notifications[].title | string | Y | 알림 제목 |
 | notifications[].content | string | Y | 알림 내용 |
 | notifications[].linkTo | string | Y | 탭 시 이동 화면 (`GUIDE_WARNING`/`HOME`/`REPORT`) |
