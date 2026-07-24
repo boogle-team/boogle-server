@@ -3,6 +3,10 @@ import { randomUUID } from 'crypto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { S3StorageService } from '@/common/storage/s3-storage.service';
 import { UserErrorCode } from './user-error-code.enum';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 export interface ProfileImageFile {
   originalname: string;
@@ -97,7 +101,7 @@ export class ProfileImageService {
     if (file.size > this.getMaxSizeBytes()) {
       throw new BusinessException(
         UserErrorCode.PROFILE_IMAGE_TOO_LARGE,
-        '프로필 이미지 용량이 너무 큽니다.',
+        PROFILE_IMAGE_TOO_LARGE_MESSAGE,
         HttpStatus.PAYLOAD_TOO_LARGE,
       );
     }
@@ -107,6 +111,6 @@ export class ProfileImageService {
     const configured = Number(process.env.PROFILE_IMAGE_MAX_SIZE_BYTES);
     return Number.isFinite(configured) && configured > 0
       ? configured
-      : 5 * 1024 * 1024;
+      : DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES;
   }
 }
