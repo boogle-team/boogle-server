@@ -121,6 +121,27 @@ describe('NotificationService', () => {
     expect(result.notifications[0].linkTo).toBe('HOME');
   });
 
+  it('alarm.type이 계약(5종) 밖의 값이면 type을 null로 폴백한다', async () => {
+    prisma.alarmMap.findMany.mockResolvedValue([
+      {
+        id: 5003n,
+        regDate: new Date('2026-05-12T14:32:00.000Z'),
+        isRead: 'N',
+        alarm: {
+          category: 'R',
+          type: 'UNKNOWN_LEGACY_CODE',
+          title: '기록할 시간이에요',
+          content: '30초면 충분해요.',
+        },
+      },
+    ]);
+    prisma.alarmMap.count.mockResolvedValue(1);
+
+    const result = await service.getNotifications('1');
+
+    expect(result.notifications[0].type).toBeNull();
+  });
+
   it('alarm이 연결되지 않은 행(alarmId null)은 목록에서 제외한다', async () => {
     prisma.alarmMap.findMany.mockResolvedValue([
       {

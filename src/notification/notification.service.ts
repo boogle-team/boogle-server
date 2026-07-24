@@ -4,7 +4,7 @@ import {
   NOTIFICATION_LINK_TO,
   NotificationCategory,
   NotificationListResponseDto,
-  NotificationType,
+  toNotificationType,
 } from './dto/notification-response.dto';
 
 // 알림이 쌓일수록 매번 전체 이력을 긁는 걸 막기 위한 목록 상한.
@@ -39,8 +39,8 @@ export class NotificationService {
         return {
           id: Number(row.id),
           category,
-          // 아이콘 매핑용 의미 코드. 원본에 없으면 null → 프론트가 기본 아이콘 폴백.
-          type: (row.alarm!.type as NotificationType | null) ?? null,
+          // 아이콘 매핑용 의미 코드. 원본에 없거나 계약 밖 값이면 null → 프론트 폴백.
+          type: toNotificationType(row.alarm!.type),
           title: row.alarm!.title,
           content: row.alarm!.content,
           linkTo: NOTIFICATION_LINK_TO[category],
