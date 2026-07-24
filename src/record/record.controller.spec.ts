@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RecordController } from './record.controller';
 import { RecordService } from './record.service';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 
 describe('RecordController', () => {
   let controller: RecordController;
@@ -18,7 +19,12 @@ describe('RecordController', () => {
           useValue: mockRecordService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: jest.fn(() => true),
+      })
+      .compile();
 
     controller = module.get<RecordController>(RecordController);
   });
