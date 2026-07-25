@@ -48,7 +48,6 @@ import { DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES } from './profile-image.constants'
 @ApiTags('온보딩, 계정 관리')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@UseFilters(ProfileImageUploadExceptionFilter)
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -57,6 +56,7 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '온보딩 정보 저장' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
     FileInterceptor('profileImage', {
       limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
@@ -206,6 +206,7 @@ export class UserController {
   @Patch('me')
   @ApiOperation({ summary: '내 정보 수정' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
     FileInterceptor('profileImage', {
       limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
@@ -255,6 +256,7 @@ export class UserController {
   @Put('me/profile-image')
   @ApiOperation({ summary: '프로필 이미지 등록 또는 교체' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
     FileInterceptor('image', {
       limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },

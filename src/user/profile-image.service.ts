@@ -98,19 +98,12 @@ export class ProfileImageService {
       );
     }
 
-    if (file.size > this.getMaxSizeBytes()) {
+    if (file.size > DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES) {
       throw new BusinessException(
         UserErrorCode.PROFILE_IMAGE_TOO_LARGE,
         PROFILE_IMAGE_TOO_LARGE_MESSAGE,
         HttpStatus.PAYLOAD_TOO_LARGE,
       );
     }
-  }
-
-  private getMaxSizeBytes() {
-    const configured = Number(process.env.PROFILE_IMAGE_MAX_SIZE_BYTES);
-    return Number.isFinite(configured) && configured > 0
-      ? configured
-      : DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES;
   }
 }
