@@ -4,7 +4,10 @@ import {
 } from '@/common/storage/s3-storage.service';
 import { ProfileImageService } from './profile-image.service';
 import { UserErrorCode } from './user-error-code.enum';
-import { DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES } from './profile-image.constants';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 describe('ProfileImageService', () => {
   const storage = {
@@ -76,6 +79,7 @@ describe('ProfileImageService', () => {
     ).rejects.toMatchObject({
       errorCode: UserErrorCode.PROFILE_IMAGE_TOO_LARGE,
       status: 413,
+      message: PROFILE_IMAGE_TOO_LARGE_MESSAGE,
     });
   });
 

@@ -43,7 +43,10 @@ import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-inf
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import type { ProfileImageFile } from './profile-image.service';
 import { ProfileImageUploadExceptionFilter } from './filters/profile-image-upload-exception.filter';
-import { DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES } from './profile-image.constants';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 @ApiTags('온보딩, 계정 관리')
 @ApiBearerAuth()
@@ -108,8 +111,7 @@ export class UserController {
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
   @ApiPayloadTooLargeResponse({
-    description:
-      'PROFILE_IMAGE_TOO_LARGE: 프로필 이미지가 최대 허용 용량인 50MB를 초과했습니다.',
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
   })
   @GenericUnauthorized()
   @ResponseMessage('온보딩 정보가 저장되었습니다.')
@@ -240,8 +242,7 @@ export class UserController {
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
   @ApiPayloadTooLargeResponse({
-    description:
-      'PROFILE_IMAGE_TOO_LARGE: 프로필 이미지가 최대 허용 용량인 50MB를 초과했습니다.',
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
   })
   @GenericUnauthorized()
   @ResponseMessage('내 정보 수정에 성공했습니다.')
@@ -292,8 +293,7 @@ export class UserController {
     description: '이미지 누락 또는 지원하지 않는 이미지 형식',
   })
   @ApiPayloadTooLargeResponse({
-    description:
-      'PROFILE_IMAGE_TOO_LARGE: 프로필 이미지가 최대 허용 용량인 50MB를 초과했습니다.',
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
   })
   @ApiInternalServerErrorResponse({ description: 'S3 이미지 저장 실패' })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
