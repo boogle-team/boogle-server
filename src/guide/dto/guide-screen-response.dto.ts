@@ -17,7 +17,7 @@ export interface GuideNoticeDto {
 }
 
 export interface GuideCardDto {
-  guideContentId: number;
+  guideId: number;
   category: GuideCategory;
   title: string;
   summary: string;
@@ -33,9 +33,7 @@ export interface MatchedEvidenceDto {
 
 export interface PatternGuideDto extends GuideCardDto {
   category: 'P';
-  ruleCode: string;
-  matchedReason: string;
-  matchedEvidence: MatchedEvidenceDto | null;
+  matchedRuleCodes: string[];
 }
 
 export interface PatternGuideSectionDto {

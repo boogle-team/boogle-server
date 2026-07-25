@@ -7,10 +7,7 @@ describe('GuideService', () => {
   let service: GuideService;
 
   const prismaMock = {
-    guideRule: {
-      findMany: jest.fn(),
-    },
-    guideContent: {
+    guide: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },

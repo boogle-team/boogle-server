@@ -7,6 +7,7 @@ describe('ReportService', () => {
 
   const prismaMock = {
     member: {
+      findUnique: jest.fn(),
       findFirst: jest.fn(),
     },
     boogleRecord: {
@@ -23,8 +24,9 @@ describe('ReportService', () => {
       findFirst: jest.fn(),
       findMany: jest.fn(),
     },
-    guideRule: {
+    guide: {
       findMany: jest.fn(),
+      findUnique: jest.fn(),
     },
     guideFeedback: {
       findMany: jest.fn(),

@@ -20,7 +20,6 @@ import type { GetMonthlyReportQueryDto } from './dto/get-monthly-report-query.dt
 import type {
   MonthlyChangeSummaryDto,
   MonthlyLifeFactorStatsDto,
-  MonthlyPatternCardDto,
   MonthlyPdfDto,
   MonthlyRecordStatsDto,
   MonthlyReportPeriodDto,
@@ -33,13 +32,23 @@ import type {
 } from './dto/monthly-report-response.dto';
 import { CreatePdfReportRequestDto } from './dto/create-pdf-report-request.dto';
 import type {
-  BoogleRecordForWeekly,
-  LifeRecordForWeekly,
-  DetectedRule,
+  BoogleRecordForReport,
+  LifeRecordForReport,
+  WeeklyPatternContext,
   WeeklyRecordForReport,
-  MonthlyRecordForReport,
   WeeklyRecordForTrend,
 } from './dto/report-record.dto';
+import { detectWeeklyPatterns } from './pattern/weekly-pattern.detector';
+import {
+  PATTERN_GUIDE_BINDINGS,
+  type PatternGuideBinding,
+  type WeeklyRuleCode,
+} from './pattern/weekly-pattern.constants';
+import {
+  buildMonthlyImprovements,
+  buildMonthlyPatternCards,
+  calculateMonthlyPatternMetrics,
+} from './pattern/monthly-pattern.calculator';
 import { ReportErrorCode } from './report-error-code.enum';
 import type {
   PdfReportResult,
@@ -51,6 +60,10 @@ import type {
   GuideContentForPdf,
   PdfReportBuildData,
 } from './dto/pdf-report-data.dto';
+import {
+  calculateMonthlyScores,
+  calculateReportScores,
+} from './score/report-score.calculator';
 import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -58,7 +71,6 @@ import { join } from 'path';
 const TOTAL_WEEK_DAYS = 7;
 const REQUIRED_RECORDED_DAYS = 3;
 
-const MIN_MONTHLY_COMPLETION_SCORE = 50;
 const MONTHLY_PDF_ENDPOINT = '/api/v1/reports/pdf';
 
 const FREE_PDF_MAX_DAYS = 31;
@@ -80,43 +92,47 @@ export class ReportService {
 
       const previousWeekStartDate = this.addDays(weekStartDate, -7);
       const previousWeekEndDate = this.addDays(weekStartDate, -1);
-      const nextPreviousWeekStartDate = weekStartDate;
 
-      const period = this.buildPeriod(weekStartDate, weekEndDate);
+      // 현재 주 일요일을 끝으로 하는 최근 30일
+      const lookback30StartDate = this.addDays(nextWeekStartDate, -30);
 
       const [
         weeklyRecord,
         previousWeeklyRecord,
-        boogleRecords,
-        lifeRecords,
-        previousBoogleRecords,
-        previousLifeRecords,
+        boogleHistory,
+        lifeHistory,
+        patternContext,
       ] = await Promise.all([
         this.findWeeklyRecord(userId, weekStartDate),
         this.findWeeklyRecord(userId, previousWeekStartDate),
-        this.findBoogleRecords(userId, weekStartDate, nextWeekStartDate),
-        this.findLifeRecords(userId, weekStartDate, nextWeekStartDate),
-        this.findBoogleRecords(
-          userId,
-          previousWeekStartDate,
-          nextPreviousWeekStartDate,
-        ),
-        this.findLifeRecords(
-          userId,
-          previousWeekStartDate,
-          nextPreviousWeekStartDate,
-        ),
+        this.findBoogleRecords(userId, lookback30StartDate, nextWeekStartDate),
+        this.findLifeRecords(userId, lookback30StartDate, nextWeekStartDate),
+        this.findWeeklyPatternContext(userId, weekStartDate),
       ]);
 
-      const recordStats = this.buildRecordStats(
-        boogleRecords,
-        lifeRecords,
-        weeklyRecord,
+      const boogleRecords = boogleHistory.filter(
+        (record) =>
+          record.regDate >= weekStartDate && record.regDate < nextWeekStartDate,
       );
+      const lifeRecords = lifeHistory.filter(
+        (record) =>
+          record.regDate >= weekStartDate && record.regDate < nextWeekStartDate,
+      );
+      const previousBoogleRecords = boogleHistory.filter(
+        (record) =>
+          record.regDate >= previousWeekStartDate &&
+          record.regDate < weekStartDate,
+      );
+      const previousLifeRecords = lifeHistory.filter(
+        (record) =>
+          record.regDate >= previousWeekStartDate &&
+          record.regDate < weekStartDate,
+      );
+
+      const recordStats = this.buildRecordStats(boogleRecords, lifeRecords);
       const previousRecordStats = this.buildRecordStats(
         previousBoogleRecords,
         previousLifeRecords,
-        previousWeeklyRecord,
       );
 
       const previousSummary = this.buildPreviousSummary(
@@ -126,6 +142,8 @@ export class ReportService {
         previousBoogleRecords,
         previousRecordStats,
       );
+
+      const period = this.buildPeriod(weekStartDate, weekEndDate);
 
       if (recordStats.recordedDays < REQUIRED_RECORDED_DAYS) {
         return this.buildInsufficientResponse(
@@ -140,24 +158,16 @@ export class ReportService {
         boogleRecords,
         recordStats,
       );
-      const changeSummary =
-        previousSummary === null
-          ? null
-          : this.buildChangeSummary(summary, previousSummary);
-
       const stoolDistribution = this.buildStoolDistribution(boogleRecords);
-      const bowelRhythmByDay = this.buildBowelRhythmByDay(
-        boogleRecords,
-        weekStartDate,
-      );
-      const frequentTimeSlots = this.buildFrequentTimeSlots(boogleRecords);
       const lifeFactorStats = this.buildLifeFactorStats(lifeRecords);
-      const detectedRules = this.detectPatternCards(
-        summary,
-        stoolDistribution,
-        lifeFactorStats,
-        boogleRecords,
-      );
+
+      const detectedRules = detectWeeklyPatterns({
+        weekStartDate,
+        weekEndDateExclusive: nextWeekStartDate,
+        boogleRecords: boogleHistory,
+        lifeRecords: lifeHistory,
+        context: patternContext,
+      });
 
       const guides = await this.findGuidesByRules(
         userId,
@@ -165,18 +175,43 @@ export class ReportService {
         includeGuide,
       );
 
+      const guideByRuleCode = new Map(
+        guides.flatMap((guide) =>
+          guide.matchedRuleCodes.map((ruleCode) => [ruleCode, guide] as const),
+        ),
+      );
+
+      const patternCards = detectedRules.map(({ ruleCode, card }) => {
+        const guide = guideByRuleCode.get(ruleCode);
+
+        return {
+          ...card,
+          guideId: guide?.guideId ?? null,
+          description:
+            guide?.summary ??
+            card.description ??
+            '기록에서 해당 패턴이 감지됐어요.',
+        };
+      });
+
       return {
         period,
         dataStatus: 'ENOUGH',
         summary,
         recordStats,
         previousSummary,
-        changeSummary,
+        changeSummary:
+          previousSummary === null
+            ? null
+            : this.buildChangeSummary(summary, previousSummary),
         stoolDistribution,
-        bowelRhythmByDay,
-        frequentTimeSlots,
+        bowelRhythmByDay: this.buildBowelRhythmByDay(
+          boogleRecords,
+          weekStartDate,
+        ),
+        frequentTimeSlots: this.buildFrequentTimeSlots(boogleRecords),
         lifeFactorStats,
-        patternCards: detectedRules.map((rule) => rule.card),
+        patternCards,
         guides,
         insufficientNotice: null,
       };
@@ -200,151 +235,115 @@ export class ReportService {
     try {
       const includePattern = query.includePattern ?? true;
       const monthStartDate = this.resolveMonthStartDate(query.monthStartDate);
-      const nextMonthStartDate = this.addMonths(monthStartDate, 1);
-      const monthEndDate = this.addDays(nextMonthStartDate, -1);
+      const calendarNextMonthStart = this.addMonths(monthStartDate, 1);
+      const calendarMonthEnd = this.addDays(calendarNextMonthStart, -1);
+
+      const today = this.getTodayUtc();
+      const effectiveMonthEnd =
+        monthStartDate <= today && today <= calendarMonthEnd
+          ? today
+          : calendarMonthEnd;
+      const effectiveEndExclusive = this.addDays(effectiveMonthEnd, 1);
 
       const previousMonthStartDate = this.addMonths(monthStartDate, -1);
-      const nextPreviousMonthStartDate = monthStartDate;
       const previousMonthEndDate = this.addDays(monthStartDate, -1);
 
-      const period = this.buildMonthlyPeriod(monthStartDate, monthEndDate);
-
       const [
-        monthlyRecord,
-        previousMonthlyRecord,
-        weeklyRecords,
         boogleRecords,
         lifeRecords,
         previousBoogleRecords,
         previousLifeRecords,
+        weeklyRecords,
       ] = await Promise.all([
-        this.findMonthlyRecord(userId, monthStartDate),
-        this.findMonthlyRecord(userId, previousMonthStartDate),
+        this.findBoogleRecords(userId, monthStartDate, effectiveEndExclusive),
+        this.findLifeRecords(userId, monthStartDate, effectiveEndExclusive),
+        this.findBoogleRecords(userId, previousMonthStartDate, monthStartDate),
+        this.findLifeRecords(userId, previousMonthStartDate, monthStartDate),
         this.findWeeklyRecordsForMonth(
           userId,
           monthStartDate,
-          nextMonthStartDate,
-        ),
-        this.findBoogleRecords(userId, monthStartDate, nextMonthStartDate),
-        this.findLifeRecords(userId, monthStartDate, nextMonthStartDate),
-        this.findBoogleRecords(
-          userId,
-          previousMonthStartDate,
-          nextPreviousMonthStartDate,
-        ),
-        this.findLifeRecords(
-          userId,
-          previousMonthStartDate,
-          nextPreviousMonthStartDate,
+          calendarNextMonthStart,
         ),
       ]);
 
       const recordStats = this.buildMonthlyRecordStats(
         boogleRecords,
         lifeRecords,
-        monthEndDate,
+        calendarMonthEnd.getUTCDate(),
       );
-
       const previousRecordStats = this.buildMonthlyRecordStats(
         previousBoogleRecords,
         previousLifeRecords,
-        previousMonthEndDate,
+        previousMonthEndDate.getUTCDate(),
       );
+      const period = this.buildMonthlyPeriod(monthStartDate, effectiveMonthEnd);
+      const pdf = this.buildMonthlyPdf();
+
+      if (recordStats.recordedDays < 7) {
+        return {
+          period,
+          dataStatus: 'INSUFFICIENT',
+          summary: null,
+          recordStats,
+          previousSummary: null,
+          changeSummary: null,
+          stoolDistribution: [],
+          weeklyTrend: [],
+          lifeFactorStats: null,
+          userType: null,
+          patternCards: [],
+          improvements: [],
+          pdf,
+          notice: {
+            code: 'MONTHLY_RECORD_NOT_ENOUGH',
+            message:
+              `현재 ${recordStats.recordedDays}일째 기록 중이에요. ` +
+              '7일 이상 기록하면 월간 리포트를 볼 수 있어요.',
+          },
+        };
+      }
 
       const summary = this.buildMonthlySummary(
-        monthlyRecord,
         boogleRecords,
         lifeRecords,
         recordStats,
       );
+      const previousSummary =
+        previousRecordStats.recordedDays < 7
+          ? null
+          : this.buildPreviousMonthlySummaryFromRaw(
+              previousBoogleRecords,
+              previousLifeRecords,
+              previousRecordStats,
+              previousMonthStartDate,
+              previousMonthEndDate,
+            );
 
-      const previousSummary = this.buildPreviousMonthlySummary(
-        previousMonthlyRecord,
-        previousBoogleRecords,
-        previousLifeRecords,
-        previousRecordStats,
-        previousMonthStartDate,
-        previousMonthEndDate,
+      const currentMetrics = calculateMonthlyPatternMetrics(
+        boogleRecords,
+        lifeRecords,
       );
+      const previousMetrics =
+        previousSummary === null
+          ? null
+          : calculateMonthlyPatternMetrics(
+              previousBoogleRecords,
+              previousLifeRecords,
+            );
 
-      const pdf = this.buildMonthlyPdf();
-
-      if (recordStats.recordedDays === 0) {
-        return {
-          period,
-          dataStatus: 'NO_RECORD',
-          summary,
-          recordStats,
-          previousSummary,
-          changeSummary:
-            this.buildMonthlyNoPreviousOrNoRecordChangeSummary(previousSummary),
-          stoolDistribution: [],
-          weeklyTrend: [],
-          lifeFactorStats: null,
-          userType: this.buildMonthlyUserType('N'),
-          patternCards: [],
-          pdf,
-          notice: {
-            code: 'MONTHLY_NO_RECORD',
-            message:
-              '아직 이번 달 기록이 없어요. 기록을 시작하면 월간 리포트를 확인할 수 있어요!',
-          },
-        };
-      }
-
-      if (recordStats.completionScore < MIN_MONTHLY_COMPLETION_SCORE) {
-        return {
-          period,
-          dataStatus: 'LOW_COMPLETION',
-          summary: {
-            ...summary,
-            conditionScore: null,
-            state: 3,
-            stateLabel: '주의 필요',
-          },
-          recordStats,
-          previousSummary,
-          changeSummary: this.buildMonthlyLowCompletionChangeSummary(
-            summary,
-            previousSummary,
-          ),
-          stoolDistribution: [],
-          weeklyTrend: [],
-          lifeFactorStats: null,
-          userType: this.buildMonthlyUserType('N'),
-          patternCards: [],
-          pdf,
-          notice: {
-            code: 'MONTHLY_LOW_COMPLETION_SCORE',
-            message: '기록이 부족해 일부 통계가 부정확할 수 있어요!',
-          },
-        };
-      }
+      const patternCards = includePattern
+        ? buildMonthlyPatternCards(currentMetrics)
+        : [];
+      const improvements = buildMonthlyImprovements(
+        currentMetrics,
+        previousMetrics,
+        summary.conditionScore,
+        previousSummary?.conditionScore ?? null,
+      );
 
       const stoolDistribution =
         this.buildMonthlyStoolDistribution(boogleRecords);
-      const weeklyTrend = this.buildWeeklyTrend(
-        weeklyRecords,
-        boogleRecords,
-        lifeRecords,
-        monthStartDate,
-        monthEndDate,
-      );
       const lifeFactorStats = this.buildMonthlyLifeFactorStats(lifeRecords);
-      const userType = this.resolveMonthlyUserType(
-        monthlyRecord,
-        summary,
-        stoolDistribution,
-        lifeFactorStats,
-      );
-      const patternCards = includePattern
-        ? this.detectMonthlyPatternCards(
-            summary,
-            stoolDistribution,
-            lifeFactorStats,
-            userType,
-          )
-        : [];
 
       return {
         period,
@@ -352,12 +351,26 @@ export class ReportService {
         summary,
         recordStats,
         previousSummary,
-        changeSummary: this.buildMonthlyChangeSummary(summary, previousSummary),
+        changeSummary:
+          previousSummary === null
+            ? null
+            : this.buildMonthlyChangeSummary(summary, previousSummary),
         stoolDistribution,
-        weeklyTrend,
+        weeklyTrend: this.buildWeeklyTrend(
+          weeklyRecords,
+          boogleRecords,
+          lifeRecords,
+          monthStartDate,
+          effectiveMonthEnd,
+        ),
         lifeFactorStats,
-        userType,
+        userType: this.resolveMonthlyUserType(
+          recordStats,
+          boogleRecords,
+          lifeRecords,
+        ),
         patternCards,
+        improvements,
         pdf,
         notice: null,
       };
@@ -372,6 +385,39 @@ export class ReportService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private getTodayUtc(): Date {
+    const now = new Date();
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+  }
+
+  private buildPreviousMonthlySummaryFromRaw(
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
+    recordStats: MonthlyRecordStatsDto,
+    monthStartDate: Date,
+    monthEndDate: Date,
+  ): PreviousMonthlySummaryDto {
+    const summary = this.buildMonthlySummary(
+      boogleRecords,
+      lifeRecords,
+      recordStats,
+    );
+    const userType = this.resolveMonthlyUserType(
+      recordStats,
+      boogleRecords,
+      lifeRecords,
+    );
+
+    return {
+      period: this.buildMonthlyPeriod(monthStartDate, monthEndDate),
+      ...summary,
+      userType: userType.code,
+      userTypeLabel: userType.name,
+    };
   }
   // PDF 메인
   async createPdfReport(
@@ -486,7 +532,7 @@ export class ReportService {
     userId: bigint,
     startDate: Date,
     endDateExclusive: Date,
-  ): Promise<BoogleRecordForWeekly[]> {
+  ): Promise<BoogleRecordForReport[]> {
     return this.prisma.boogleRecord.findMany({
       where: {
         userId,
@@ -497,14 +543,18 @@ export class ReportService {
         },
       },
       select: {
+        id: true,
         regDate: true,
         hasBowel: true,
+        stoolBristol: true,
         stoolSimple: true,
         bowelFeeling: true,
         stomach: true,
         distension: true,
         remainingFeeling: true,
         urgency: true,
+        takenTime: true,
+        amount: true,
       },
       orderBy: {
         regDate: 'asc',
@@ -516,7 +566,7 @@ export class ReportService {
     userId: bigint,
     startDate: Date,
     endDateExclusive: Date,
-  ): Promise<LifeRecordForWeekly[]> {
+  ): Promise<LifeRecordForReport[]> {
     return this.prisma.lifeRecord.findMany({
       where: {
         userId,
@@ -527,39 +577,150 @@ export class ReportService {
         },
       },
       select: {
+        id: true,
         regDate: true,
+        sleep: true,
         sleepTime: true,
         caffeine: true,
         exercise: true,
         stress: true,
         water: true,
+        waterIntake: true,
         mealRegular: true,
+        hormone: true,
+        foodTags: {
+          select: {
+            food: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         regDate: 'asc',
       },
     });
   }
-  // 월간기록 조회
-  private async findMonthlyRecord(
+  // 이전 월 기록 , 민감정보 동의 내역 조회
+  private async findWeeklyPatternContext(
     userId: bigint,
-    monthStartDate: Date,
-  ): Promise<MonthlyRecordForReport | null> {
-    return this.prisma.monthlyRecord.findFirst({
+    weekStartDate: Date,
+  ): Promise<WeeklyPatternContext> {
+    const currentMonthStart = new Date(
+      Date.UTC(weekStartDate.getUTCFullYear(), weekStartDate.getUTCMonth(), 1),
+    );
+    const previousMonthStart = this.addMonths(currentMonthStart, -1);
+
+    const [member, previousMonthlyRecord] = await Promise.all([
+      this.prisma.member.findUnique({
+        where: {
+          id: userId,
+        },
+        select: {
+          sensInfo: true,
+        },
+      }),
+      this.prisma.monthlyRecord.findFirst({
+        where: {
+          userId,
+          monthStartDate: previousMonthStart,
+        },
+        select: {
+          userType: true,
+        },
+      }),
+    ]);
+
+    return {
+      previousMonthlyUserType: previousMonthlyRecord?.userType ?? null,
+      sensitiveInfoAgreed: member?.sensInfo === 'Y',
+    };
+  }
+
+  private async findGuidesByRules(
+    userId: bigint,
+    ruleCodes: WeeklyRuleCode[],
+    includeGuide: boolean,
+  ): Promise<WeeklyGuideDto[]> {
+    if (!includeGuide || ruleCodes.length === 0) {
+      return [];
+    }
+
+    const detectedRuleCodeSet = new Set<WeeklyRuleCode>(ruleCodes);
+
+    const matchedBindings = PATTERN_GUIDE_BINDINGS.filter((binding) =>
+      binding.ruleCodes.some((ruleCode) => detectedRuleCodeSet.has(ruleCode)),
+    );
+
+    if (matchedBindings.length === 0) {
+      return [];
+    }
+
+    const guides = await this.prisma.guide.findMany({
       where: {
-        userId,
-        monthStartDate,
+        category: 'P',
+        status: 'A',
+        title: {
+          in: matchedBindings.map((binding) => binding.guideTitle),
+        },
       },
       select: {
-        bowelCount: true,
-        intervalAvg: true,
-        state: true,
-        completionScore: true,
-        conditionScore: true,
-        userType: true,
+        id: true,
+        title: true,
+        summary: true,
+        category: true,
+      },
+      orderBy: {
+        id: 'asc',
       },
     });
+
+    const feedbacks = await this.prisma.guideFeedback.findMany({
+      where: {
+        userId,
+        guideId: {
+          in: guides.map((guide) => guide.id),
+        },
+      },
+      select: {
+        guideId: true,
+        feedback: true,
+      },
+    });
+
+    const feedbackMap = new Map(
+      feedbacks.map((feedback) => [feedback.guideId, feedback.feedback]),
+    );
+    const bindingMap = new Map<string, PatternGuideBinding>(
+      matchedBindings.map((binding) => [binding.guideTitle, binding]),
+    );
+
+    return guides.flatMap((guide): WeeklyGuideDto[] => {
+      const binding = bindingMap.get(guide.title);
+
+      if (binding === undefined) {
+        return [];
+      }
+
+      const matchedRuleCodes = binding.ruleCodes.filter((ruleCode) =>
+        detectedRuleCodeSet.has(ruleCode),
+      );
+
+      return [
+        {
+          guideId: guide.id,
+          category: 'P',
+          title: guide.title,
+          summary: guide.summary,
+          matchedRuleCodes,
+          feedbackStatus: feedbackMap.get(guide.id) ?? null,
+        },
+      ];
+    });
   }
+
   // 주간시작일자
   private resolveWeekStartDate(weekStartDate?: string): Date {
     if (weekStartDate === undefined || weekStartDate.trim() === '') {
@@ -647,9 +808,8 @@ export class ReportService {
   }
 
   private buildRecordStats(
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
-    weeklyRecord?: WeeklyRecordForReport | null,
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
   ): WeeklyRecordStatsDto {
     const boogleRecordDateSet = new Set(
       boogleRecords.map((record) => this.toDateString(record.regDate)),
@@ -657,30 +817,28 @@ export class ReportService {
     const lifeRecordDateSet = new Set(
       lifeRecords.map((record) => this.toDateString(record.regDate)),
     );
-
     const recordedDateSet = new Set([
       ...boogleRecordDateSet,
       ...lifeRecordDateSet,
     ]);
 
-    const calculatedCompletionScore = this.round1(
-      (recordedDateSet.size / TOTAL_WEEK_DAYS) * 100,
+    const completionScore = this.round1(
+      Math.min((recordedDateSet.size / 7) * 100, 100),
     );
 
     return {
-      totalDays: TOTAL_WEEK_DAYS,
+      totalDays: 7,
       recordedDays: recordedDateSet.size,
       boogleRecordDays: boogleRecordDateSet.size,
       lifeRecordDays: lifeRecordDateSet.size,
-      requiredDays: REQUIRED_RECORDED_DAYS,
-      completionScore:
-        weeklyRecord?.completionScore ?? calculatedCompletionScore,
+      requiredDays: 3,
+      completionScore,
     };
   }
 
   private buildSummary(
     weeklyRecord: WeeklyRecordForReport | null,
-    boogleRecords: BoogleRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
     recordStats: WeeklyRecordStatsDto,
   ): WeeklySummaryDto {
     const calculatedBowelCount = boogleRecords.filter(
@@ -694,8 +852,7 @@ export class ReportService {
       intervalAvg:
         weeklyRecord?.intervalAvg ??
         (bowelCount === 0 ? 0 : this.round1(TOTAL_WEEK_DAYS / bowelCount)),
-      completionScore:
-        weeklyRecord?.completionScore ?? recordStats.completionScore,
+      completionScore: recordStats.completionScore,
     };
   }
 
@@ -703,7 +860,7 @@ export class ReportService {
     previousWeekStartDate: Date,
     previousWeekEndDate: Date,
     previousWeeklyRecord: WeeklyRecordForReport | null,
-    previousBoogleRecords: BoogleRecordForWeekly[],
+    previousBoogleRecords: BoogleRecordForReport[],
     previousRecordStats: WeeklyRecordStatsDto,
   ): PreviousWeeklySummaryDto | null {
     if (
@@ -782,7 +939,7 @@ export class ReportService {
   }
 
   private buildStoolDistribution(
-    boogleRecords: BoogleRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
   ): StoolDistributionDto[] {
     const stoolMap = {
       H: { label: '딱딱함', count: 0 },
@@ -817,7 +974,7 @@ export class ReportService {
   }
 
   private buildBowelRhythmByDay(
-    boogleRecords: BoogleRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
     weekStartDate: Date,
   ): BowelRhythmByDayDto[] {
     const dayMeta = [
@@ -850,7 +1007,7 @@ export class ReportService {
   }
 
   private buildFrequentTimeSlots(
-    boogleRecords: BoogleRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
   ): FrequentTimeSlotDto[] {
     const slotMap: Record<
       FrequentTimeSlotDto['timeSlot'],
@@ -889,7 +1046,7 @@ export class ReportService {
   }
 
   private buildLifeFactorStats(
-    lifeRecords: LifeRecordForWeekly[],
+    lifeRecords: LifeRecordForReport[],
   ): LifeFactorStatsDto {
     return {
       lowSleep: {
@@ -923,221 +1080,6 @@ export class ReportService {
         count: lifeRecords.filter((record) => record.water === 'L').length,
       },
     };
-  }
-
-  private detectPatternCards(
-    summary: WeeklySummaryDto,
-    stoolDistribution: StoolDistributionDto[],
-    lifeFactorStats: LifeFactorStatsDto,
-    boogleRecords: BoogleRecordForWeekly[],
-  ): DetectedRule[] {
-    const detectedRules: DetectedRule[] = [];
-    const hardStoolCount =
-      stoolDistribution.find((item) => item.stoolSimple === 'H')?.count ?? 0;
-    const looseStoolCount =
-      stoolDistribution.find((item) => item.stoolSimple === 'T')?.count ?? 0;
-    const difficultBowelCount = boogleRecords.filter(
-      (record) => record.hasBowel && record.bowelFeeling === 'H',
-    ).length;
-
-    if (summary.bowelCount <= 2) {
-      detectedRules.push({
-        ruleCode: 'LOW_BOWEL_COUNT',
-        card: {
-          level: 'WARN',
-          ruleCode: 'LOW_BOWEL_COUNT',
-          title: '이번 주 배변 횟수가 적은 편이에요',
-          description:
-            '이번 주 배변 횟수가 적게 기록되었어요. 수분 섭취와 식사 리듬을 함께 확인해보세요.',
-        },
-      });
-    }
-
-    if (summary.bowelCount >= 10) {
-      detectedRules.push({
-        ruleCode: 'HIGH_BOWEL_COUNT',
-        card: {
-          level: 'WARN',
-          ruleCode: 'HIGH_BOWEL_COUNT',
-          title: '이번 주 배변 횟수가 많은 편이에요',
-          description:
-            '배변 횟수가 평소보다 많다면 묽은 변, 복통, 긴박감이 함께 있었는지 확인해보세요.',
-        },
-      });
-    }
-
-    if (hardStoolCount >= 2) {
-      detectedRules.push({
-        ruleCode: 'CONSTIPATION_PATTERN',
-        card: {
-          level: 'WARN',
-          ruleCode: 'CONSTIPATION_PATTERN',
-          title: '딱딱한 변이 반복해서 나타났어요',
-          description:
-            '이번 주 기록에서 딱딱한 변이 여러 번 나타났어요. 수분과 식이섬유 섭취를 점검해보세요.',
-        },
-      });
-    }
-
-    if (looseStoolCount >= 2) {
-      detectedRules.push({
-        ruleCode: 'LOOSE_STOOL_PATTERN',
-        card: {
-          level: 'WARN',
-          ruleCode: 'LOOSE_STOOL_PATTERN',
-          title: '묽은 변이 반복해서 나타났어요',
-          description:
-            '이번 주 기록에서 묽은 변이 여러 번 나타났어요. 자극적인 음식이나 카페인 섭취를 함께 확인해보세요.',
-        },
-      });
-    }
-
-    if (
-      lifeFactorStats.lowWater.count >= 2 &&
-      (hardStoolCount > 0 || difficultBowelCount > 0)
-    ) {
-      detectedRules.push({
-        ruleCode: 'LOW_WATER',
-        card: {
-          level: 'WARN',
-          ruleCode: 'LOW_WATER',
-          title: '수분 섭취가 부족한 날에 배변이 불편했어요',
-          description:
-            '이번 주 기록에서 수분 섭취가 부족한 날에 딱딱한 변이나 힘든 배변이 함께 나타났어요.',
-        },
-      });
-    }
-
-    if (lifeFactorStats.highStress.count >= 2) {
-      detectedRules.push({
-        ruleCode: 'HIGH_STRESS',
-        card: {
-          level: 'WARN',
-          ruleCode: 'HIGH_STRESS',
-          title: '스트레스가 높은 날이 반복되었어요',
-          description:
-            '스트레스가 높은 날이 여러 번 기록되었어요. 장 컨디션 변화와 함께 확인해보세요.',
-        },
-      });
-    }
-
-    if (lifeFactorStats.lowSleep.count >= 2) {
-      detectedRules.push({
-        ruleCode: 'LOW_SLEEP',
-        card: {
-          level: 'WARN',
-          ruleCode: 'LOW_SLEEP',
-          title: '수면이 부족한 날이 반복되었어요',
-          description:
-            '수면 부족은 장 리듬에도 영향을 줄 수 있어요. 이번 주 수면 패턴을 점검해보세요.',
-        },
-      });
-    }
-
-    if (lifeFactorStats.highCaffeine.count >= 2) {
-      detectedRules.push({
-        ruleCode: 'HIGH_CAFFEINE',
-        card: {
-          level: 'WARN',
-          ruleCode: 'HIGH_CAFFEINE',
-          title: '카페인 섭취가 많은 날이 있었어요',
-          description:
-            '카페인 섭취가 많은 날이 반복되었어요. 묽은 변이나 복부 불편감과 함께 나타났는지 확인해보세요.',
-        },
-      });
-    }
-
-    return this.deduplicateRules(detectedRules);
-  }
-
-  private deduplicateRules(rules: DetectedRule[]): DetectedRule[] {
-    const ruleMap = new Map<string, DetectedRule>();
-
-    for (const rule of rules) {
-      if (!ruleMap.has(rule.ruleCode)) {
-        ruleMap.set(rule.ruleCode, rule);
-      }
-    }
-
-    return [...ruleMap.values()];
-  }
-
-  private async findGuidesByRules(
-    userId: bigint,
-    ruleCodes: string[],
-    includeGuide: boolean,
-  ): Promise<WeeklyGuideDto[]> {
-    if (!includeGuide || ruleCodes.length === 0) {
-      return [];
-    }
-
-    const guideRules = await this.prisma.guideRule.findMany({
-      where: {
-        ruleCode: {
-          in: ruleCodes,
-        },
-        guideContent: {
-          status: 'A',
-          category: 'P',
-        },
-      },
-      select: {
-        ruleCode: true,
-        guideContent: {
-          select: {
-            id: true,
-            category: true,
-            title: true,
-            content: true,
-          },
-        },
-      },
-    });
-
-    const guideContentMap = new Map<
-      number,
-      {
-        id: number;
-        category: string | null;
-        title: string;
-        content: string;
-      }
-    >();
-
-    for (const guideRule of guideRules) {
-      guideContentMap.set(guideRule.guideContent.id, guideRule.guideContent);
-    }
-
-    const guideContents = [...guideContentMap.values()];
-
-    if (guideContents.length === 0) {
-      return [];
-    }
-
-    const feedbacks = await this.prisma.guideFeedback.findMany({
-      where: {
-        userId,
-        guideContentId: {
-          in: guideContents.map((guideContent) => guideContent.id),
-        },
-      },
-      select: {
-        guideContentId: true,
-        feedback: true,
-      },
-    });
-
-    const feedbackMap = new Map(
-      feedbacks.map((feedback) => [feedback.guideContentId, feedback.feedback]),
-    );
-
-    return guideContents.map((guideContent) => ({
-      guideContentId: guideContent.id,
-      category: guideContent.category,
-      title: guideContent.title,
-      content: guideContent.content,
-      feedbackStatus: feedbackMap.get(guideContent.id) ?? null,
-    }));
   }
 
   private buildInsufficientResponse(
@@ -1186,11 +1128,10 @@ export class ReportService {
   }
 
   private buildMonthlyRecordStats(
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
-    monthEndDate: Date,
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
+    calendarDays: number,
   ): MonthlyRecordStatsDto {
-    const totalDays = monthEndDate.getUTCDate();
     const boogleRecordDateSet = new Set(
       boogleRecords.map((record) => this.toDateString(record.regDate)),
     );
@@ -1201,13 +1142,18 @@ export class ReportService {
       ...boogleRecordDateSet,
       ...lifeRecordDateSet,
     ]);
+    const completionScore = this.round1(
+      Math.min((recordedDateSet.size / 30) * 100, 100),
+    );
+
     return {
-      totalDays,
+      totalDays: 30,
+      calendarDays,
       recordedDays: recordedDateSet.size,
       boogleRecordDays: boogleRecordDateSet.size,
       lifeRecordDays: lifeRecordDateSet.size,
-      requiredDays: Math.ceil(totalDays * 0.5),
-      completionScore: this.round1((recordedDateSet.size / totalDays) * 100),
+      requiredDays: 7,
+      completionScore,
     };
   }
 
@@ -1236,67 +1182,27 @@ export class ReportService {
   }
 
   private buildMonthlySummary(
-    monthlyRecord: MonthlyRecordForReport | null,
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
     recordStats: MonthlyRecordStatsDto,
   ): MonthlySummaryDto {
-    const bowelCount =
-      monthlyRecord?.bowelCount ??
-      boogleRecords.filter((record) => record.hasBowel).length;
-
-    const intervalAvg =
-      monthlyRecord?.intervalAvg ??
-      (bowelCount === 0 ? 0 : this.round1(recordStats.totalDays / bowelCount));
-
-    const conditionScore =
-      recordStats.completionScore < MIN_MONTHLY_COMPLETION_SCORE
-        ? null
-        : (monthlyRecord?.conditionScore ??
-          this.calculateConditionScore(boogleRecords, lifeRecords));
-
-    const state =
-      monthlyRecord?.state ?? this.resolveMonthlyState(conditionScore);
+    const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
+    const bowelDays = new Set(
+      bowelRecords.map((record) => this.toDateString(record.regDate)),
+    ).size;
+    const scores = calculateMonthlyScores(boogleRecords, lifeRecords);
+    const state = this.resolveMonthlyState(scores.conditionScore);
 
     return {
-      bowelCount,
-      intervalAvg,
-      completionScore:
-        monthlyRecord?.completionScore ?? recordStats.completionScore,
-      conditionScore,
+      bowelCount: bowelRecords.length,
+      bowelDays,
+      intervalAvg: bowelDays === 0 ? 0 : this.round1(30 / bowelDays),
+      completionScore: recordStats.completionScore,
+      rhythmScore: scores.rhythmScore,
+      stateScore: scores.stateScore,
+      conditionScore: scores.conditionScore,
       state,
       stateLabel: this.getStateLabel(state),
-    };
-  }
-
-  private buildPreviousMonthlySummary(
-    monthlyRecord: MonthlyRecordForReport | null,
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
-    recordStats: MonthlyRecordStatsDto,
-    monthStartDate: Date,
-    monthEndDate: Date,
-  ): PreviousMonthlySummaryDto | null {
-    if (monthlyRecord === null && recordStats.recordedDays === 0) {
-      return null;
-    }
-
-    const summary = this.buildMonthlySummary(
-      monthlyRecord,
-      boogleRecords,
-      lifeRecords,
-      recordStats,
-    );
-
-    return {
-      period: this.buildMonthlyPeriod(monthStartDate, monthEndDate),
-      ...summary,
-      userType: monthlyRecord?.userType ?? null,
-      userTypeLabel:
-        monthlyRecord?.userType === undefined ||
-        monthlyRecord?.userType === null
-          ? null
-          : this.buildMonthlyUserType(monthlyRecord.userType).name,
     };
   }
 
@@ -1346,74 +1252,6 @@ export class ReportService {
     };
   }
 
-  private buildMonthlyLowCompletionChangeSummary(
-    current: MonthlySummaryDto,
-    previous: PreviousMonthlySummaryDto | null,
-  ): MonthlyChangeSummaryDto {
-    if (previous === null) {
-      return {
-        compareType: 'PREVIOUS_MONTH',
-        compareAvailable: false,
-        reasonCode: 'PREVIOUS_MONTH_NOT_FOUND',
-        bowelCountDiff: null,
-        bowelCountChangeRate: null,
-        intervalAvgDiff: null,
-        completionScoreDiff: null,
-        conditionScoreDiff: null,
-        trend: 'NO_PREVIOUS_DATA',
-        description: '비교할 지난달 기록이 아직 없어요.',
-      };
-    }
-
-    return {
-      compareType: 'PREVIOUS_MONTH',
-      compareAvailable: false,
-      reasonCode: 'CURRENT_LOW_COMPLETION',
-      bowelCountDiff: null,
-      bowelCountChangeRate: null,
-      intervalAvgDiff: null,
-      completionScoreDiff: this.round1(
-        current.completionScore - previous.completionScore,
-      ),
-      conditionScoreDiff: null,
-      trend: 'LOW_COMPLETION',
-      description:
-        '이번 달 기록 완성도가 낮아 지난달과 정확한 비교가 어려워요.',
-    };
-  }
-
-  private buildMonthlyNoPreviousOrNoRecordChangeSummary(
-    previous: PreviousMonthlySummaryDto | null,
-  ): MonthlyChangeSummaryDto {
-    if (previous === null) {
-      return {
-        compareType: 'PREVIOUS_MONTH',
-        compareAvailable: false,
-        reasonCode: 'PREVIOUS_MONTH_NOT_FOUND',
-        bowelCountDiff: null,
-        bowelCountChangeRate: null,
-        intervalAvgDiff: null,
-        completionScoreDiff: null,
-        conditionScoreDiff: null,
-        trend: 'NO_PREVIOUS_DATA',
-        description: '비교할 지난달 기록이 아직 없어요.',
-      };
-    }
-
-    return {
-      compareType: 'PREVIOUS_MONTH',
-      compareAvailable: false,
-      reasonCode: 'CURRENT_LOW_COMPLETION',
-      bowelCountDiff: null,
-      bowelCountChangeRate: null,
-      intervalAvgDiff: null,
-      completionScoreDiff: null,
-      conditionScoreDiff: null,
-      trend: 'LOW_COMPLETION',
-      description: '이번 달 기록이 없어 지난달과 정확한 비교가 어려워요.',
-    };
-  }
-
   private resolveMonthlyTrend(
     conditionScoreDiff: number | null,
     bowelCountDiff: number,
@@ -1454,7 +1292,7 @@ export class ReportService {
   }
 
   private buildMonthlyStoolDistribution(
-    boogleRecords: BoogleRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
   ): MonthlyStoolDistributionDto[] {
     const stoolMap = {
       H: { label: '딱딱함', count: 0 },
@@ -1491,8 +1329,8 @@ export class ReportService {
 
   private buildWeeklyTrend(
     weeklyRecords: WeeklyRecordForTrend[],
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
     monthStartDate: Date,
     monthEndDate: Date,
   ): WeeklyTrendDto[] {
@@ -1526,6 +1364,17 @@ export class ReportService {
           record.regDate >= weekStartDate && record.regDate < nextWeekEndDate,
       );
 
+      const trendPeriodDays =
+        Math.floor(
+          (weekEndDate.getTime() - weekStartDate.getTime()) /
+            (24 * 60 * 60 * 1000),
+        ) + 1;
+      const trendScores = calculateReportScores(
+        weekBoogleRecords,
+        weekLifeRecords,
+        trendPeriodDays,
+      );
+
       weeklyTrend.push({
         weekIndex,
         weekStartDate: this.toDateString(weekStartDate),
@@ -1533,10 +1382,7 @@ export class ReportService {
         bowelCount:
           weeklyRecord?.bowelCount ??
           weekBoogleRecords.filter((record) => record.hasBowel).length,
-        conditionScore: this.calculateConditionScore(
-          weekBoogleRecords,
-          weekLifeRecords,
-        ),
+        conditionScore: trendScores.conditionScore,
       });
 
       weekStartDate = this.addDays(weekStartDate, 7);
@@ -1551,7 +1397,7 @@ export class ReportService {
   }
 
   private buildMonthlyLifeFactorStats(
-    lifeRecords: LifeRecordForWeekly[],
+    lifeRecords: LifeRecordForReport[],
   ): MonthlyLifeFactorStatsDto {
     return {
       lowSleepCount: lifeRecords.filter((record) => record.sleepTime === 1)
@@ -1571,45 +1417,92 @@ export class ReportService {
   }
 
   private resolveMonthlyUserType(
-    monthlyRecord: MonthlyRecordForReport | null,
-    summary: MonthlySummaryDto,
-    stoolDistribution: MonthlyStoolDistributionDto[],
-    lifeFactorStats: MonthlyLifeFactorStatsDto,
+    recordStats: MonthlyRecordStatsDto,
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
   ): MonthlyUserTypeDto {
-    if (monthlyRecord?.userType) {
-      return this.buildMonthlyUserType(monthlyRecord.userType);
+    if (recordStats.recordedDays < 15) {
+      return this.buildMonthlyUserType('N');
     }
 
+    const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
+    const bowelDateSet = new Set(
+      bowelRecords.map((record) => this.toDateString(record.regDate)),
+    );
+    const bowelDays = bowelDateSet.size;
+    const averageInterval = bowelDays === 0 ? 30 : 30 / bowelDays;
+
+    const validStoolRecords = bowelRecords.filter(
+      (record) =>
+        record.stoolSimple === 'H' ||
+        record.stoolSimple === 'M' ||
+        record.stoolSimple === 'T',
+    );
+    const denominator = validStoolRecords.length;
     const hardRatio =
-      stoolDistribution.find((item) => item.stoolSimple === 'H')?.ratio ?? 0;
+      denominator === 0
+        ? 0
+        : (validStoolRecords.filter((record) => record.stoolSimple === 'H')
+            .length /
+            denominator) *
+          100;
     const normalRatio =
-      stoolDistribution.find((item) => item.stoolSimple === 'M')?.ratio ?? 0;
+      denominator === 0
+        ? 0
+        : (validStoolRecords.filter((record) => record.stoolSimple === 'M')
+            .length /
+            denominator) *
+          100;
     const looseRatio =
-      stoolDistribution.find((item) => item.stoolSimple === 'T')?.ratio ?? 0;
+      denominator === 0
+        ? 0
+        : (validStoolRecords.filter((record) => record.stoolSimple === 'T')
+            .length /
+            denominator) *
+          100;
 
-    const lifeIssueCount =
-      lifeFactorStats.lowSleepCount +
-      lifeFactorStats.highCaffeineCount +
-      lifeFactorStats.noExerciseCount +
-      lifeFactorStats.highStressCount +
-      lifeFactorStats.lowWaterCount +
-      lifeFactorStats.irregularMealCount;
+    const abnormalStoolDateSet = new Set(
+      bowelRecords
+        .filter(
+          (record) => record.stoolSimple === 'H' || record.stoolSimple === 'T',
+        )
+        .map((record) => this.toDateString(record.regDate)),
+    );
 
-    if (summary.bowelCount <= 8 || hardRatio >= 35) {
+    const lifeIssueDateSet = new Set(
+      lifeRecords
+        .filter(
+          (record) =>
+            record.sleep === 'B' ||
+            record.stress === 'H' ||
+            record.water === 'L' ||
+            (record.waterIntake !== null && record.waterIntake <= 2),
+        )
+        .map((record) => this.toDateString(record.regDate)),
+    );
+    const abnormalCompanionDays = [...lifeIssueDateSet].filter((dateKey) =>
+      abnormalStoolDateSet.has(dateKey),
+    ).length;
+    const abnormalCompanionRatio =
+      lifeIssueDateSet.size === 0
+        ? 0
+        : (abnormalCompanionDays / lifeIssueDateSet.size) * 100;
+
+    // 확정 우선순위: C -> L -> R -> I -> U
+    if (averageInterval >= 3 && hardRatio >= 35) {
       return this.buildMonthlyUserType('C');
     }
-    if (summary.bowelCount >= 30 || looseRatio >= 35) {
+
+    if (looseRatio >= 35 && bowelDays >= 26) {
       return this.buildMonthlyUserType('L');
     }
-    if (lifeIssueCount >= 15) {
-      return this.buildMonthlyUserType('I');
-    }
-    if (
-      summary.conditionScore !== null &&
-      summary.conditionScore >= 70 &&
-      normalRatio >= 50
-    ) {
+
+    if (bowelDays >= 13 && normalRatio >= 50) {
       return this.buildMonthlyUserType('R');
+    }
+
+    if (lifeIssueDateSet.size >= 8 && abnormalCompanionRatio >= 60) {
+      return this.buildMonthlyUserType('I');
     }
 
     return this.buildMonthlyUserType('U');
@@ -1656,150 +1549,6 @@ export class ReportService {
     return userTypeMap[code] ?? userTypeMap.N;
   }
 
-  private detectMonthlyPatternCards(
-    summary: MonthlySummaryDto,
-    stoolDistribution: MonthlyStoolDistributionDto[],
-    lifeFactorStats: MonthlyLifeFactorStatsDto,
-    userType: MonthlyUserTypeDto,
-  ): MonthlyPatternCardDto[] {
-    const cards: MonthlyPatternCardDto[] = [];
-
-    const hardCount =
-      stoolDistribution.find((item) => item.stoolSimple === 'H')?.count ?? 0;
-    const looseCount =
-      stoolDistribution.find((item) => item.stoolSimple === 'T')?.count ?? 0;
-
-    if (userType.code === 'R') {
-      cards.push({
-        level: 'OK',
-        ruleCode: 'REGULAR_PATTERN',
-        title: '배변 리듬이 안정적이에요',
-        description:
-          '이번 달은 평균 배변 간격이 일정하고 기록 완성도도 높은 편이에요.',
-      });
-    }
-
-    if (hardCount >= 5 || userType.code === 'C') {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'CONSTIPATION_PATTERN',
-        title: '딱딱한 변이 반복해서 나타났어요',
-        description:
-          '이번 달에는 딱딱한 변이나 긴 배변 간격이 반복되는 경향이 있어요.',
-      });
-    }
-
-    if (looseCount >= 5 || userType.code === 'L') {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'LOOSE_STOOL_PATTERN',
-        title: '묽은 변이 반복해서 나타났어요',
-        description:
-          '이번 달에는 묽은 변이나 잦은 배변이 반복되는 경향이 있어요.',
-      });
-    }
-
-    if (lifeFactorStats.highStressCount >= 5) {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'HIGH_STRESS',
-        title: '스트레스가 높은 날에는 불편감이 늘었어요',
-        description:
-          '스트레스가 높게 기록된 날에 복부팽만이나 잔변감이 함께 나타나는 경향이 있어요.',
-      });
-    }
-
-    if (lifeFactorStats.lowWaterCount >= 7) {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'LOW_WATER',
-        title: '수분 섭취가 부족한 날이 많았어요',
-        description:
-          '수분 섭취가 부족한 날이 반복되면 딱딱한 변이나 힘든 배변으로 이어질 수 있어요.',
-      });
-    }
-
-    if (lifeFactorStats.lowSleepCount >= 7) {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'LOW_SLEEP',
-        title: '수면이 부족한 날이 많았어요',
-        description:
-          '수면 부족은 장 리듬에도 영향을 줄 수 있어요. 이번 달 수면 패턴을 점검해보세요.',
-      });
-    }
-
-    if (lifeFactorStats.highCaffeineCount >= 7) {
-      cards.push({
-        level: 'WARN',
-        ruleCode: 'HIGH_CAFFEINE',
-        title: '카페인 섭취가 많은 날이 있었어요',
-        description:
-          '카페인 섭취가 많은 날이 반복되었어요. 묽은 변이나 복부 불편감과 함께 확인해보세요.',
-      });
-    }
-
-    if (cards.length === 0 && summary.conditionScore !== null) {
-      cards.push({
-        level: 'OK',
-        ruleCode: 'MONTHLY_STABLE_PATTERN',
-        title: '이번 달 장 컨디션이 비교적 안정적이에요',
-        description:
-          '큰 이상 패턴은 두드러지지 않았어요. 현재 기록 습관을 이어가 보세요.',
-      });
-    }
-
-    return this.deduplicateMonthlyPatternCards(cards);
-  }
-
-  private deduplicateMonthlyPatternCards(
-    cards: MonthlyPatternCardDto[],
-  ): MonthlyPatternCardDto[] {
-    const cardMap = new Map<string, MonthlyPatternCardDto>();
-
-    for (const card of cards) {
-      if (!cardMap.has(card.ruleCode)) {
-        cardMap.set(card.ruleCode, card);
-      }
-    }
-
-    return [...cardMap.values()];
-  }
-
-  private calculateConditionScore(
-    boogleRecords: BoogleRecordForWeekly[],
-    lifeRecords: LifeRecordForWeekly[],
-  ): number | null {
-    const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
-
-    if (bowelRecords.length === 0) {
-      return null;
-    }
-
-    let penalty = 0;
-
-    for (const record of bowelRecords) {
-      if (record.stoolSimple === 'H' || record.stoolSimple === 'T')
-        penalty += 3;
-      if (record.bowelFeeling === 'H') penalty += 4;
-      if (record.stomach === 'M') penalty += 2;
-      if (record.stomach === 'L') penalty += 4;
-      if (record.distension === 'M') penalty += 2;
-      if (record.distension === 'L') penalty += 4;
-      if (record.remainingFeeling === 'M') penalty += 2;
-      if (record.remainingFeeling === 'L') penalty += 4;
-      if (record.urgency === 'M') penalty += 2;
-      if (record.urgency === 'L') penalty += 4;
-    }
-
-    penalty += lifeRecords.filter((record) => record.stress === 'H').length;
-    penalty += lifeRecords.filter((record) => record.water === 'L').length;
-    penalty += lifeRecords.filter((record) => record.sleepTime === 1).length;
-    penalty += lifeRecords.filter((record) => record.caffeine === 'M').length;
-
-    return this.clamp(Math.round(100 - penalty), 0, 100);
-  }
-
   private resolveMonthlyState(conditionScore: number | null): number {
     if (conditionScore === null) return 3;
     if (conditionScore >= 80) return 1;
@@ -1818,10 +1567,6 @@ export class ReportService {
       downloadAvailable: true,
       endpoint: MONTHLY_PDF_ENDPOINT,
     };
-  }
-
-  private clamp(value: number, min: number, max: number): number {
-    return Math.min(Math.max(value, min), max);
   }
 
   // 공통함수
@@ -1990,33 +1735,57 @@ export class ReportService {
       return [];
     }
 
-    const guideRules = await this.prisma.guideRule.findMany({
+    const ruleCodeSet = new Set<string>(ruleCodes);
+    const matchedBindings = PATTERN_GUIDE_BINDINGS.filter((binding) =>
+      binding.ruleCodes.some((ruleCode) => ruleCodeSet.has(ruleCode)),
+    );
+
+    if (matchedBindings.length === 0) {
+      return [];
+    }
+
+    const bindingMap = new Map<string, PatternGuideBinding>(
+      matchedBindings.map((binding) => [binding.guideTitle, binding]),
+    );
+
+    const guides = await this.prisma.guide.findMany({
       where: {
-        ruleCode: {
-          in: ruleCodes,
-        },
-        guideContent: {
-          status: 'A',
+        category: 'P',
+        status: 'A',
+        title: {
+          in: matchedBindings.map((binding) => binding.guideTitle),
         },
       },
       select: {
-        ruleCode: true,
-        guideContent: {
+        title: true,
+        category: true,
+        guideContents: {
           select: {
-            title: true,
-            category: true,
             content: true,
+          },
+          orderBy: {
+            id: 'asc',
           },
         },
       },
+      orderBy: {
+        id: 'asc',
+      },
     });
 
-    return guideRules.map((guideRule) => ({
-      ruleCode: guideRule.ruleCode,
-      title: guideRule.guideContent.title,
-      category: guideRule.guideContent.category,
-      content: guideRule.guideContent.content,
-    }));
+    return guides.flatMap((guide) => {
+      const binding = bindingMap.get(guide.title);
+      const matchedRuleCode =
+        binding?.ruleCodes.find((ruleCode) => ruleCodeSet.has(ruleCode)) ??
+        null;
+
+      return guide.guideContents.map((guideContent) => ({
+        ruleCode: matchedRuleCode,
+        title: guide.title,
+        category: guide.category,
+        content: guideContent.content,
+      }));
+    });
   }
 
   private parseRequiredDate(value: string, fieldName: string): Date {

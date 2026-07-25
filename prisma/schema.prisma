@@ -40,6 +40,7 @@ model Member {
   lifeRecords    LifeRecord[]
   weeklyRecords  WeeklyRecord[]
   monthlyRecords MonthlyRecord[]
+  monthlyRuleResults MonthlyRuleResult[]
   guideFeedbacks GuideFeedback[]
 
   @@map("member")
@@ -250,6 +251,21 @@ model MonthlyRecord {
 
   @@unique([userId, monthStartDate], map: "monthly_record_index_4")
   @@map("monthly_record")
+}
+
+model MonthlyRuleResult {
+  id             BigInt   @id @default(autoincrement())
+  userId         BigInt   @map("user_id")
+  monthStartDate DateTime @map("month_start_date") @db.Date
+  ruleCode       String   @map("rule_code") @db.VarChar(40)
+  value          Float    @db.Double
+  regDate        DateTime @default(now()) @map("reg_date")
+  updateDate     DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, monthStartDate, ruleCode], map: "monthly_rule_result_user_month_rule_uq")
+  @@map("monthly_rule_result")
 }
 
 model LifeFoodTag {

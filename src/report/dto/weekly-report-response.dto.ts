@@ -1,3 +1,5 @@
+import type { WeeklyRuleCode } from '../pattern/weekly-pattern.constants';
+
 export type WeeklyReportDataStatus = 'ENOUGH' | 'INSUFFICIENT';
 export type ReportPeriodType = 'WEEKLY';
 export type CompareType = 'PREVIOUS_WEEK';
@@ -80,16 +82,18 @@ export interface LifeFactorStatsDto {
 
 export interface PatternCardDto {
   level: 'OK' | 'WARN' | 'DANGER';
-  ruleCode: string;
+  ruleCode: WeeklyRuleCode;
   title: string;
-  description: string;
+  description: string | null;
+  guideId?: number | null;
 }
 
 export interface WeeklyGuideDto {
-  guideContentId: number;
-  category: string | null;
+  guideId: number;
+  category: 'P';
   title: string;
-  content: string;
+  summary: string;
+  matchedRuleCodes: WeeklyRuleCode[];
   feedbackStatus: string | null;
 }
 

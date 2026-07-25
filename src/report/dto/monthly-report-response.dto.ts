@@ -1,4 +1,4 @@
-export type MonthlyReportDataStatus = 'ENOUGH' | 'LOW_COMPLETION' | 'NO_RECORD';
+export type MonthlyReportDataStatus = 'ENOUGH' | 'INSUFFICIENT';
 export type MonthlyReportPeriodType = 'MONTHLY';
 export type MonthlyCompareType = 'PREVIOUS_MONTH';
 
@@ -22,19 +22,23 @@ export interface MonthlyReportPeriodDto {
 
 export interface MonthlySummaryDto {
   bowelCount: number;
+  bowelDays: number;
   intervalAvg: number;
   completionScore: number;
-  conditionScore: number | null;
+  rhythmScore: number;
+  stateScore: number;
+  conditionScore: number;
   state: number;
   stateLabel: string;
 }
 
 export interface MonthlyRecordStatsDto {
-  totalDays: number;
+  totalDays: 30;
+  calendarDays: number;
   recordedDays: number;
   boogleRecordDays: number;
   lifeRecordDays: number;
-  requiredDays: number;
+  requiredDays: 7;
   completionScore: number;
 }
 
@@ -89,10 +93,27 @@ export interface MonthlyUserTypeDto {
 }
 
 export interface MonthlyPatternCardDto {
-  level: 'OK' | 'WARN' | 'DANGER';
+  level: 'WARN';
   ruleCode: string;
   title: string;
   description: string;
+  value: number;
+  threshold: number;
+  unit: 'DAY' | 'COUNT' | 'PERCENT';
+}
+
+export interface MonthlyImprovementDto {
+  code:
+    | 'CONDITION_SCORE_UP'
+    | 'HARD_STOOL_RATIO_DOWN'
+    | 'LOW_WATER_HARD_STOOL_DOWN'
+    | 'STRESS_WITH_PAIN_DOWN'
+    | 'LOW_SLEEP_DOWN';
+  title: string;
+  description: string;
+  previousValue: number;
+  currentValue: number;
+  unit: 'POINT' | 'DAY' | 'COUNT' | 'PERCENT';
 }
 
 export interface MonthlyPdfDto {
@@ -101,22 +122,23 @@ export interface MonthlyPdfDto {
 }
 
 export interface MonthlyNoticeDto {
-  code: 'MONTHLY_LOW_COMPLETION_SCORE' | 'MONTHLY_NO_RECORD';
+  code: 'MONTHLY_RECORD_NOT_ENOUGH';
   message: string;
 }
 
 export interface MonthlyReportResponseDto {
   period: MonthlyReportPeriodDto;
   dataStatus: MonthlyReportDataStatus;
-  summary: MonthlySummaryDto;
+  summary: MonthlySummaryDto | null;
   recordStats: MonthlyRecordStatsDto;
   previousSummary: PreviousMonthlySummaryDto | null;
-  changeSummary: MonthlyChangeSummaryDto;
+  changeSummary: MonthlyChangeSummaryDto | null;
   stoolDistribution: MonthlyStoolDistributionDto[];
   weeklyTrend: WeeklyTrendDto[];
   lifeFactorStats: MonthlyLifeFactorStatsDto | null;
-  userType: MonthlyUserTypeDto;
+  userType: MonthlyUserTypeDto | null;
   patternCards: MonthlyPatternCardDto[];
+  improvements: MonthlyImprovementDto[];
   pdf: MonthlyPdfDto;
   notice: MonthlyNoticeDto | null;
 }
