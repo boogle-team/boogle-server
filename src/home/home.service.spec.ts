@@ -131,6 +131,7 @@ describe('HomeService', () => {
       water: 'L',
       waterIntake: 2,
       mealRegular: 'R',
+      autoTags: '음주,자극적,야식',
       foodTags: [{ food: { id: 1, name: '자극적인 음식' } }],
     });
 
@@ -140,6 +141,7 @@ describe('HomeService', () => {
       id: 55,
       sleep: 'B',
       waterIntake: 2,
+      autoTags: ['음주', '자극적', '야식'],
       foods: [{ id: 1, name: '자극적인 음식' }],
     });
   });

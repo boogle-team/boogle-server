@@ -194,6 +194,7 @@ Authorization: Bearer eyJhbGc...
     "water": "L",
     "waterIntake": 1,
     "mealRegular": "R",
+    "autoTags": ["음주", "자극적", "야식"],
     "foods": [
       { "id": 7, "name": "야식" },
       { "id": 1, "name": "자극적인 음식" }
@@ -230,6 +231,7 @@ Authorization: Bearer eyJhbGc...
 | `boogleRecords` | array | 오늘 부글 기록 **요약 리스트** (시간 오름차순). 없으면 `[]` → '기록하기' 유도 |
 | `lifeRecord` | object \| null | 오늘 생활 기록 **요약**(+음식 태그). 없으면 `null` → '생활도 기록할까요?' 유도 |
 | `lifeRecord.waterIntake` | int \| null | 물 섭취량(잔 수, 1잔≈200ml). `water`(3단계)와 별개 필드 |
+| `lifeRecord.autoTags` | string[] | AI가 메모에서 추출한 태그(`auto_tags` 콤마 문자열을 배열로 파싱). "이날의 태그" 표시용. 없으면 `[]` |
 | `lifeRecord.foods` | array | 오늘 먹은 것 태그 (`life_food_tag` → `food`) |
 | `weeklyPattern` | object \| null | 이번 주 대표 패턴 1건. 없으면 `null` → 카드 숨김 |
 

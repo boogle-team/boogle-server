@@ -39,6 +39,8 @@ export interface HomeLifeRecordDto {
   water: string | null;
   waterIntake: number | null;
   mealRegular: string | null;
+  // AI가 메모에서 추출한 태그(auto_tags 콤마 문자열을 배열로 파싱). "이날의 태그" 표시용.
+  autoTags: string[];
   foods: HomeFoodDto[];
 }
 

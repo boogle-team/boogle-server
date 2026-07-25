@@ -14,6 +14,16 @@ const USER_TYPE_LABEL: Record<string, string> = {
   N: '기록부족형',
 };
 
+// auto_tags는 콤마로 이어붙인 문자열이라 배열로 파싱해 내려준다.
+// (캘린더 C102와 동일 규칙 — 빈 값/공백 토큰은 제외)
+function parseAutoTags(autoTags: string | null): string[] {
+  if (!autoTags) return [];
+  return autoTags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
+}
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // streak(연속 기록 일수) 조회 상한. 이 값보다 긴 연속 기록은 401(선택일 포함)로
@@ -176,6 +186,7 @@ export class HomeService {
             water: lifeRecord.water,
             waterIntake: lifeRecord.waterIntake,
             mealRegular: lifeRecord.mealRegular,
+            autoTags: parseAutoTags(lifeRecord.autoTags),
             foods: lifeRecord.foodTags.map((ft) => ({
               id: ft.food.id,
               name: ft.food.name,
