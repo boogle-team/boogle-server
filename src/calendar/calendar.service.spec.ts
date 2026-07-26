@@ -297,6 +297,19 @@ describe('CalendarService', () => {
       expect(result[0]).not.toHaveProperty('stoolSimple');
     });
 
+    it('start > end(역순 범위)면 빈 배열을 반환한다 (무한 루프 방지)', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.findMany.mockResolvedValue([]);
+
+      const result = await service.getDailyStatuses(
+        '1',
+        '2026-06-03',
+        '2026-06-01',
+      );
+
+      expect(result).toEqual([]);
+    });
+
     it('KST 반개방 구간(시작일 자정 ~ 종료일+1 자정)으로 조회한다', async () => {
       prisma.boogleRecord.findMany.mockResolvedValue([]);
       prisma.lifeRecord.findMany.mockResolvedValue([]);

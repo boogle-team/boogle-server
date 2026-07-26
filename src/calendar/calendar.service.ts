@@ -218,14 +218,15 @@ export class CalendarService {
       lifeRecords,
     );
 
+    // YYYY-MM-DD는 사전순=날짜순이라 문자열 비교로 범위 순회가 안전하다.
+    // start > end(역순)면 루프가 아예 돌지 않아 빈 배열 — 무한 루프 방지.
     const days: DayStatusDto[] = [];
-    for (let key = startDateKey; ; key = addDaysKey(key, 1)) {
+    for (let key = startDateKey; key <= endDateKey; key = addDaysKey(key, 1)) {
       days.push({
         date: key,
         boogleStatus: boogleByDate.get(key)?.boogleStatus ?? 'NONE',
         hasLifeRecord: lifeRecordDates.has(key),
       });
-      if (key === endDateKey) break;
     }
     return days;
   }

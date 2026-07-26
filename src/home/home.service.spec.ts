@@ -212,6 +212,25 @@ describe('HomeService', () => {
       );
     });
 
+    it('baseDate 생략 시 오늘(KST) 기준으로 ±30일 범위를 계산한다', async () => {
+      // 2026-05-12T03:00Z = KST 2026-05-12 12:00 → 오늘 = 2026-05-12
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-12T03:00:00.000Z'));
+      calendarService.getDailyStatuses.mockResolvedValue([]);
+
+      try {
+        const result = await service.getDateSummary('1');
+
+        expect(result.baseDate).toBe('2026-05-12');
+        expect(calendarService.getDailyStatuses).toHaveBeenCalledWith(
+          '1',
+          '2026-04-12',
+          '2026-06-11',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('캘린더가 반환한 날짜별 상태를 그대로 days로 내려준다', async () => {
       const days = [
         { date: '2026-05-11', boogleStatus: 'BOWEL', hasLifeRecord: true },
