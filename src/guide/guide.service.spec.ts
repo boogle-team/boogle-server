@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GuideService } from './guide.service';
 import { ReportService } from '@/report/report.service';
+import { GuideErrorCode } from './guide-error-code.enum';
 
 describe('GuideService', () => {
   let service: GuideService;
@@ -150,11 +151,21 @@ describe('GuideService', () => {
       where: {
         userId: 1n,
         status: 'A',
-        hasBowel: true,
         regDate: {
           gte: new Date('2026-06-30T15:00:00.000Z'),
           lt: new Date('2026-07-31T15:00:00.000Z'),
         },
+        OR: [
+          {
+            hasBowel: true,
+            color: {
+              in: ['R', 'N'],
+            },
+          },
+          {
+            stomach: 'L',
+          },
+        ],
       },
       select: {
         regDate: true,
@@ -166,6 +177,18 @@ describe('GuideService', () => {
         regDate: 'asc',
       },
     });
+  });
+
+  it('월요일이 아닌 주 시작일을 Report 호출 전에 거부한다', async () => {
+    await expect(
+      service.getGuideScreen(1n, {
+        weekStartDate: '2026-07-21',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
+    });
+
+    expect(reportServiceMock.getWeeklyReport).not.toHaveBeenCalled();
   });
 
   it('Guide.id로 H 상세을 조회하고 모든 본문, 조언, 추천 Guide를 반환한다', async () => {
@@ -388,6 +411,43 @@ describe('GuideService', () => {
           sourceRecordId: '9001',
         },
       ],
+    });
+  });
+
+  it('배변이 없어도 심한 복통이면 주의 신호를 반환한다', async () => {
+    reportServiceMock.getWeeklyReport.mockResolvedValue({
+      period: {
+        type: 'WEEKLY',
+        startDate: '2026-07-20',
+        endDate: '2026-07-26',
+      },
+      dataStatus: 'INSUFFICIENT',
+      recordStats: {
+        recordedDays: 0,
+        requiredDays: 3,
+        completionScore: 0,
+      },
+      guides: [],
+    });
+    prismaMock.guide.findMany.mockResolvedValue([]);
+    prismaMock.boogleRecord.findMany.mockResolvedValue([
+      {
+        regDate: new Date('2026-07-22T16:30:00.000Z'),
+        hasBowel: false,
+        color: null,
+        stomach: 'L',
+      },
+    ]);
+
+    const result = await service.getGuideScreen(1n, {
+      weekStartDate: '2026-07-20',
+      monthStartDate: '2026-07-01',
+    });
+
+    expect(result.warningGuideSection.detectedFlags).toContainEqual({
+      flagCode: 'FLAG_PAIN_SEVERE',
+      label: '심한 복통이 기록되었어요.',
+      detectedDate: '2026-07-23',
     });
   });
 });

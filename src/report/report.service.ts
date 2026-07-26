@@ -803,6 +803,14 @@ export class ReportService {
       );
     }
 
+    if (parsedDate.getUTCDay() !== 1) {
+      throw new BusinessException(
+        ReportErrorCode.REPORT_INVALID_DATE_RANGE,
+        'weekStartDate는 월요일이어야 합니다.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     return parsedDate;
   }
   // 월간시작일자

@@ -216,11 +216,21 @@ export class GuideService {
       where: {
         userId,
         status: 'A',
-        hasBowel: true,
         regDate: {
           gte: this.toKstBoundary(monthStartDate),
           lt: this.toKstBoundary(nextMonthStartDate),
         },
+        OR: [
+          {
+            hasBowel: true,
+            color: {
+              in: ['R', 'N'],
+            },
+          },
+          {
+            stomach: 'L',
+          },
+        ],
       },
       select: {
         regDate: true,
@@ -328,6 +338,14 @@ export class GuideService {
       throw new BusinessException(
         GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
         'weekStartDate는 YYYY-MM-DD 형식이어야 합니다.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (parsedDate.getUTCDay() !== 1) {
+      throw new BusinessException(
+        GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
+        'weekStartDate는 월요일이어야 합니다.',
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -695,11 +713,21 @@ export class GuideService {
       where: {
         userId,
         status: 'A',
-        hasBowel: true,
         regDate: {
           gte: this.toKstBoundary(monthStartDate),
           lt: this.toKstBoundary(nextMonthStartDate),
         },
+        OR: [
+          {
+            hasBowel: true,
+            color: {
+              in: ['R', 'N'],
+            },
+          },
+          {
+            stomach: 'L',
+          },
+        ],
       },
       select: {
         id: true,

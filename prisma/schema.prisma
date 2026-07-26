@@ -294,8 +294,10 @@ model Guide {
   summary   String @db.VarChar(255)
   category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
   regDate   DateTime @default(now())
-  updateAt  DateTime? @map("update_date") 
+  updateAt  DateTime? @map("update_date")
   status    String @db.Char(1) @default("A")
+
+  @@unique([category, title], map: "guide_category_title_uq")
 
   guideContents   GuideContent[]
   guideAdvices    GuideAdvice[]

@@ -220,6 +220,20 @@ CREATE TABLE `monthly_record` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `monthly_rule_result` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NOT NULL,
+    `month_start_date` DATE NOT NULL,
+    `rule_code` VARCHAR(40) NOT NULL,
+    `value` DOUBLE NOT NULL,
+    `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `update_date` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `monthly_rule_result_user_month_rule_uq`(`user_id`, `month_start_date`, `rule_code`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `life_food_tag` (
     `life_id` BIGINT NOT NULL,
     `food_id` INTEGER NOT NULL,
@@ -246,6 +260,7 @@ CREATE TABLE `guide` (
     `update_date` DATETIME(3) NULL,
     `status` CHAR(1) NOT NULL DEFAULT 'A',
 
+    UNIQUE INDEX `guide_category_title_uq`(`category`, `title`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -319,6 +334,9 @@ ALTER TABLE `weekly_record` ADD CONSTRAINT `weekly_record_user_id_fkey` FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE `monthly_record` ADD CONSTRAINT `monthly_record_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `monthly_rule_result` ADD CONSTRAINT `monthly_rule_result_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `life_food_tag` ADD CONSTRAINT `life_food_tag_life_id_fkey` FOREIGN KEY (`life_id`) REFERENCES `life_record`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

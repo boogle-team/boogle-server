@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ReportService } from './report.service';
+import { ReportErrorCode } from './report-error-code.enum';
 
 describe('ReportService', () => {
   let service: ReportService;
@@ -49,5 +50,25 @@ describe('ReportService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('잘못된 주 시작일 형식은 REPORT_INVALID_DATE_FORMAT을 반환한다', async () => {
+    await expect(
+      service.getWeeklyReport(1n, {
+        weekStartDate: '2026/07/20',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: ReportErrorCode.REPORT_INVALID_DATE_FORMAT,
+    });
+  });
+
+  it('월요일이 아닌 주 시작일은 REPORT_INVALID_DATE_RANGE를 반환한다', async () => {
+    await expect(
+      service.getWeeklyReport(1n, {
+        weekStartDate: '2026-07-21',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: ReportErrorCode.REPORT_INVALID_DATE_RANGE,
+    });
   });
 });
