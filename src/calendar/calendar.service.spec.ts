@@ -234,4 +234,86 @@ describe('CalendarService', () => {
       });
     });
   });
+
+  describe('getDailyStatuses', () => {
+    it('시작~종료 날짜(양끝 포함) 전체를 날짜 오름차순으로 반환한다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.findMany.mockResolvedValue([]);
+
+      const result = await service.getDailyStatuses(
+        '1',
+        '2026-06-01',
+        '2026-06-03',
+      );
+
+      expect(result.map((d) => d.date)).toEqual([
+        '2026-06-01',
+        '2026-06-02',
+        '2026-06-03',
+      ]);
+      expect(result.every((d) => d.boogleStatus === 'NONE')).toBe(true);
+      expect(result.every((d) => d.hasLifeRecord === false)).toBe(true);
+    });
+
+    it('날짜별 boogleStatus와 hasLifeRecord를 매핑한다 (stoolSimple 미포함)', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([
+        {
+          regDate: new Date('2026-06-01T08:00:00.000+09:00'),
+          hasBowel: true,
+          stoolSimple: 'M',
+        },
+        {
+          regDate: new Date('2026-06-02T08:00:00.000+09:00'),
+          hasBowel: false,
+          stoolSimple: null,
+        },
+      ]);
+      prisma.lifeRecord.findMany.mockResolvedValue([
+        { regDate: new Date('2026-06-01T21:00:00.000+09:00') },
+        { regDate: new Date('2026-06-03T21:00:00.000+09:00') },
+      ]);
+
+      const result = await service.getDailyStatuses(
+        '1',
+        '2026-06-01',
+        '2026-06-03',
+      );
+
+      expect(result[0]).toEqual({
+        date: '2026-06-01',
+        boogleStatus: 'BOWEL',
+        hasLifeRecord: true,
+      });
+      expect(result[1]).toEqual({
+        date: '2026-06-02',
+        boogleStatus: 'NO_BOWEL',
+        hasLifeRecord: false,
+      });
+      expect(result[2]).toEqual({
+        date: '2026-06-03',
+        boogleStatus: 'NONE',
+        hasLifeRecord: true,
+      });
+      expect(result[0]).not.toHaveProperty('stoolSimple');
+    });
+
+    it('KST 반개방 구간(시작일 자정 ~ 종료일+1 자정)으로 조회한다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+      prisma.lifeRecord.findMany.mockResolvedValue([]);
+
+      await service.getDailyStatuses('1', '2026-06-01', '2026-06-03');
+
+      const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
+        unknown,
+        [{ where: { regDate: { gte: Date; lt: Date } } }]
+      >;
+      const callArgs = findManyMock.mock.calls[0][0];
+      expect(callArgs.where.regDate.gte.toISOString()).toBe(
+        '2026-05-31T15:00:00.000Z',
+      );
+      expect(callArgs.where.regDate.lt.toISOString()).toBe(
+        '2026-06-03T15:00:00.000Z',
+      );
+    });
+  });
 });

@@ -37,10 +37,10 @@ const jwtAuthGuard = {
 
 describe('HomeController', () => {
   let controller: HomeController;
-  let service: { getHome: jest.Mock };
+  let service: { getHome: jest.Mock; getDateSummary: jest.Mock };
 
   beforeEach(async () => {
-    service = { getHome: jest.fn() };
+    service = { getHome: jest.fn(), getDateSummary: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HomeController],
@@ -75,6 +75,18 @@ describe('HomeController', () => {
     await expect(
       controller.getHome({ id: '1' }, { date: '2026-05-12' }),
     ).rejects.toThrow('boom');
+  });
+
+  it('getDateSummary는 사용자 id와 baseDate 쿼리를 서비스에 전달한다', async () => {
+    await controller.getDateSummary({ id: '1' }, { baseDate: '2026-05-12' });
+
+    expect(service.getDateSummary).toHaveBeenCalledWith('1', '2026-05-12');
+  });
+
+  it('baseDate 쿼리가 없으면 undefined로 전달한다', async () => {
+    await controller.getDateSummary({ id: '1' }, {});
+
+    expect(service.getDateSummary).toHaveBeenCalledWith('1', undefined);
   });
 
   describe('라우트 레벨 검증 (ValidationPipe + JwtAuthGuard)', () => {
@@ -115,6 +127,23 @@ describe('HomeController', () => {
       await request(app.getHttpServer()).get('/home').expect(200);
 
       expect(service.getHome).toHaveBeenCalledWith('1', undefined);
+    });
+
+    it('/home/summary의 baseDate가 YYYY-MM-DD 형식이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .get('/home/summary')
+        .query({ baseDate: '2026-05-12T00:00:00Z' })
+        .expect(400);
+
+      expect(service.getDateSummary).not.toHaveBeenCalled();
+    });
+
+    it('/home/summary는 baseDate 없이도 JWT 사용자로 서비스가 호출된다', async () => {
+      service.getDateSummary.mockResolvedValueOnce({});
+
+      await request(app.getHttpServer()).get('/home/summary').expect(200);
+
+      expect(service.getDateSummary).toHaveBeenCalledWith('1', undefined);
     });
   });
 

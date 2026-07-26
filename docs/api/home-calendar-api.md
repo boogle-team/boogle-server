@@ -118,8 +118,9 @@
 | # | Method | Path | 설명 | 기능 ID |
 | --- | --- | --- | --- | --- |
 | 1 | GET | `/api/v1/home` | 홈 화면 데이터 (사용자·주간스트립·오늘 기록·주간 패턴) | H101, H102 |
-| 2 | GET | `/api/v1/calendar` | 월간 캘린더 조회 | C101 |
-| 3 | GET | `/api/v1/calendar/daily` | 날짜별 기록 상세 조회 | C102 |
+| 2 | GET | `/api/v1/home/summary` | 홈 날짜별 상태 요약 (baseDate ±30일) | H101 |
+| 3 | GET | `/api/v1/calendar` | 월간 캘린더 조회 | C101 |
+| 4 | GET | `/api/v1/calendar/daily` | 날짜별 기록 상세 조회 | C102 |
 
 ---
 
@@ -237,6 +238,59 @@ Authorization: Bearer eyJhbGc...
 
 > 💡 부글 기록은 **하루 여러 건** 가능 → 배열(`boogleRecords`) + 건수(`boogleCount`)로 반환. 상세 항목(복부팽만·색상 등)은 홈에서 생략, 상세는 `#6` 사용.
 > ⚠️ `weeklyPattern`은 **리포트/가이드 도메인(주간 패턴 산출) 데이터**에 의존합니다. 홈은 산출 결과를 읽어 표시만 함 → 해당 팀과 데이터 소스/포맷 협의 필요.
+
+---
+
+## 4-1. GET /api/v1/home/summary
+
+홈 캘린더 스트립/날짜 모달의 **날짜별 상태 아이콘**용 요약입니다.
+`baseDate` 기준 **앞뒤 30일(총 61일)**의 날짜별 상태만 내려줍니다(상세 X).
+가로 스크롤·월 이동 시 범위 밖 날짜 아이콘을 미리 확보하기 위한 용도이며,
+날짜 상세는 별도로 `GET /api/v1/calendar/daily`(#6)를 사용합니다.
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+| Query | `baseDate` | string(`YYYY-MM-DD`) | ❌ | 기준 날짜. 생략 시 서버 오늘 날짜(KST) |
+
+```http
+GET /api/v1/home/summary?baseDate=2026-05-12
+Authorization: Bearer eyJhbGc...
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "baseDate": "2026-05-12",
+  "days": [
+    { "date": "2026-04-12", "boogleStatus": "NONE", "hasLifeRecord": false },
+    { "date": "2026-05-11", "boogleStatus": "BOWEL", "hasLifeRecord": true },
+    { "date": "2026-05-12", "boogleStatus": "NO_BOWEL", "hasLifeRecord": false }
+  ]
+}
+```
+
+### 필드 설명
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `baseDate` | string | 요약 기준 날짜(YYYY-MM-DD). `days`는 이 날짜 ±30일 |
+| `days` | array(61) | 날짜 오름차순. 양끝(baseDate-30 ~ baseDate+30) 포함 |
+| `days[].date` | string | 날짜(YYYY-MM-DD) |
+| `days[].boogleStatus` | string | `BOWEL` / `NO_BOWEL` / `NONE` (§2.3) |
+| `days[].hasLifeRecord` | boolean | 그날 생활 기록 존재 여부 |
+
+> 💡 프론트는 `boogleStatus` + `hasLifeRecord` 두 필드를 조합해 아이콘을 매핑합니다(병합 상태 코드 아님). `stoolSimple` 등 상세 필드는 미포함.
+> 🔗 날짜별 상태 계산은 캘린더 월간 조회(`#5`)와 동일한 로직을 공유합니다.
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | `baseDate` 형식 오류(YYYY-MM-DD 아님) |
 
 ---
 
