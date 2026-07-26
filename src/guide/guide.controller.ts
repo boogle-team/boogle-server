@@ -72,10 +72,10 @@ export class GuideController {
     return this.guideService.getGuideScreen(userId, query);
   }
 
-  @Get(':guideContentId')
+  @Get(':guideId')
   @ApiOperation({ summary: '가이드 상세 조회' })
   @ApiParam({
-    name: 'guideContentId',
+    name: 'guideId',
     type: Number,
     description: '조회할 가이드 콘텐츠 ID',
     example: 3,
@@ -100,20 +100,20 @@ export class GuideController {
   })
   // @ResponseMessage('가이드 상세 조회에 성공했습니다.')
   async getGuideDetail(
-    @Param('guideContentId') guideContentId: string,
+    @Param('guideId') guideId: string,
     @Query() query: GetGuideDetailQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GuideDetailResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.getGuideDetail(userId, guideContentId, query);
+    return this.guideService.getGuideDetail(userId, guideId, query);
   }
 
-  @Post(':guideContentId/feedback')
+  @Post(':guideId/feedback')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '가이드 피드백 등록' })
   @ApiParam({
-    name: 'guideContentId',
+    name: 'guideId',
     type: Number,
     description: '피드백 대상 가이드 콘텐츠 ID',
     example: 3,
@@ -143,20 +143,20 @@ export class GuideController {
   })
   // @ResponseMessage('피드백 등록을 성공했습니다.')
   async createGuideFeedback(
-    @Param('guideContentId') guideContentId: string,
+    @Param('guideId') guideId: string,
     @Body() body: GuideFeedbackRequestDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CreateGuideFeedbackResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.createGuideFeedback(userId, guideContentId, body);
+    return this.guideService.createGuideFeedback(userId, guideId, body);
   }
 
-  @Patch(':guideContentId/feedback')
+  @Patch(':guideId/feedback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '가이드 피드백 수정' })
   @ApiParam({
-    name: 'guideContentId',
+    name: 'guideId',
     type: Number,
     description: '피드백을 수정할 가이드 콘텐츠 ID',
     example: 3,
@@ -173,30 +173,30 @@ export class GuideController {
   })
   // @ResponseMessage('피드백 수정을 성공했습니다.')
   async updateGuideFeedback(
-    @Param('guideContentId') guideContentId: string,
+    @Param('guideId') guideId: string,
     @Body() body: GuideFeedbackRequestDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<UpdateGuideFeedbackResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.updateGuideFeedback(userId, guideContentId, body);
+    return this.guideService.updateGuideFeedback(userId, guideId, body);
   }
 
-  @Delete(':guideContentId/feedback')
+  @Delete(':guideId/feedback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '가이드 피드백 삭제' })
   @ApiParam({
-    name: 'guideContentId',
+    name: 'guideId',
     type: Number,
     description: '피드백을 삭제할 가이드 콘텐츠 ID',
     example: 3,
   })
   async deleteGuideFeedback(
-    @Param('guideContentId') guideContentId: string,
+    @Param('guideId') guideId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DeleteGuideFeedbackResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.deleteGuideFeedback(userId, guideContentId);
+    return this.guideService.deleteGuideFeedback(userId, guideId);
   }
 }

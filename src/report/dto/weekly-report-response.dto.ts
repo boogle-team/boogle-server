@@ -80,12 +80,21 @@ export interface LifeFactorStatsDto {
   lowWater: LifeFactorStatDto;
 }
 
+export interface PatternEvidenceMetricDto {
+  key: string;
+  label: string;
+  value: number;
+  threshold: number;
+  unit: 'DAY' | 'COUNT' | 'PERCENT' | 'MINUTE';
+}
+
 export interface PatternCardDto {
   level: 'OK' | 'WARN' | 'DANGER';
   ruleCode: WeeklyRuleCode;
   title: string;
   description: string | null;
   guideId?: number | null;
+  evidence?: PatternEvidenceMetricDto[];
 }
 
 export interface WeeklyGuideDto {

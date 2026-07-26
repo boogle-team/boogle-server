@@ -1,84 +1,109 @@
+import type { WeeklyRuleCode } from '@/report/pattern/weekly-pattern.constants';
 import type {
   GuideCategory,
   GuideFeedbackStatus,
   GuidePeriodDto,
 } from './guide-screen-response.dto';
 
-export interface GuideDetailRuleDto {
-  ruleCode: string;
-  condition: string | null;
+export interface GuideContentItemDto {
+  contentId: number;
+  order: number;
+  subtitle: string | null;
+  content: string;
 }
 
-export interface PatternGuideEvidenceDto {
+export interface GuideAdviceItemDto {
+  adviceId: number;
+  order: number;
+  content: string;
+}
+
+export interface RecommendedGuideDto {
+  guideId: number;
+  title: string;
+  summary: string;
+}
+
+export interface PatternEvidenceMetricDto {
+  key: string;
+  label: string;
+  value: number;
+  threshold: number;
+  unit: 'DAY' | 'COUNT' | 'PERCENT' | 'MINUTE';
+}
+
+export interface PatternReasonItemDto {
+  ruleCode: WeeklyRuleCode;
+  level: 'OK' | 'WARN' | 'DANGER';
+  title: string;
+  description: string | null;
+  evidence: PatternEvidenceMetricDto[];
+}
+
+export interface PatternRecordStatusDto {
+  dataStatus: 'ENOUGH' | 'INSUFFICIENT';
+  recordedDays: number;
+  requiredDays: number;
+  completionScore: number;
+}
+
+export interface PatternGuideReasonDto {
+  period: GuidePeriodDto;
+  recordStatus: PatternRecordStatusDto;
   matched: boolean;
-  sourceTable: 'weekly_record' | 'boogle_record' | 'life_record';
-  sourceField: string;
-  condition: string;
-  count: number;
-  description: string;
+  matchedRuleCodes: WeeklyRuleCode[];
+  matchedPatterns: PatternReasonItemDto[];
 }
 
 export interface WarningDetailFlagDto {
   flagCode: 'FLAG_BLOOD_RED' | 'FLAG_BLOOD_BLACK' | 'FLAG_PAIN_SEVERE';
-
   label: string;
   detectedDate: string;
   sourceRecordId: string;
 }
 
-export interface WarningGuideEvidenceDto {
+export interface WarningGuideAnalysisDto {
+  period: GuidePeriodDto;
   matched: boolean;
   detectedFlags: WarningDetailFlagDto[];
 }
 
-export interface PatternRelatedRecordsDto {
-  totalRecordedDays: number;
-  bowelCount: number;
-  hardStoolCount: number;
-  looseStoolCount: number;
-  lowSleepDays: number;
-  highStressDays: number;
-  lowWaterDays: number;
-  highCaffeineDays: number;
-}
-
 interface GuideDetailBaseDto {
-  guideContentId: number;
+  guideId: number;
   category: GuideCategory;
   categoryLabel: string;
   title: string;
-  content: string;
+  summary: string;
+  contents: GuideContentItemDto[];
+  advices: GuideAdviceItemDto[];
+  recommendedGuides: RecommendedGuideDto[];
   feedbackStatus: GuideFeedbackStatus | null;
-}
-
-export interface PatternGuideDetailResponseDto extends GuideDetailBaseDto {
-  category: 'P';
-  categoryLabel: '패턴 기반';
-  period: GuidePeriodDto;
-  rule: GuideDetailRuleDto | null;
-  matchedEvidence: PatternGuideEvidenceDto | null;
-  relatedRecords: PatternRelatedRecordsDto;
+  patternReason: PatternGuideReasonDto | null;
+  warningAnalysis: WarningGuideAnalysisDto | null;
 }
 
 export interface HealthGuideDetailResponseDto extends GuideDetailBaseDto {
   category: 'H';
   categoryLabel: '장 건강';
-  period: null;
-  rule: null;
-  matchedEvidence: null;
-  relatedRecords: null;
+  patternReason: null;
+  warningAnalysis: null;
+}
+
+export interface PatternGuideDetailResponseDto extends GuideDetailBaseDto {
+  category: 'P';
+  categoryLabel: '패턴 기반';
+  patternReason: PatternGuideReasonDto;
+  warningAnalysis: null;
 }
 
 export interface WarningGuideDetailResponseDto extends GuideDetailBaseDto {
   category: 'W';
   categoryLabel: '주의 신호';
-  period: GuidePeriodDto;
-  rule: null;
-  matchedEvidence: WarningGuideEvidenceDto;
-  relatedRecords: null;
+  patternReason: null;
+  warningAnalysis: WarningGuideAnalysisDto;
 }
 
 export type GuideDetailResponseDto =
-  | PatternGuideDetailResponseDto
   | HealthGuideDetailResponseDto
+  | PatternGuideDetailResponseDto
   | WarningGuideDetailResponseDto;

@@ -18,6 +18,7 @@ import {
   toDateKey,
   uniqueDateKeys,
 } from './pattern-date.util';
+import type { PatternCardDto } from '../dto/weekly-report-response.dto';
 
 const RULE_20_MAX_INTERVAL_STANDARD_DEVIATION = 0.5;
 
@@ -60,7 +61,10 @@ export function detectWeeklyPatterns(
 
   const addRule = (
     ruleCode: WeeklyRuleCode,
-    descriptionOverride?: string,
+    options?: {
+      descriptionOverride?: string;
+      evidence?: PatternCardDto['evidence'];
+    },
   ): void => {
     const definition = getWeeklyRuleDefinition(ruleCode);
 
@@ -70,11 +74,11 @@ export function detectWeeklyPatterns(
         level: definition.level,
         ruleCode,
         title: definition.title,
-        description: descriptionOverride ?? definition.description,
+        description: options?.descriptionOverride ?? definition.description,
+        evidence: options?.evidence ?? [],
       },
     });
   };
-
   const previousType = input.context.previousMonthlyUserType;
   const weekBowelRecords = weekBoogleRecords.filter(
     (record) => record.hasBowel,
@@ -226,7 +230,17 @@ export function detectWeeklyPatterns(
   }).length;
 
   if (lowWaterWithHardStoolDays >= 3) {
-    addRule(WEEKLY_RULE_CODE.LOW_WATER_WITH_HARD_STOOL);
+    addRule(WEEKLY_RULE_CODE.LOW_WATER_WITH_HARD_STOOL, {
+      evidence: [
+        {
+          key: 'lowWaterWithHardStoolDays',
+          label: '수분 부족과 딱딱한 변이 함께 기록된 날',
+          value: lowWaterWithHardStoolDays,
+          threshold: 3,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 15
@@ -297,10 +311,18 @@ export function detectWeeklyPatterns(
   const frequentTimeSlot = findFrequentTimeSlot(bowelRecords14);
 
   if (frequentTimeSlot !== null && frequentTimeSlot.ratio >= 60) {
-    addRule(
-      WEEKLY_RULE_CODE.BOWEL_TIME_SLOT_PATTERN,
-      `평소 ${frequentTimeSlot.label}에 배변이 가장 많았어요.`,
-    );
+    addRule(WEEKLY_RULE_CODE.BOWEL_TIME_SLOT_PATTERN, {
+      descriptionOverride: `평소 ${frequentTimeSlot.label}에 배변이 가장 많았어요.`,
+      evidence: [
+        {
+          key: 'frequentTimeSlotRatio',
+          label: `${frequentTimeSlot.label} 배변 비율`,
+          value: frequentTimeSlot.ratio,
+          threshold: 60,
+          unit: 'PERCENT',
+        },
+      ],
+    });
   }
 
   // 룰 20
