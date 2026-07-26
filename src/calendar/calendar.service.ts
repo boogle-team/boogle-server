@@ -188,6 +188,12 @@ export class CalendarService {
     startDateKey: string,
     endDateKey: string,
   ): Promise<DayStatusDto[]> {
+    // 역순 범위(start > end)는 유효한 조회가 아니다. 사전순=날짜순 비교로
+    // 미리 걸러 빈 배열을 반환한다(불필요한 DB 조회·순회 자체를 생략).
+    if (startDateKey > endDateKey) {
+      return [];
+    }
+
     const memberId = BigInt(userId);
     // 반개방 구간: [시작일 자정, 마지막일+1 자정)
     const rangeStart = kstDayStart(startDateKey);

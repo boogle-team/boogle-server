@@ -297,10 +297,7 @@ describe('CalendarService', () => {
       expect(result[0]).not.toHaveProperty('stoolSimple');
     });
 
-    it('start > end(역순 범위)면 빈 배열을 반환한다 (무한 루프 방지)', async () => {
-      prisma.boogleRecord.findMany.mockResolvedValue([]);
-      prisma.lifeRecord.findMany.mockResolvedValue([]);
-
+    it('start > end(역순 범위)면 DB 조회 없이 빈 배열을 반환한다 (무한 루프 방지)', async () => {
       const result = await service.getDailyStatuses(
         '1',
         '2026-06-03',
@@ -308,6 +305,9 @@ describe('CalendarService', () => {
       );
 
       expect(result).toEqual([]);
+      // 역순은 가드에서 조기 반환 → 불필요한 조회가 발생하지 않는다.
+      expect(prisma.boogleRecord.findMany).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.findMany).not.toHaveBeenCalled();
     });
 
     it('KST 반개방 구간(시작일 자정 ~ 종료일+1 자정)으로 조회한다', async () => {
