@@ -21,7 +21,7 @@ import {
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
-// import { ResponseMessage } from '@/common/decorators/response-message.decorator';
+import { ResponseMessage } from '@/common/decorators/response-message.decorator';
 import type { Response } from 'express';
 import { GetWeeklyReportQueryDto } from './dto/get-weekly-report-query.dto';
 import { WeeklyReportResponseDto } from './dto/weekly-report-response.dto';
@@ -39,6 +39,7 @@ export class ReportController {
 
   @Get('weekly')
   @ApiOperation({ summary: '주간 리포트 조회' })
+  @ResponseMessage('주간 리포트 조회에 성공했습니다.')
   @ApiQuery({
     name: 'weekStartDate',
     required: false,
@@ -51,7 +52,6 @@ export class ReportController {
     description: '생활 가이드 포함 여부. 기본값 true',
     example: true,
   })
-  // @ResponseMessage('주간 리포트 조회에 성공했습니다.')
   async getWeeklyReport(
     @Query() query: GetWeeklyReportQueryDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -63,6 +63,7 @@ export class ReportController {
 
   @Get('monthly')
   @ApiOperation({ summary: '월간 리포트 조회' })
+  @ResponseMessage('월간 리포트 조회에 성공했습니다.')
   @ApiQuery({
     name: 'monthStartDate',
     required: false,
@@ -75,7 +76,6 @@ export class ReportController {
     description: '패턴 카드 포함 여부. 기본값 true',
     example: true,
   })
-  // @ResponseMessage('월간 리포트 조회에 성공했습니다.')
   async getMonthlyReport(
     @Query() query: GetMonthlyReportQueryDto,
     @CurrentUser() user: AuthenticatedUser,

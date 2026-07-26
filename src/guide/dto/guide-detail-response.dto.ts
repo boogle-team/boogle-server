@@ -30,6 +30,7 @@ export interface PatternEvidenceMetricDto {
   value: number;
   threshold: number;
   unit: 'DAY' | 'COUNT' | 'PERCENT' | 'MINUTE';
+  comparison?: 'GTE' | 'LTE';
 }
 
 export interface PatternReasonItemDto {

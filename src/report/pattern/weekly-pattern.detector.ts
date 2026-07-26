@@ -11,7 +11,7 @@ import {
 } from './weekly-pattern.constants';
 import {
   addUtcDays,
-  isInRange,
+  isInKstCalendarRange,
   longestConsecutiveDays,
   splitConsecutiveDateKeys,
   standardDeviation,
@@ -19,6 +19,7 @@ import {
   uniqueDateKeys,
 } from './pattern-date.util';
 import type { PatternCardDto } from '../dto/weekly-report-response.dto';
+import { getKstHour } from '@/common/utils/kst-date.util';
 
 const RULE_20_MAX_INTERVAL_STANDARD_DEVIATION = 0.5;
 
@@ -41,20 +42,36 @@ export function detectWeeklyPatterns(
   input: DetectWeeklyPatternsInput,
 ): DetectedRule[] {
   const weekBoogleRecords = input.boogleRecords.filter((record) =>
-    isInRange(record.regDate, input.weekStartDate, input.weekEndDateExclusive),
+    isInKstCalendarRange(
+      record.regDate,
+      input.weekStartDate,
+      input.weekEndDateExclusive,
+    ),
   );
   const weekLifeRecords = input.lifeRecords.filter((record) =>
-    isInRange(record.regDate, input.weekStartDate, input.weekEndDateExclusive),
+    isInKstCalendarRange(
+      record.regDate,
+      input.weekStartDate,
+      input.weekEndDateExclusive,
+    ),
   );
 
   const lookback14Start = addUtcDays(input.weekEndDateExclusive, -14);
   const lookback30Start = addUtcDays(input.weekEndDateExclusive, -30);
 
   const boogleRecords14 = input.boogleRecords.filter((record) =>
-    isInRange(record.regDate, lookback14Start, input.weekEndDateExclusive),
+    isInKstCalendarRange(
+      record.regDate,
+      lookback14Start,
+      input.weekEndDateExclusive,
+    ),
   );
   const boogleRecords30 = input.boogleRecords.filter((record) =>
-    isInRange(record.regDate, lookback30Start, input.weekEndDateExclusive),
+    isInKstCalendarRange(
+      record.regDate,
+      lookback30Start,
+      input.weekEndDateExclusive,
+    ),
   );
 
   const detected = new Map<WeeklyRuleCode, DetectedRule>();
@@ -112,7 +129,17 @@ export function detectWeeklyPatterns(
   // 룰 4
   const noBowelIntervalThreshold = previousType === 'C' ? 5 : 3;
   if (longestNoBowelDays >= noBowelIntervalThreshold) {
-    addRule(WEEKLY_RULE_CODE.LONG_NO_BOWEL_INTERVAL);
+    addRule(WEEKLY_RULE_CODE.LONG_NO_BOWEL_INTERVAL, {
+      evidence: [
+        {
+          key: 'longestNoBowelDays',
+          label: '연속 무배변 일수',
+          value: longestNoBowelDays,
+          threshold: noBowelIntervalThreshold,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 5
@@ -157,7 +184,17 @@ export function detectWeeklyPatterns(
   // 룰 7
   const looseCountThreshold = previousType === 'L' ? 5 : 3;
   if (looseStoolRecords.length >= looseCountThreshold) {
-    addRule(WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL);
+    addRule(WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL, {
+      evidence: [
+        {
+          key: 'looseStoolCount',
+          label: '묽은 변 횟수',
+          value: looseStoolRecords.length,
+          threshold: looseCountThreshold,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
 
   // 룰 8
@@ -165,8 +202,20 @@ export function detectWeeklyPatterns(
     looseStoolRecords.map((record) => record.regDate),
   );
   const looseStreakThreshold = previousType === 'L' ? 5 : 3;
-  if (longestConsecutiveDays(looseStoolDateKeys) >= looseStreakThreshold) {
-    addRule(WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL);
+  const looseStoolStreakDays = longestConsecutiveDays(looseStoolDateKeys);
+
+  if (looseStoolStreakDays >= looseStreakThreshold) {
+    addRule(WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL, {
+      evidence: [
+        {
+          key: 'looseStoolStreakDays',
+          label: '묽은 변 연속 일수',
+          value: looseStoolStreakDays,
+          threshold: looseStreakThreshold,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 9
@@ -188,36 +237,66 @@ export function detectWeeklyPatterns(
   }
 
   // 룰 11
-  if (
-    weekBoogleRecords.filter((record) => record.distension === 'L').length >= 2
-  ) {
-    addRule(WEEKLY_RULE_CODE.REPEATED_DISTENSION);
+  const severeDistensionCount = weekBoogleRecords.filter(
+    (record) => record.distension === 'L',
+  ).length;
+
+  if (severeDistensionCount >= 2) {
+    addRule(WEEKLY_RULE_CODE.REPEATED_DISTENSION, {
+      evidence: [
+        {
+          key: 'severeDistensionCount',
+          label: '심한 복부 팽만 횟수',
+          value: severeDistensionCount,
+          threshold: 2,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
 
   // 룰 12
-  if (
-    weekBoogleRecords.filter((record) =>
-      isSymptomPresent(record.remainingFeeling),
-    ).length >= 3
-  ) {
-    addRule(WEEKLY_RULE_CODE.REPEATED_REMAINING_FEELING);
+  const remainingFeelingCount = weekBoogleRecords.filter((record) =>
+    isSymptomPresent(record.remainingFeeling),
+  ).length;
+
+  if (remainingFeelingCount >= 3) {
+    addRule(WEEKLY_RULE_CODE.REPEATED_REMAINING_FEELING, {
+      evidence: [
+        {
+          key: 'remainingFeelingCount',
+          label: '잔변감 횟수',
+          value: remainingFeelingCount,
+          threshold: 3,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
 
   // 룰 13
-  if (
-    weekBowelRecords.filter(
-      (record) =>
-        record.bowelFeeling === 'H' &&
-        record.takenTime !== null &&
-        record.takenTime >= 15,
-    ).length >= 2
-  ) {
-    addRule(WEEKLY_RULE_CODE.PROLONGED_BOWEL_TIME);
+  const prolongedBowelCount = weekBowelRecords.filter(
+    (record) =>
+      record.bowelFeeling === 'H' &&
+      record.takenTime !== null &&
+      record.takenTime >= 15,
+  ).length;
+
+  if (prolongedBowelCount >= 2) {
+    addRule(WEEKLY_RULE_CODE.PROLONGED_BOWEL_TIME, {
+      evidence: [
+        {
+          key: 'prolongedBowelCount',
+          label: '힘들고 15분 이상 걸린 배변 횟수',
+          value: prolongedBowelCount,
+          threshold: 2,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
-
-  const weekBoogleByDate = groupBoogleRecordsByDate(weekBoogleRecords);
-
   // 룰 14
+  const weekBoogleByDate = groupBoogleRecordsByDate(weekBoogleRecords);
   const lowWaterWithHardStoolDays = weekLifeRecords.filter((lifeRecord) => {
     if (!isLowWaterRecord(lifeRecord)) {
       return false;
@@ -275,7 +354,17 @@ export function detectWeeklyPatterns(
   }).length;
 
   if (foodWithLooseStoolDays >= 1) {
-    addRule(WEEKLY_RULE_CODE.FOOD_WITH_LOOSE_STOOL);
+    addRule(WEEKLY_RULE_CODE.FOOD_WITH_LOOSE_STOOL, {
+      evidence: [
+        {
+          key: 'foodWithLooseStoolDays',
+          label: '음주·야식과 묽은 변이 함께 기록된 날',
+          value: foodWithLooseStoolDays,
+          threshold: 1,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 17
@@ -284,8 +373,20 @@ export function detectWeeklyPatterns(
       .filter((record) => record.sleep === 'B')
       .map((record) => record.regDate),
   );
-  if (longestConsecutiveDays(lowSleepDateKeys) >= 3) {
-    addRule(WEEKLY_RULE_CODE.CONTINUOUS_LOW_SLEEP);
+  const lowSleepStreakDays = longestConsecutiveDays(lowSleepDateKeys);
+
+  if (lowSleepStreakDays >= 3) {
+    addRule(WEEKLY_RULE_CODE.CONTINUOUS_LOW_SLEEP, {
+      evidence: [
+        {
+          key: 'lowSleepStreakDays',
+          label: '연속 수면 부족 일수',
+          value: lowSleepStreakDays,
+          threshold: 3,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 18
@@ -302,7 +403,17 @@ export function detectWeeklyPatterns(
     }).length;
 
     if (hormoneWithStoolChangeDays >= 1) {
-      addRule(WEEKLY_RULE_CODE.HORMONE_WITH_STOOL_CHANGE);
+      addRule(WEEKLY_RULE_CODE.HORMONE_WITH_STOOL_CHANGE, {
+        evidence: [
+          {
+            key: 'hormoneWithStoolChangeDays',
+            label: '호르몬 변화와 변 상태 변화가 함께 기록된 날',
+            value: hormoneWithStoolChangeDays,
+            threshold: 1,
+            unit: 'DAY',
+          },
+        ],
+      });
     }
   }
 
@@ -335,34 +446,90 @@ export function detectWeeklyPatterns(
   const bowelDayIntervals = bowelDayOffsets
     .slice(1)
     .map((offset, index) => offset - bowelDayOffsets[index]);
+  const bowelIntervalStandardDeviation = standardDeviation(bowelDayIntervals);
 
   if (
     bowelDateKeys.length >= 3 &&
     bowelDayIntervals.length >= 2 &&
-    standardDeviation(bowelDayIntervals) <=
-      RULE_20_MAX_INTERVAL_STANDARD_DEVIATION
+    bowelIntervalStandardDeviation <= RULE_20_MAX_INTERVAL_STANDARD_DEVIATION
   ) {
-    addRule(WEEKLY_RULE_CODE.STABLE_BOWEL_RHYTHM);
+    addRule(WEEKLY_RULE_CODE.STABLE_BOWEL_RHYTHM, {
+      evidence: [
+        {
+          key: 'recordedBowelDays',
+          label: '배변 기록일',
+          value: bowelDateKeys.length,
+          threshold: 3,
+          unit: 'DAY',
+          comparison: 'GTE',
+        },
+        {
+          key: 'bowelIntervalStandardDeviation',
+          label: '배변 간격 편차',
+          value: Math.round(bowelIntervalStandardDeviation * 10) / 10,
+          threshold: RULE_20_MAX_INTERVAL_STANDARD_DEVIATION,
+          unit: 'DAY',
+          comparison: 'LTE',
+        },
+      ],
+    });
   }
 
   // 룰 21
-  if (
-    weekBoogleRecords.filter((record) => isSymptomPresent(record.urgency))
-      .length >= 2
-  ) {
-    addRule(WEEKLY_RULE_CODE.REPEATED_URGENCY);
+  const urgencyCount = weekBoogleRecords.filter((record) =>
+    isSymptomPresent(record.urgency),
+  ).length;
+
+  if (urgencyCount >= 2) {
+    addRule(WEEKLY_RULE_CODE.REPEATED_URGENCY, {
+      evidence: [
+        {
+          key: 'urgencyCount',
+          label: '급박감 기록 횟수',
+          value: urgencyCount,
+          threshold: 2,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
 
   // 룰 22
-  if (
-    weekLifeRecords.filter((record) => record.mealRegular === 'I').length >= 4
-  ) {
-    addRule(WEEKLY_RULE_CODE.IRREGULAR_MEAL);
+  const irregularMealDays = weekLifeRecords.filter(
+    (record) => record.mealRegular === 'I',
+  ).length;
+
+  if (irregularMealDays >= 4) {
+    addRule(WEEKLY_RULE_CODE.IRREGULAR_MEAL, {
+      evidence: [
+        {
+          key: 'irregularMealDays',
+          label: '불규칙 식사 기록일',
+          value: irregularMealDays,
+          threshold: 4,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 23
-  if (weekBowelRecords.filter((record) => record.amount === 'S').length >= 3) {
-    addRule(WEEKLY_RULE_CODE.LOW_STOOL_AMOUNT);
+  const lowStoolAmountCount = weekBowelRecords.filter(
+    (record) => record.amount === 'S',
+  ).length;
+
+  if (lowStoolAmountCount >= 3) {
+    addRule(WEEKLY_RULE_CODE.LOW_STOOL_AMOUNT, {
+      evidence: [
+        {
+          key: 'lowStoolAmountCount',
+          label: '적은 배변량 기록 횟수',
+          value: lowStoolAmountCount,
+          threshold: 3,
+          unit: 'COUNT',
+        },
+      ],
+    });
   }
 
   // 룰 24
@@ -378,7 +545,17 @@ export function detectWeeklyPatterns(
   }).length;
 
   if (caffeineWithStoolChangeDays >= 3) {
-    addRule(WEEKLY_RULE_CODE.CAFFEINE_WITH_STOOL_CHANGE);
+    addRule(WEEKLY_RULE_CODE.CAFFEINE_WITH_STOOL_CHANGE, {
+      evidence: [
+        {
+          key: 'caffeineWithStoolChangeDays',
+          label: '카페인과 변 상태 변화가 함께 기록된 날',
+          value: caffeineWithStoolChangeDays,
+          threshold: 3,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 룰 25
@@ -386,7 +563,24 @@ export function detectWeeklyPatterns(
     (record) => record.exercise === 'N',
   ).length;
   if (noExerciseDays >= 5 && longestNoBowelDays >= noBowelIntervalThreshold) {
-    addRule(WEEKLY_RULE_CODE.NO_EXERCISE_WITH_LONG_INTERVAL);
+    addRule(WEEKLY_RULE_CODE.NO_EXERCISE_WITH_LONG_INTERVAL, {
+      evidence: [
+        {
+          key: 'noExerciseDays',
+          label: '운동하지 않은 일수',
+          value: noExerciseDays,
+          threshold: 5,
+          unit: 'DAY',
+        },
+        {
+          key: 'longestNoBowelDays',
+          label: '연속 무배변 일수',
+          value: longestNoBowelDays,
+          threshold: noBowelIntervalThreshold,
+          unit: 'DAY',
+        },
+      ],
+    });
   }
 
   // 상위 호환 룰 적용
@@ -479,7 +673,7 @@ function findFrequentTimeSlot(
   };
 
   for (const record of records) {
-    const hour = record.regDate.getUTCHours();
+    const hour = getKstHour(record.regDate);
     const slot =
       hour >= 5 && hour < 12
         ? 'MORNING'

@@ -3,6 +3,7 @@ import type {
   LifeRecordForReport,
 } from '../dto/report-record.dto';
 import { toDateKey } from '../pattern/pattern-date.util';
+import { getKstTimeInHours } from '@/common/utils/kst-date.util';
 
 const MONTHLY_SCORE_DAYS = 30;
 
@@ -71,10 +72,7 @@ export function calculateMonthlyScores(
 function findMaxCircularTwoHourWindowCount(
   bowelRecords: BoogleRecordForReport[],
 ): number {
-  const hours = bowelRecords.map(
-    (record) =>
-      record.regDate.getUTCHours() + record.regDate.getUTCMinutes() / 60,
-  );
+  const hours = bowelRecords.map((record) => getKstTimeInHours(record.regDate));
 
   return hours.reduce((maxCount, centerHour) => {
     const count = hours.filter(

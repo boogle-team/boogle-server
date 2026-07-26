@@ -1,5 +1,7 @@
+import { toKstDateKey } from '@/common/utils/kst-date.util';
+
 export function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return toKstDateKey(date);
 }
 
 export function addUtcDays(date: Date, days: number): Date {
@@ -8,12 +10,16 @@ export function addUtcDays(date: Date, days: number): Date {
   return copied;
 }
 
-export function isInRange(
+export function isInKstCalendarRange(
   date: Date,
-  start: Date,
-  endExclusive: Date,
+  startCalendarDate: Date,
+  endCalendarDateExclusive: Date,
 ): boolean {
-  return date >= start && date < endExclusive;
+  const dateKey = toKstDateKey(date);
+  const startDateKey = startCalendarDate.toISOString().slice(0, 10);
+  const endDateKey = endCalendarDateExclusive.toISOString().slice(0, 10);
+
+  return dateKey >= startDateKey && dateKey < endDateKey;
 }
 
 export function uniqueDateKeys(dates: Date[]): string[] {

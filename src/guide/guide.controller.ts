@@ -22,7 +22,7 @@ import {
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
-// import { ResponseMessage } from '@/common/decorators/response-message.decorator';
+import { ResponseMessage } from '@/common/decorators/response-message.decorator';
 import { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
 import { GuideScreenResponseDto } from './dto/guide-screen-response.dto';
 import { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
@@ -44,6 +44,7 @@ export class GuideController {
 
   @Get()
   @ApiOperation({ summary: '가이드 화면 조회' })
+  @ResponseMessage('가이드 화면 조회에 성공했습니다.')
   @ApiQuery({
     name: 'weekStartDate',
     required: false,
@@ -62,7 +63,6 @@ export class GuideController {
     description: '기존 피드백 포함 여부. 기본값 true',
     example: true,
   })
-  // @ResponseMessage('가이드 조회에 성공했습니다.')
   async getGuideScreen(
     @Query() query: GetGuideScreenQueryDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -74,10 +74,11 @@ export class GuideController {
 
   @Get(':guideId')
   @ApiOperation({ summary: '가이드 상세 조회' })
+  @ResponseMessage('가이드 상세 조회에 성공했습니다.')
   @ApiParam({
     name: 'guideId',
     type: Number,
-    description: '조회할 가이드 콘텐츠 ID',
+    description: '조회할 가이드 ID',
     example: 3,
   })
   @ApiQuery({
@@ -92,13 +93,6 @@ export class GuideController {
     description: '주의 신호 판단 기준 월. YYYY-MM-01 형식',
     example: '2026-07-01',
   })
-  @ApiQuery({
-    name: 'ruleCode',
-    required: false,
-    description: '선택한 패턴 가이드의 규칙 코드',
-    example: 'LOW_SLEEP',
-  })
-  // @ResponseMessage('가이드 상세 조회에 성공했습니다.')
   async getGuideDetail(
     @Param('guideId') guideId: string,
     @Query() query: GetGuideDetailQueryDto,
@@ -112,10 +106,11 @@ export class GuideController {
   @Post(':guideId/feedback')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '가이드 피드백 등록' })
+  @ResponseMessage('가이드 피드백이 등록되었습니다.')
   @ApiParam({
     name: 'guideId',
     type: Number,
-    description: '피드백 대상 가이드 콘텐츠 ID',
+    description: '피드백 대상 가이드 ID',
     example: 3,
   })
   @ApiBody({
@@ -141,7 +136,6 @@ export class GuideController {
       },
     },
   })
-  // @ResponseMessage('피드백 등록을 성공했습니다.')
   async createGuideFeedback(
     @Param('guideId') guideId: string,
     @Body() body: GuideFeedbackRequestDto,
@@ -155,10 +149,11 @@ export class GuideController {
   @Patch(':guideId/feedback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '가이드 피드백 수정' })
+  @ResponseMessage('가이드 피드백이 수정되었습니다.')
   @ApiParam({
     name: 'guideId',
     type: Number,
-    description: '피드백을 수정할 가이드 콘텐츠 ID',
+    description: '피드백을 수정할 가이드 ID',
     example: 3,
   })
   @ApiBody({
@@ -171,7 +166,6 @@ export class GuideController {
       },
     },
   })
-  // @ResponseMessage('피드백 수정을 성공했습니다.')
   async updateGuideFeedback(
     @Param('guideId') guideId: string,
     @Body() body: GuideFeedbackRequestDto,
@@ -185,10 +179,11 @@ export class GuideController {
   @Delete(':guideId/feedback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '가이드 피드백 삭제' })
+  @ResponseMessage('가이드 피드백이 삭제되었습니다.')
   @ApiParam({
     name: 'guideId',
     type: Number,
-    description: '피드백을 삭제할 가이드 콘텐츠 ID',
+    description: '피드백을 삭제할 가이드 ID',
     example: 3,
   })
   async deleteGuideFeedback(

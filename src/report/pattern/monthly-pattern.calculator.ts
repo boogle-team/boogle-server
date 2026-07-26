@@ -19,63 +19,100 @@ export type MonthlyPatternCode =
   (typeof MONTHLY_PATTERN_CODE)[keyof typeof MONTHLY_PATTERN_CODE];
 
 export interface MonthlyPatternMetrics {
-  lowWaterWithHardStoolDays: number;
-  stressWithPainCount: number;
-  lowSleepDays: number;
-  hardStoolRatio: number;
+  lowWaterWithHardStoolDays: number | null;
+  stressWithPainCount: number | null;
+  lowSleepDays: number | null;
+  hardStoolRatio: number | null;
 }
 
 export function calculateMonthlyPatternMetrics(
   boogleRecords: BoogleRecordForReport[],
   lifeRecords: LifeRecordForReport[],
 ): MonthlyPatternMetrics {
-  const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
-  const validStoolRecords = bowelRecords.filter(
+  const validStoolRecords = boogleRecords.filter(
     (record) =>
-      record.stoolSimple === 'H' ||
-      record.stoolSimple === 'M' ||
-      record.stoolSimple === 'T',
+      record.hasBowel &&
+      (record.stoolSimple === 'H' ||
+        record.stoolSimple === 'M' ||
+        record.stoolSimple === 'T'),
   );
   const hardStoolCount = validStoolRecords.filter(
     (record) => record.stoolSimple === 'H',
   ).length;
   const hardStoolRatio =
     validStoolRecords.length === 0
-      ? 0
+      ? null
       : round1((hardStoolCount / validStoolRecords.length) * 100);
 
   const boogleByDate = groupByDate(boogleRecords);
 
-  const lowWaterWithHardStoolDays = lifeRecords.filter((lifeRecord) => {
-    const isLowWater =
-      lifeRecord.waterIntake !== null
-        ? lifeRecord.waterIntake <= 2
-        : lifeRecord.water === 'L';
-
-    if (!isLowWater) {
-      return false;
-    }
-
-    return (boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? []).some(
-      (boogleRecord) =>
-        boogleRecord.hasBowel && boogleRecord.stoolSimple === 'H',
+  const hasWaterAndStoolObservation = lifeRecords.some((lifeRecord) => {
+    const waterObserved =
+      lifeRecord.waterIntake !== null || lifeRecord.water !== null;
+    const dailyBoogleRecords =
+      boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? [];
+    const stoolObserved = dailyBoogleRecords.some(
+      (record) =>
+        record.hasBowel &&
+        (record.stoolSimple === 'H' ||
+          record.stoolSimple === 'M' ||
+          record.stoolSimple === 'T'),
     );
-  }).length;
 
-  const stressWithPainCount = lifeRecords.filter((lifeRecord) => {
-    if (lifeRecord.stress !== 'H') {
-      return false;
-    }
+    return waterObserved && stoolObserved;
+  });
 
-    return (boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? []).some(
-      (boogleRecord) =>
-        boogleRecord.stomach === 'M' || boogleRecord.stomach === 'L',
+  const lowWaterWithHardStoolDays = hasWaterAndStoolObservation
+    ? lifeRecords.filter((lifeRecord) => {
+        const isLowWater =
+          lifeRecord.waterIntake !== null
+            ? lifeRecord.waterIntake <= 2
+            : lifeRecord.water === 'L';
+
+        if (!isLowWater) {
+          return false;
+        }
+
+        const dailyBoogleRecords =
+          boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? [];
+
+        return dailyBoogleRecords.some(
+          (record) => record.hasBowel && record.stoolSimple === 'H',
+        );
+      }).length
+    : null;
+
+  const hasStressAndPainObservation = lifeRecords.some((lifeRecord) => {
+    const dailyBoogleRecords =
+      boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? [];
+
+    return (
+      lifeRecord.stress !== null &&
+      dailyBoogleRecords.some((record) => record.stomach !== null)
     );
-  }).length;
+  });
 
-  const lowSleepDays = lifeRecords.filter(
-    (record) => record.sleep === 'B',
-  ).length;
+  const stressWithPainCount = hasStressAndPainObservation
+    ? lifeRecords.filter((lifeRecord) => {
+        if (lifeRecord.stress !== 'H') {
+          return false;
+        }
+
+        const dailyBoogleRecords =
+          boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? [];
+
+        return dailyBoogleRecords.some(
+          (record) => record.stomach === 'M' || record.stomach === 'L',
+        );
+      }).length
+    : null;
+
+  const hasSleepObservation = lifeRecords.some(
+    (record) => record.sleep !== null,
+  );
+  const lowSleepDays = hasSleepObservation
+    ? lifeRecords.filter((record) => record.sleep === 'B').length
+    : null;
 
   return {
     lowWaterWithHardStoolDays,
@@ -89,50 +126,56 @@ export function buildMonthlyPatternCards(
   metrics: MonthlyPatternMetrics,
 ): MonthlyPatternCardDto[] {
   const cards: MonthlyPatternCardDto[] = [];
+  const {
+    lowWaterWithHardStoolDays,
+    stressWithPainCount,
+    lowSleepDays,
+    hardStoolRatio,
+  } = metrics;
 
-  if (metrics.lowWaterWithHardStoolDays >= 12) {
+  if (lowWaterWithHardStoolDays !== null && lowWaterWithHardStoolDays >= 12) {
     cards.push({
       level: 'WARN',
       ruleCode: MONTHLY_PATTERN_CODE.LOW_WATER_WITH_HARD_STOOL,
       title: '수분 부족과 딱딱한 변',
       description: '수분이 부족했던 날, 딱딱한 변이 함께 나타난 날이 많았어요.',
-      value: metrics.lowWaterWithHardStoolDays,
+      value: lowWaterWithHardStoolDays,
       threshold: 12,
       unit: 'DAY',
     });
   }
 
-  if (metrics.stressWithPainCount >= 8) {
+  if (stressWithPainCount !== null && stressWithPainCount >= 8) {
     cards.push({
       level: 'WARN',
       ruleCode: MONTHLY_PATTERN_CODE.STRESS_WITH_PAIN,
       title: '스트레스성 복통',
       description: '스트레스가 높았던 날 복통이 자주 함께 있었어요.',
-      value: metrics.stressWithPainCount,
+      value: stressWithPainCount,
       threshold: 8,
       unit: 'COUNT',
     });
   }
 
-  if (metrics.lowSleepDays >= 10) {
+  if (lowSleepDays !== null && lowSleepDays >= 10) {
     cards.push({
       level: 'WARN',
       ruleCode: MONTHLY_PATTERN_CODE.LOW_SLEEP,
       title: '수면 부족 반복',
       description: '이번 달 10일 이상 수면이 부족했어요.',
-      value: metrics.lowSleepDays,
+      value: lowSleepDays,
       threshold: 10,
       unit: 'DAY',
     });
   }
 
-  if (metrics.hardStoolRatio >= 50) {
+  if (hardStoolRatio !== null && hardStoolRatio >= 50) {
     cards.push({
       level: 'WARN',
       ruleCode: MONTHLY_PATTERN_CODE.HARD_STOOL_RATIO,
       title: '딱딱한 변 경향',
       description: '이번 달 변 상태의 절반 이상이 딱딱했어요.',
-      value: metrics.hardStoolRatio,
+      value: hardStoolRatio,
       threshold: 50,
       unit: 'PERCENT',
     });
@@ -158,7 +201,7 @@ export function buildMonthlyImprovements(
       code: 'CONDITION_SCORE_UP',
       title: '부글 컨디션 점수 상승',
       description:
-        `지난달보다 컨디션 점수가 ${previousConditionScore}점에서 ` +
+        `같은 기간 기준 컨디션 점수가 ${previousConditionScore}점에서 ` +
         `${currentConditionScore}점으로 올랐어요.`,
       previousValue: previousConditionScore,
       currentValue: currentConditionScore,
@@ -166,66 +209,99 @@ export function buildMonthlyImprovements(
     });
   }
 
-  if (currentMetrics.hardStoolRatio < previousMetrics.hardStoolRatio) {
+  const hardStoolDecrease = getDecrease(
+    currentMetrics.hardStoolRatio,
+    previousMetrics.hardStoolRatio,
+  );
+
+  if (hardStoolDecrease !== null) {
     improvements.push({
       code: 'HARD_STOOL_RATIO_DOWN',
       title: '딱딱한 변 비율 감소',
       description:
-        `딱딱한 변 비율이 지난달 ${previousMetrics.hardStoolRatio}%에서 ` +
-        `${currentMetrics.hardStoolRatio}%로 줄었어요.`,
-      previousValue: previousMetrics.hardStoolRatio,
-      currentValue: currentMetrics.hardStoolRatio,
+        `같은 기간 기준 딱딱한 변 비율이 ` +
+        `${hardStoolDecrease.previous}%에서 ` +
+        `${hardStoolDecrease.current}%로 줄었어요.`,
+      previousValue: hardStoolDecrease.previous,
+      currentValue: hardStoolDecrease.current,
       unit: 'PERCENT',
     });
   }
 
-  if (
-    currentMetrics.lowWaterWithHardStoolDays <
-    previousMetrics.lowWaterWithHardStoolDays
-  ) {
+  const lowWaterHardStoolDecrease = getDecrease(
+    currentMetrics.lowWaterWithHardStoolDays,
+    previousMetrics.lowWaterWithHardStoolDays,
+  );
+
+  if (lowWaterHardStoolDecrease !== null) {
     improvements.push({
       code: 'LOW_WATER_HARD_STOOL_DOWN',
       title: '수분과 배변 상태 개선',
       description:
-        '수분 부족과 딱딱한 변이 겹친 날이 지난달 ' +
-        `${previousMetrics.lowWaterWithHardStoolDays}일에서 ` +
-        `${currentMetrics.lowWaterWithHardStoolDays}일로 줄었어요.`,
-      previousValue: previousMetrics.lowWaterWithHardStoolDays,
-      currentValue: currentMetrics.lowWaterWithHardStoolDays,
+        '같은 기간 기준 수분 부족과 딱딱한 변이 겹친 날이 ' +
+        `${lowWaterHardStoolDecrease.previous}일에서 ` +
+        `${lowWaterHardStoolDecrease.current}일로 줄었어요.`,
+      previousValue: lowWaterHardStoolDecrease.previous,
+      currentValue: lowWaterHardStoolDecrease.current,
       unit: 'DAY',
     });
   }
 
-  if (
-    currentMetrics.stressWithPainCount < previousMetrics.stressWithPainCount
-  ) {
+  const stressPainDecrease = getDecrease(
+    currentMetrics.stressWithPainCount,
+    previousMetrics.stressWithPainCount,
+  );
+
+  if (stressPainDecrease !== null) {
     improvements.push({
       code: 'STRESS_WITH_PAIN_DOWN',
       title: '스트레스성 복통 완화',
       description:
-        '스트레스와 복통이 함께 나타난 횟수가 지난달 ' +
-        `${previousMetrics.stressWithPainCount}회에서 ` +
-        `${currentMetrics.stressWithPainCount}회로 줄었어요.`,
-      previousValue: previousMetrics.stressWithPainCount,
-      currentValue: currentMetrics.stressWithPainCount,
+        '같은 기간 기준 스트레스와 복통이 함께 나타난 횟수가 ' +
+        `${stressPainDecrease.previous}회에서 ` +
+        `${stressPainDecrease.current}회로 줄었어요.`,
+      previousValue: stressPainDecrease.previous,
+      currentValue: stressPainDecrease.current,
       unit: 'COUNT',
     });
   }
 
-  if (currentMetrics.lowSleepDays < previousMetrics.lowSleepDays) {
+  const lowSleepDecrease = getDecrease(
+    currentMetrics.lowSleepDays,
+    previousMetrics.lowSleepDays,
+  );
+
+  if (lowSleepDecrease !== null) {
     improvements.push({
       code: 'LOW_SLEEP_DOWN',
       title: '수면 부족 개선',
       description:
-        `수면 부족 일수가 지난달 ${previousMetrics.lowSleepDays}일에서 ` +
-        `${currentMetrics.lowSleepDays}일로 줄었어요.`,
-      previousValue: previousMetrics.lowSleepDays,
-      currentValue: currentMetrics.lowSleepDays,
+        `같은 기간 기준 수면 부족 일수가 ` +
+        `${lowSleepDecrease.previous}일에서 ` +
+        `${lowSleepDecrease.current}일로 줄었어요.`,
+      previousValue: lowSleepDecrease.previous,
+      currentValue: lowSleepDecrease.current,
       unit: 'DAY',
     });
   }
 
   return improvements;
+}
+
+interface DecreasedMetric {
+  current: number;
+  previous: number;
+}
+
+function getDecrease(
+  current: number | null,
+  previous: number | null,
+): DecreasedMetric | null {
+  if (current === null || previous === null || current >= previous) {
+    return null;
+  }
+
+  return { current, previous };
 }
 
 function groupByDate(

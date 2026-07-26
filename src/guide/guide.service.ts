@@ -6,6 +6,11 @@ import {
   PATTERN_GUIDE_BINDINGS,
   type WeeklyRuleCode,
 } from '@/report/pattern/weekly-pattern.constants';
+import {
+  getTodayKstDateKey,
+  kstDayStart,
+  toKstDateKey,
+} from '@/common/utils/kst-date.util';
 import type { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
 import type {
   GuideFeedbackStatus,
@@ -19,7 +24,6 @@ import type {
   GuideContentItemDto,
   GuideDetailResponseDto,
   HealthGuideDetailResponseDto,
-  // PatternGuideAnalysisDto,
   PatternGuideDetailResponseDto,
   PatternGuideReasonDto,
   RecommendedGuideDto,
@@ -214,8 +218,8 @@ export class GuideService {
         status: 'A',
         hasBowel: true,
         regDate: {
-          gte: monthStartDate,
-          lt: nextMonthStartDate,
+          gte: this.toKstBoundary(monthStartDate),
+          lt: this.toKstBoundary(nextMonthStartDate),
         },
       },
       select: {
@@ -276,7 +280,7 @@ export class GuideService {
         flagMap.set('FLAG_BLOOD_RED', {
           flagCode: 'FLAG_BLOOD_RED',
           label: '붉은색 변이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
         });
       }
 
@@ -284,7 +288,7 @@ export class GuideService {
         flagMap.set('FLAG_BLOOD_BLACK', {
           flagCode: 'FLAG_BLOOD_BLACK',
           label: '검은색 변이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
         });
       }
 
@@ -292,7 +296,7 @@ export class GuideService {
         flagMap.set('FLAG_PAIN_SEVERE', {
           flagCode: 'FLAG_PAIN_SEVERE',
           label: '심한 복통이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
         });
       }
     }
@@ -333,9 +337,8 @@ export class GuideService {
 
   private resolveMonthStartDate(value?: string): Date {
     if (value === undefined || value.trim() === '') {
-      const now = new Date();
-
-      return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const todayKey = getTodayKstDateKey();
+      return this.parseDateString(`${todayKey.slice(0, 7)}-01`)!;
     }
 
     const parsedDate = this.parseDateString(value);
@@ -349,6 +352,10 @@ export class GuideService {
     }
 
     return parsedDate;
+  }
+
+  private toKstBoundary(calendarDate: Date): Date {
+    return kstDayStart(this.toDateString(calendarDate));
   }
 
   private parseDateString(value: string): Date | null {
@@ -372,13 +379,12 @@ export class GuideService {
     return valid ? date : null;
   }
 
+  private getTodayCalendarDate(): Date {
+    return this.parseDateString(getTodayKstDateKey())!;
+  }
+
   private getCurrentMonday(): Date {
-    const now = new Date();
-
-    const today = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
-    );
-
+    const today = this.getTodayCalendarDate();
     const dayOfWeek = today.getUTCDay();
     const difference = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
@@ -691,8 +697,8 @@ export class GuideService {
         status: 'A',
         hasBowel: true,
         regDate: {
-          gte: monthStartDate,
-          lt: nextMonthStartDate,
+          gte: this.toKstBoundary(monthStartDate),
+          lt: this.toKstBoundary(nextMonthStartDate),
         },
       },
       select: {
@@ -721,7 +727,7 @@ export class GuideService {
         flagMap.set('FLAG_BLOOD_RED', {
           flagCode: 'FLAG_BLOOD_RED',
           label: '붉은색 변 기록',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
           sourceRecordId: record.id.toString(),
         });
       }
@@ -730,7 +736,7 @@ export class GuideService {
         flagMap.set('FLAG_BLOOD_BLACK', {
           flagCode: 'FLAG_BLOOD_BLACK',
           label: '검은색 변 기록',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
           sourceRecordId: record.id.toString(),
         });
       }
@@ -739,7 +745,7 @@ export class GuideService {
         flagMap.set('FLAG_PAIN_SEVERE', {
           flagCode: 'FLAG_PAIN_SEVERE',
           label: '심한 복통 기록',
-          detectedDate: this.toDateString(record.regDate),
+          detectedDate: toKstDateKey(record.regDate),
           sourceRecordId: record.id.toString(),
         });
       }

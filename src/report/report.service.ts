@@ -1,6 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
+import {
+  getKstHour,
+  getTodayKstDateKey,
+  kstDayStart,
+  toKstDateKey,
+} from '@/common/utils/kst-date.util';
 import type { GetWeeklyReportQueryDto } from './dto/get-weekly-report-query.dto';
 import type {
   BowelRhythmByDayDto,
@@ -25,6 +31,7 @@ import type {
   MonthlyReportPeriodDto,
   MonthlyReportResponseDto,
   MonthlyStoolDistributionDto,
+  MonthlyImprovementDto,
   MonthlySummaryDto,
   MonthlyUserTypeDto,
   PreviousMonthlySummaryDto,
@@ -110,23 +117,25 @@ export class ReportService {
         this.findWeeklyPatternContext(userId, weekStartDate),
       ]);
 
-      const boogleRecords = boogleHistory.filter(
-        (record) =>
-          record.regDate >= weekStartDate && record.regDate < nextWeekStartDate,
+      const boogleRecords = this.filterByKstCalendarRange(
+        boogleHistory,
+        weekStartDate,
+        nextWeekStartDate,
       );
-      const lifeRecords = lifeHistory.filter(
-        (record) =>
-          record.regDate >= weekStartDate && record.regDate < nextWeekStartDate,
+      const lifeRecords = this.filterByKstCalendarRange(
+        lifeHistory,
+        weekStartDate,
+        nextWeekStartDate,
       );
-      const previousBoogleRecords = boogleHistory.filter(
-        (record) =>
-          record.regDate >= previousWeekStartDate &&
-          record.regDate < weekStartDate,
+      const previousBoogleRecords = this.filterByKstCalendarRange(
+        boogleHistory,
+        previousWeekStartDate,
+        weekStartDate,
       );
-      const previousLifeRecords = lifeHistory.filter(
-        (record) =>
-          record.regDate >= previousWeekStartDate &&
-          record.regDate < weekStartDate,
+      const previousLifeRecords = this.filterByKstCalendarRange(
+        lifeHistory,
+        previousWeekStartDate,
+        weekStartDate,
       );
 
       const recordStats = this.buildRecordStats(boogleRecords, lifeRecords);
@@ -227,6 +236,7 @@ export class ReportService {
       );
     }
   }
+
   // 월간 메인
   async getMonthlyReport(
     userId: bigint,
@@ -238,7 +248,7 @@ export class ReportService {
       const calendarNextMonthStart = this.addMonths(monthStartDate, 1);
       const calendarMonthEnd = this.addDays(calendarNextMonthStart, -1);
 
-      const today = this.getTodayUtc();
+      const today = this.getTodayCalendarDate();
       const effectiveMonthEnd =
         monthStartDate <= today && today <= calendarMonthEnd
           ? today
@@ -265,6 +275,83 @@ export class ReportService {
           calendarNextMonthStart,
         ),
       ]);
+
+      const currentPeriodDays =
+        this.daysBetween(monthStartDate, effectiveMonthEnd) + 1;
+      const previousCalendarDays = previousMonthEndDate.getUTCDate();
+      const comparableDays = Math.min(currentPeriodDays, previousCalendarDays);
+
+      const currentComparisonEndExclusive = this.addDays(
+        monthStartDate,
+        comparableDays,
+      );
+      const previousComparisonEndExclusive = this.addDays(
+        previousMonthStartDate,
+        comparableDays,
+      );
+
+      const currentComparisonBoogleRecords = this.filterByKstCalendarRange(
+        boogleRecords,
+        monthStartDate,
+        currentComparisonEndExclusive,
+      );
+      const currentComparisonLifeRecords = this.filterByKstCalendarRange(
+        lifeRecords,
+        monthStartDate,
+        currentComparisonEndExclusive,
+      );
+      const previousComparisonBoogleRecords = this.filterByKstCalendarRange(
+        previousBoogleRecords,
+        previousMonthStartDate,
+        previousComparisonEndExclusive,
+      );
+      const previousComparisonLifeRecords = this.filterByKstCalendarRange(
+        previousLifeRecords,
+        previousMonthStartDate,
+        previousComparisonEndExclusive,
+      );
+
+      const currentComparisonRecordedDays = this.countKstRecordedDays(
+        currentComparisonBoogleRecords,
+        currentComparisonLifeRecords,
+      );
+      const previousComparisonRecordedDays = this.countKstRecordedDays(
+        previousComparisonBoogleRecords,
+        previousComparisonLifeRecords,
+      );
+
+      const canCompareImprovements =
+        currentComparisonRecordedDays >= 7 &&
+        previousComparisonRecordedDays >= 7;
+
+      let improvements: MonthlyImprovementDto[] = [];
+
+      if (canCompareImprovements) {
+        const currentComparisonMetrics = calculateMonthlyPatternMetrics(
+          currentComparisonBoogleRecords,
+          currentComparisonLifeRecords,
+        );
+        const previousComparisonMetrics = calculateMonthlyPatternMetrics(
+          previousComparisonBoogleRecords,
+          previousComparisonLifeRecords,
+        );
+
+        const currentComparisonScore = calculateMonthlyScores(
+          currentComparisonBoogleRecords,
+          currentComparisonLifeRecords,
+        ).conditionScore;
+        const previousComparisonScore = calculateMonthlyScores(
+          previousComparisonBoogleRecords,
+          previousComparisonLifeRecords,
+        ).conditionScore;
+
+        improvements = buildMonthlyImprovements(
+          currentComparisonMetrics,
+          previousComparisonMetrics,
+          currentComparisonScore,
+          previousComparisonScore,
+        );
+      }
 
       const recordStats = this.buildMonthlyRecordStats(
         boogleRecords,
@@ -323,23 +410,9 @@ export class ReportService {
         boogleRecords,
         lifeRecords,
       );
-      const previousMetrics =
-        previousSummary === null
-          ? null
-          : calculateMonthlyPatternMetrics(
-              previousBoogleRecords,
-              previousLifeRecords,
-            );
-
       const patternCards = includePattern
         ? buildMonthlyPatternCards(currentMetrics)
         : [];
-      const improvements = buildMonthlyImprovements(
-        currentMetrics,
-        previousMetrics,
-        summary.conditionScore,
-        previousSummary?.conditionScore ?? null,
-      );
 
       const stoolDistribution =
         this.buildMonthlyStoolDistribution(boogleRecords);
@@ -385,13 +458,6 @@ export class ReportService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  private getTodayUtc(): Date {
-    const now = new Date();
-    return new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
   }
 
   private buildPreviousMonthlySummaryFromRaw(
@@ -538,8 +604,8 @@ export class ReportService {
         userId,
         status: 'A',
         regDate: {
-          gte: startDate,
-          lt: endDateExclusive,
+          gte: this.toKstBoundary(startDate),
+          lt: this.toKstBoundary(endDateExclusive),
         },
       },
       select: {
@@ -572,8 +638,8 @@ export class ReportService {
         userId,
         status: 'A',
         regDate: {
-          gte: startDate,
-          lt: endDateExclusive,
+          gte: this.toKstBoundary(startDate),
+          lt: this.toKstBoundary(endDateExclusive),
         },
       },
       select: {
@@ -742,9 +808,8 @@ export class ReportService {
   // 월간시작일자
   private resolveMonthStartDate(monthStartDate?: string): Date {
     if (monthStartDate === undefined || monthStartDate.trim() === '') {
-      const now = new Date();
-
-      return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const todayKey = getTodayKstDateKey();
+      return this.parseDateString(`${todayKey.slice(0, 7)}-01`)!;
     }
 
     const parsedDate = this.parseDateString(monthStartDate);
@@ -781,16 +846,51 @@ export class ReportService {
     return isValidDate ? date : null;
   }
 
-  private getCurrentMonday(): Date {
-    const now = new Date();
-    const today = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
-    );
+  private getTodayCalendarDate(): Date {
+    return this.parseDateString(getTodayKstDateKey())!;
+  }
 
+  private getCurrentMonday(): Date {
+    const today = this.getTodayCalendarDate();
     const dayOfWeek = today.getUTCDay();
     const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
     return this.addDays(today, diff);
+  }
+
+  private toKstBoundary(calendarDate: Date): Date {
+    return kstDayStart(this.toDateString(calendarDate));
+  }
+
+  private filterByKstCalendarRange<T extends { regDate: Date }>(
+    records: T[],
+    startDate: Date,
+    endDateExclusive: Date,
+  ): T[] {
+    const startDateKey = this.toDateString(startDate);
+    const endDateKey = this.toDateString(endDateExclusive);
+
+    return records.filter((record) => {
+      const recordDateKey = toKstDateKey(record.regDate);
+
+      return recordDateKey >= startDateKey && recordDateKey < endDateKey;
+    });
+  }
+
+  private countKstRecordedDays(
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
+  ): number {
+    return new Set([
+      ...boogleRecords.map((record) => toKstDateKey(record.regDate)),
+      ...lifeRecords.map((record) => toKstDateKey(record.regDate)),
+    ]).size;
+  }
+
+  private daysBetween(startDate: Date, endDate: Date): number {
+    return Math.floor(
+      (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000),
+    );
   }
 
   private addDays(date: Date, days: number): Date {
@@ -812,10 +912,10 @@ export class ReportService {
     lifeRecords: LifeRecordForReport[],
   ): WeeklyRecordStatsDto {
     const boogleRecordDateSet = new Set(
-      boogleRecords.map((record) => this.toDateString(record.regDate)),
+      boogleRecords.map((record) => toKstDateKey(record.regDate)),
     );
     const lifeRecordDateSet = new Set(
-      lifeRecords.map((record) => this.toDateString(record.regDate)),
+      lifeRecords.map((record) => toKstDateKey(record.regDate)),
     );
     const recordedDateSet = new Set([
       ...boogleRecordDateSet,
@@ -992,9 +1092,10 @@ export class ReportService {
         const targetDate = this.toDateString(
           this.addDays(weekStartDate, index),
         );
+
         const bowelCount = boogleRecords.filter(
           (record) =>
-            record.hasBowel && this.toDateString(record.regDate) === targetDate,
+            record.hasBowel && toKstDateKey(record.regDate) === targetDate,
         ).length;
 
         return {
@@ -1037,7 +1138,7 @@ export class ReportService {
   }
 
   private resolveTimeSlot(date: Date): FrequentTimeSlotDto['timeSlot'] {
-    const hour = date.getUTCHours();
+    const hour = getKstHour(date);
 
     if (hour >= 5 && hour < 12) return 'MORNING';
     if (hour >= 12 && hour < 18) return 'AFTERNOON';
@@ -1133,10 +1234,10 @@ export class ReportService {
     calendarDays: number,
   ): MonthlyRecordStatsDto {
     const boogleRecordDateSet = new Set(
-      boogleRecords.map((record) => this.toDateString(record.regDate)),
+      boogleRecords.map((record) => toKstDateKey(record.regDate)),
     );
     const lifeRecordDateSet = new Set(
-      lifeRecords.map((record) => this.toDateString(record.regDate)),
+      lifeRecords.map((record) => toKstDateKey(record.regDate)),
     );
     const recordedDateSet = new Set([
       ...boogleRecordDateSet,
@@ -1188,7 +1289,7 @@ export class ReportService {
   ): MonthlySummaryDto {
     const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
     const bowelDays = new Set(
-      bowelRecords.map((record) => this.toDateString(record.regDate)),
+      bowelRecords.map((record) => toKstDateKey(record.regDate)),
     ).size;
     const scores = calculateMonthlyScores(boogleRecords, lifeRecords);
     const state = this.resolveMonthlyState(scores.conditionScore);
@@ -1355,15 +1456,17 @@ export class ReportService {
       const weekKey = this.toDateString(weekStartDate);
       const weeklyRecord = weeklyRecordMap.get(weekKey);
 
-      const weekBoogleRecords = boogleRecords.filter(
-        (record) =>
-          record.regDate >= weekStartDate && record.regDate < nextWeekEndDate,
-      );
-      const weekLifeRecords = lifeRecords.filter(
-        (record) =>
-          record.regDate >= weekStartDate && record.regDate < nextWeekEndDate,
+      const weekBoogleRecords = this.filterByKstCalendarRange(
+        boogleRecords,
+        weekStartDate,
+        nextWeekEndDate,
       );
 
+      const weekLifeRecords = this.filterByKstCalendarRange(
+        lifeRecords,
+        weekStartDate,
+        nextWeekEndDate,
+      );
       const trendPeriodDays =
         Math.floor(
           (weekEndDate.getTime() - weekStartDate.getTime()) /
@@ -1427,7 +1530,7 @@ export class ReportService {
 
     const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
     const bowelDateSet = new Set(
-      bowelRecords.map((record) => this.toDateString(record.regDate)),
+      bowelRecords.map((record) => toKstDateKey(record.regDate)),
     );
     const bowelDays = bowelDateSet.size;
     const averageInterval = bowelDays === 0 ? 30 : 30 / bowelDays;
@@ -1466,7 +1569,7 @@ export class ReportService {
         .filter(
           (record) => record.stoolSimple === 'H' || record.stoolSimple === 'T',
         )
-        .map((record) => this.toDateString(record.regDate)),
+        .map((record) => toKstDateKey(record.regDate)),
     );
 
     const lifeIssueDateSet = new Set(
@@ -1478,7 +1581,7 @@ export class ReportService {
             record.water === 'L' ||
             (record.waterIntake !== null && record.waterIntake <= 2),
         )
-        .map((record) => this.toDateString(record.regDate)),
+        .map((record) => toKstDateKey(record.regDate)),
     );
     const abnormalCompanionDays = [...lifeIssueDateSet].filter((dateKey) =>
       abnormalStoolDateSet.has(dateKey),
