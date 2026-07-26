@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -41,6 +42,11 @@ import { SensitiveInfoConsentSuccessResponseDto } from './dto/sensitive-info-con
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import type { ProfileImageFile } from './profile-image.service';
+import { ProfileImageUploadExceptionFilter } from './filters/profile-image-upload-exception.filter';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 @ApiTags('온보딩, 계정 관리')
 @ApiBearerAuth()
@@ -53,8 +59,11 @@ export class UserController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '온보딩 정보 저장' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
-    FileInterceptor('profileImage', { limits: { fileSize: 5 * 1024 * 1024 } }),
+    FileInterceptor('profileImage', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
   )
   @ApiBody({
     schema: {
@@ -65,7 +74,7 @@ export class UserController {
         profileImage: {
           type: 'string',
           format: 'binary',
-          description: '선택 이미지(JPEG, PNG, WebP), 최대 5MB',
+          description: '선택 이미지(JPEG, PNG, WebP), 최대 50MB',
         },
         gender: { type: 'string', enum: ['M', 'F', 'N'], example: 'F' },
         ageGroup: { type: 'integer', enum: [10, 20, 30, 40], example: 20 },
@@ -101,6 +110,9 @@ export class UserController {
     description: '탈퇴한 회원',
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
   @GenericUnauthorized()
   @ResponseMessage('온보딩 정보가 저장되었습니다.')
   saveOnboarding(
@@ -196,8 +208,11 @@ export class UserController {
   @Patch('me')
   @ApiOperation({ summary: '내 정보 수정' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
-    FileInterceptor('profileImage', { limits: { fileSize: 5 * 1024 * 1024 } }),
+    FileInterceptor('profileImage', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
   )
   @ApiBody({
     schema: {
@@ -207,7 +222,7 @@ export class UserController {
         profileImage: {
           type: 'string',
           format: 'binary',
-          description: '선택 이미지(JPEG, PNG, WebP), 최대 5MB',
+          description: '선택 이미지(JPEG, PNG, WebP), 최대 50MB',
         },
         gender: { type: 'string', enum: ['M', 'F', 'N'] },
         ageGroup: { type: 'integer', enum: [10, 20, 30, 40] },
@@ -226,6 +241,9 @@ export class UserController {
     description: '탈퇴한 회원',
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
   @GenericUnauthorized()
   @ResponseMessage('내 정보 수정에 성공했습니다.')
   updateMe(
@@ -239,8 +257,11 @@ export class UserController {
   @Put('me/profile-image')
   @ApiOperation({ summary: '프로필 이미지 등록 또는 교체' })
   @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
   @UseInterceptors(
-    FileInterceptor('image', { limits: { fileSize: 5 * 1024 * 1024 } }),
+    FileInterceptor('image', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
   )
   @ApiBody({
     schema: {
@@ -250,7 +271,7 @@ export class UserController {
         image: {
           type: 'string',
           format: 'binary',
-          description: '필수 이미지(JPEG, PNG, WebP), 최대 5MB',
+          description: '필수 이미지(JPEG, PNG, WebP), 최대 50MB',
         },
       },
     },
@@ -271,7 +292,9 @@ export class UserController {
   @ApiBadRequestResponse({
     description: '이미지 누락 또는 지원하지 않는 이미지 형식',
   })
-  @ApiPayloadTooLargeResponse({ description: '이미지 크기 5MB 초과' })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
   @ApiInternalServerErrorResponse({ description: 'S3 이미지 저장 실패' })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
   @GenericUnauthorized()

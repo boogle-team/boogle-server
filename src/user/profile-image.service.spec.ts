@@ -4,6 +4,10 @@ import {
 } from '@/common/storage/s3-storage.service';
 import { ProfileImageService } from './profile-image.service';
 import { UserErrorCode } from './user-error-code.enum';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 describe('ProfileImageService', () => {
   const storage = {
@@ -64,22 +68,19 @@ describe('ProfileImageService', () => {
     });
   });
 
-  it('rejects files larger than the configured limit', async () => {
-    process.env.PROFILE_IMAGE_MAX_SIZE_BYTES = '2';
-
+  it('rejects files larger than 50MB', async () => {
     await expect(
       service.save('1', {
         originalname: 'profile.png',
         mimetype: 'image/png',
-        size: 3,
+        size: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES + 1,
         buffer: Buffer.from('png'),
       }),
     ).rejects.toMatchObject({
       errorCode: UserErrorCode.PROFILE_IMAGE_TOO_LARGE,
       status: 413,
+      message: PROFILE_IMAGE_TOO_LARGE_MESSAGE,
     });
-
-    delete process.env.PROFILE_IMAGE_MAX_SIZE_BYTES;
   });
 
   it('returns a public URL without exposing the object key contract', async () => {

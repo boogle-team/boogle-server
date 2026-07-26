@@ -225,7 +225,6 @@ Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_RED
 - `AWS_S3_BUCKET`: 비공개 프로필 이미지 버킷 이름
 - `AWS_CLOUDFRONT_BASE_URL`: CloudFront를 사용하는 경우 배포 도메인, 사용하지 않으면 빈 값
 - `AWS_S3_SIGNED_URL_EXPIRES_IN`: CloudFront 미사용 시 GET 서명 URL 만료 시간(초)
-- `PROFILE_IMAGE_MAX_SIZE_BYTES`: 업로드 최대 크기(기본 5MB)
 
 EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책처럼 프로필 이미지 경로만 허용합니다.
 
