@@ -57,31 +57,18 @@ import {
   calculateMonthlyPatternMetrics,
 } from './pattern/monthly-pattern.calculator';
 import { ReportErrorCode } from './report-error-code.enum';
-import type {
-  PdfReportResult,
-  MemberForPdf,
-  BoogleRecordForPdf,
-  LifeRecordForPdf,
-  WeeklyRecordForPdf,
-  MonthlyRecordForPdf,
-  GuideContentForPdf,
-  PdfReportBuildData,
-} from './dto/pdf-report-data.dto';
+import type { PdfReportResult } from './dto/pdf-report-data.dto';
+import { buildMonthlyPdfData } from './pdf/monthly-pdf.mapper';
+import { renderMonthlyPdf } from './pdf/monthly-pdf.renderer';
 import {
   calculateMonthlyScores,
   calculateReportScores,
 } from './score/report-score.calculator';
-import PDFDocument from 'pdfkit';
-import { existsSync } from 'fs';
-import { join } from 'path';
 
 const TOTAL_WEEK_DAYS = 7;
 const REQUIRED_RECORDED_DAYS = 3;
 
 const MONTHLY_PDF_ENDPOINT = '/api/v1/reports/pdf';
-
-const FREE_PDF_MAX_DAYS = 31;
-const PREMIUM_PDF_MAX_DAYS = 366;
 
 @Injectable()
 export class ReportService {
@@ -364,7 +351,7 @@ export class ReportService {
         previousMonthEndDate.getUTCDate(),
       );
       const period = this.buildMonthlyPeriod(monthStartDate, effectiveMonthEnd);
-      const pdf = this.buildMonthlyPdf();
+      const pdf = this.buildMonthlyPdf(recordStats.recordedDays >= 7);
 
       if (recordStats.recordedDays < 7) {
         return {
@@ -491,78 +478,70 @@ export class ReportService {
     body: CreatePdfReportRequestDto,
   ): Promise<PdfReportResult> {
     try {
-      const includeDailyRecords = body.includeDailyRecords ?? true;
+      const monthStartDate = this.resolveMonthStartDate(body.monthStartDate);
+      const today = this.getTodayCalendarDate();
 
-      const startDate = this.parseRequiredDate(body.startDate, 'startDate');
-      const endDate = this.parseRequiredDate(body.endDate, 'endDate');
-      const endDateExclusive = this.addDays(endDate, 1);
-
-      if (startDate > endDate) {
+      if (monthStartDate > today) {
         throw new BusinessException(
           ReportErrorCode.REPORT_INVALID_DATE_RANGE,
-          'startDate는 endDate보다 늦을 수 없습니다.',
+          '미래 월의 PDF 리포트는 생성할 수 없습니다.',
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      const member = await this.findMemberForPdf(userId);
+      const nextMonthStartDate = this.addMonths(monthStartDate, 1);
+      const calendarMonthEnd = this.addDays(nextMonthStartDate, -1);
+      const effectiveMonthEnd =
+        monthStartDate <= today && today <= calendarMonthEnd
+          ? today
+          : calendarMonthEnd;
+      const endDateExclusive = this.addDays(effectiveMonthEnd, 1);
 
-      if (member === null) {
-        throw new BusinessException(
-          ReportErrorCode.REPORT_DATA_NOT_FOUND,
-          'PDF로 생성할 리포트 데이터가 없습니다.',
-          HttpStatus.NOT_FOUND,
-        );
-      }
+      const [boogleRecords, lifeRecords] = await Promise.all([
+        this.findBoogleRecords(userId, monthStartDate, endDateExclusive),
+        this.findLifeRecords(userId, monthStartDate, endDateExclusive),
+      ]);
 
-      this.assertPdfRangeAllowed(startDate, endDate, member);
-
-      const [boogleRecords, lifeRecords, weeklyRecords, monthlyRecords] =
-        await Promise.all([
-          this.findBoogleRecordsForPdf(userId, startDate, endDateExclusive),
-          this.findLifeRecordsForPdf(userId, startDate, endDateExclusive),
-          this.findWeeklyRecordsForPdf(userId, startDate, endDate),
-          this.findMonthlyRecordsForPdf(userId, startDate, endDate),
-        ]);
-
-      const hasReportData =
-        boogleRecords.length > 0 ||
-        lifeRecords.length > 0 ||
-        weeklyRecords.length > 0 ||
-        monthlyRecords.length > 0;
-
-      if (!hasReportData) {
-        throw new BusinessException(
-          ReportErrorCode.REPORT_DATA_NOT_FOUND,
-          'PDF로 생성할 리포트 데이터가 없습니다.',
-          HttpStatus.NOT_FOUND,
-        );
-      }
-
-      const ruleCodes = this.detectPdfRuleCodes(
+      const recordStats = this.buildMonthlyRecordStats(
         boogleRecords,
         lifeRecords,
-        weeklyRecords,
-        monthlyRecords,
+        calendarMonthEnd.getUTCDate(),
       );
 
-      const guides = await this.findGuideContentsForPdf(ruleCodes);
+      // 프론트가 downloadAvailable=true일 때만 호출하더라도
+      // 직접 API를 호출하는 경우를 막기 위한 서버 측 방어다.
+      if (recordStats.recordedDays < 7) {
+        throw new BusinessException(
+          ReportErrorCode.REPORT_DATA_NOT_FOUND,
+          'PDF 리포트 생성에 필요한 기록이 부족합니다.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
 
-      const buffer = await this.buildPdfReportBuffer({
-        member,
-        startDate,
-        endDate,
-        includeDailyRecords,
+      const summary = this.buildMonthlySummary(
         boogleRecords,
         lifeRecords,
-        weeklyRecords,
-        monthlyRecords,
-        guides,
+        recordStats,
+      );
+      const patternCards = buildMonthlyPatternCards(
+        calculateMonthlyPatternMetrics(boogleRecords, lifeRecords),
+      );
+
+      const pdfData = buildMonthlyPdfData({
+        startDate: this.toDateString(monthStartDate),
+        endDate: this.toDateString(effectiveMonthEnd),
+        generatedDate: getTodayKstDateKey(),
+        bowelCount: summary.bowelCount,
+        intervalAvg: summary.intervalAvg,
+        completionScore: summary.completionScore,
+        boogleRecords,
+        lifeRecords,
+        patternCards,
       });
 
       return {
-        buffer,
-        filename: this.buildPdfFilename(startDate, endDate),
+        buffer: await renderMonthlyPdf(pdfData),
+        filename: this.buildPdfFilename(monthStartDate),
       };
     } catch (error) {
       if (error instanceof BusinessException) {
@@ -1673,9 +1652,9 @@ export class ReportService {
     return '주의 필요';
   }
 
-  private buildMonthlyPdf(): MonthlyPdfDto {
+  private buildMonthlyPdf(downloadAvailable: boolean): MonthlyPdfDto {
     return {
-      downloadAvailable: true,
+      downloadAvailable,
       endpoint: MONTHLY_PDF_ENDPOINT,
     };
   }
@@ -1689,496 +1668,10 @@ export class ReportService {
     return Math.round(value * 10) / 10;
   }
 
-  // PDF 함수들
-  private async findMemberForPdf(userId: bigint): Promise<MemberForPdf | null> {
-    return this.prisma.member.findFirst({
-      where: {
-        id: userId,
-        status: 'A',
-      },
-      select: {
-        name: true,
-        nickname: true,
-        subscription: true,
-        subscriptionDate: true,
-      },
-    });
-  }
-
-  private async findBoogleRecordsForPdf(
-    userId: bigint,
-    startDate: Date,
-    endDateExclusive: Date,
-  ): Promise<BoogleRecordForPdf[]> {
-    return this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: {
-          gte: startDate,
-          lt: endDateExclusive,
-        },
-      },
-      select: {
-        id: true,
-        regDate: true,
-        hasBowel: true,
-        stoolBristol: true,
-        stoolSimple: true,
-        bowelFeeling: true,
-        stomach: true,
-        distension: true,
-        remainingFeeling: true,
-        urgency: true,
-        takenTime: true,
-        amount: true,
-        color: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  private async findLifeRecordsForPdf(
-    userId: bigint,
-    startDate: Date,
-    endDateExclusive: Date,
-  ): Promise<LifeRecordForPdf[]> {
-    return this.prisma.lifeRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: {
-          gte: startDate,
-          lt: endDateExclusive,
-        },
-      },
-      select: {
-        id: true,
-        regDate: true,
-        sleep: true,
-        sleepTime: true,
-        stress: true,
-        water: true,
-        mealRegular: true,
-        exercise: true,
-        caffeine: true,
-        outing: true,
-        hormone: true,
-        memo: true,
-        autoTags: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  private async findWeeklyRecordsForPdf(
-    userId: bigint,
-    startDate: Date,
-    endDate: Date,
-  ): Promise<WeeklyRecordForPdf[]> {
-    const startWeekDate = this.getCurrentWeekStartOfDate(startDate);
-    const endDateExclusive = this.addDays(endDate, 1);
-
-    return this.prisma.weeklyRecord.findMany({
-      where: {
-        userId,
-        weekStartDate: {
-          gte: startWeekDate,
-          lt: endDateExclusive,
-        },
-      },
-      select: {
-        weekStartDate: true,
-        bowelCount: true,
-        intervalAvg: true,
-        completionScore: true,
-      },
-      orderBy: {
-        weekStartDate: 'asc',
-      },
-    });
-  }
-
-  private async findMonthlyRecordsForPdf(
-    userId: bigint,
-    startDate: Date,
-    endDate: Date,
-  ): Promise<MonthlyRecordForPdf[]> {
-    const monthStartDate = new Date(
-      Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1),
-    );
-
-    const nextMonthAfterEndDate = new Date(
-      Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() + 1, 1),
-    );
-
-    return this.prisma.monthlyRecord.findMany({
-      where: {
-        userId,
-        monthStartDate: {
-          gte: monthStartDate,
-          lt: nextMonthAfterEndDate,
-        },
-      },
-      select: {
-        monthStartDate: true,
-        bowelCount: true,
-        intervalAvg: true,
-        state: true,
-        completionScore: true,
-        conditionScore: true,
-        userType: true,
-      },
-      orderBy: {
-        monthStartDate: 'asc',
-      },
-    });
-  }
-
-  private async findGuideContentsForPdf(
-    ruleCodes: string[],
-  ): Promise<GuideContentForPdf[]> {
-    if (ruleCodes.length === 0) {
-      return [];
-    }
-
-    const ruleCodeSet = new Set<string>(ruleCodes);
-    const matchedBindings = PATTERN_GUIDE_BINDINGS.filter((binding) =>
-      binding.ruleCodes.some((ruleCode) => ruleCodeSet.has(ruleCode)),
-    );
-
-    if (matchedBindings.length === 0) {
-      return [];
-    }
-
-    const bindingMap = new Map<string, PatternGuideBinding>(
-      matchedBindings.map((binding) => [binding.guideTitle, binding]),
-    );
-
-    const guides = await this.prisma.guide.findMany({
-      where: {
-        category: 'P',
-        status: 'A',
-        title: {
-          in: matchedBindings.map((binding) => binding.guideTitle),
-        },
-      },
-      select: {
-        title: true,
-        category: true,
-        guideContents: {
-          select: {
-            content: true,
-          },
-          orderBy: {
-            id: 'asc',
-          },
-        },
-      },
-      orderBy: {
-        id: 'asc',
-      },
-    });
-
-    return guides.flatMap((guide) => {
-      const binding = bindingMap.get(guide.title);
-      const matchedRuleCode =
-        binding?.ruleCodes.find((ruleCode) => ruleCodeSet.has(ruleCode)) ??
-        null;
-
-      return guide.guideContents.map((guideContent) => ({
-        ruleCode: matchedRuleCode,
-        title: guide.title,
-        category: guide.category,
-        content: guideContent.content,
-      }));
-    });
-  }
-
-  private parseRequiredDate(value: string, fieldName: string): Date {
-    const parsedDate = this.parseDateString(value);
-
-    if (parsedDate === null) {
-      throw new BusinessException(
-        ReportErrorCode.REPORT_INVALID_DATE_FORMAT,
-        `${fieldName}는 YYYY-MM-DD 형식이어야 합니다.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return parsedDate;
-  }
-
-  private assertPdfRangeAllowed(
-    startDate: Date,
-    endDate: Date,
-    member: MemberForPdf,
-  ): void {
-    const requestedDays = this.getInclusiveDays(startDate, endDate);
-
-    const maxDays =
-      member.subscription === 'Y' ? PREMIUM_PDF_MAX_DAYS : FREE_PDF_MAX_DAYS;
-
-    if (requestedDays > maxDays) {
-      throw new BusinessException(
-        ReportErrorCode.REPORT_PDF_RANGE_EXCEEDED,
-        'PDF 리포트 생성 가능 기간을 초과했습니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-  }
-
-  private getInclusiveDays(startDate: Date, endDate: Date): number {
-    const millisecondsPerDay = 24 * 60 * 60 * 1000;
-
-    return (
-      Math.floor(
-        (endDate.getTime() - startDate.getTime()) / millisecondsPerDay,
-      ) + 1
-    );
-  }
-
-  private getCurrentWeekStartOfDate(date: Date): Date {
-    const copiedDate = new Date(date);
-    const dayOfWeek = copiedDate.getUTCDay();
-    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-
-    return this.addDays(copiedDate, diff);
-  }
-
-  private buildPdfFilename(startDate: Date, endDate: Date): string {
-    const start = this.toDateString(startDate).replaceAll('-', '');
-    const end = this.toDateString(endDate).replaceAll('-', '');
-
-    return `boogle_report_${start}-${end}.pdf`;
-  }
-
-  private detectPdfRuleCodes(
-    boogleRecords: BoogleRecordForPdf[],
-    lifeRecords: LifeRecordForPdf[],
-    weeklyRecords: WeeklyRecordForPdf[],
-    monthlyRecords: MonthlyRecordForPdf[],
-  ): string[] {
-    const ruleCodes = new Set<string>();
-
-    const bowelCount = boogleRecords.filter((record) => record.hasBowel).length;
-    const hardStoolCount = boogleRecords.filter(
-      (record) => record.hasBowel && record.stoolSimple === 'H',
-    ).length;
-    const looseStoolCount = boogleRecords.filter(
-      (record) => record.hasBowel && record.stoolSimple === 'T',
-    ).length;
-
-    const lowSleepCount = lifeRecords.filter(
-      (record) => record.sleepTime === 1,
-    ).length;
-    const highStressCount = lifeRecords.filter(
-      (record) => record.stress === 'H',
-    ).length;
-    const lowWaterCount = lifeRecords.filter(
-      (record) => record.water === 'L',
-    ).length;
-    const highCaffeineCount = lifeRecords.filter(
-      (record) => record.caffeine === 'M',
-    ).length;
-
-    if (bowelCount > 0 && bowelCount <= 2) {
-      ruleCodes.add('LOW_BOWEL_COUNT');
-    }
-
-    if (bowelCount >= 10) {
-      ruleCodes.add('HIGH_BOWEL_COUNT');
-    }
-
-    if (hardStoolCount >= 2) {
-      ruleCodes.add('CONSTIPATION_PATTERN');
-    }
-
-    if (looseStoolCount >= 2) {
-      ruleCodes.add('LOOSE_STOOL_PATTERN');
-    }
-
-    if (lowSleepCount >= 2) {
-      ruleCodes.add('LOW_SLEEP');
-    }
-
-    if (highStressCount >= 2) {
-      ruleCodes.add('HIGH_STRESS');
-    }
-
-    if (lowWaterCount >= 2) {
-      ruleCodes.add('LOW_WATER');
-    }
-
-    if (highCaffeineCount >= 2) {
-      ruleCodes.add('HIGH_CAFFEINE');
-    }
-
-    if (
-      weeklyRecords.some(
-        (record) =>
-          record.completionScore !== null && record.completionScore < 50,
-      ) ||
-      monthlyRecords.some(
-        (record) =>
-          record.completionScore !== null && record.completionScore < 50,
-      )
-    ) {
-      ruleCodes.add('LOW_COMPLETION_SCORE');
-    }
-
-    return [...ruleCodes];
-  }
-
-  private async buildPdfReportBuffer(
-    data: PdfReportBuildData,
-  ): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 50,
-        info: {
-          Title: 'Boogle Report',
-          Author: 'Boogle',
-        },
-      });
-
-      const chunks: Buffer[] = [];
-
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      this.registerPdfFont(doc);
-
-      const userName = data.member.nickname ?? data.member.name ?? '사용자';
-
-      doc.fontSize(22).text('Boogle 리포트', { align: 'center' });
-      doc.moveDown();
-
-      doc.fontSize(12).text(`대상 사용자: ${userName}`);
-      doc.text(
-        `기간: ${this.toDateString(data.startDate)} ~ ${this.toDateString(
-          data.endDate,
-        )}`,
-      );
-      doc.text(`생성일: ${this.toDateString(new Date())}`);
-      doc.moveDown();
-
-      doc.fontSize(16).text('1. 전체 요약');
-      doc.moveDown(0.5);
-      doc.fontSize(11);
-      doc.text(`배변 기록 수: ${data.boogleRecords.length}개`);
-      doc.text(`생활 기록 수: ${data.lifeRecords.length}개`);
-      doc.text(`주간 요약 수: ${data.weeklyRecords.length}개`);
-      doc.text(`월간 요약 수: ${data.monthlyRecords.length}개`);
-      doc.moveDown();
-
-      if (data.weeklyRecords.length > 0) {
-        doc.fontSize(16).text('2. 주간 요약');
-        doc.moveDown(0.5);
-        doc.fontSize(10);
-
-        for (const record of data.weeklyRecords) {
-          doc.text(
-            `${this.toDateString(record.weekStartDate)} | 배변 ${record.bowelCount ?? 0}회 | 평균 간격 ${record.intervalAvg ?? '-'}일 | 완성도 ${record.completionScore ?? 0}%`,
-          );
-        }
-
-        doc.moveDown();
-      }
-
-      if (data.monthlyRecords.length > 0) {
-        doc.fontSize(16).text('3. 월간 요약');
-        doc.moveDown(0.5);
-        doc.fontSize(10);
-
-        for (const record of data.monthlyRecords) {
-          doc.text(
-            `${this.toDateString(record.monthStartDate)} | 배변 ${record.bowelCount ?? 0}회 | 평균 간격 ${record.intervalAvg ?? '-'}일 | 완성도 ${record.completionScore ?? 0}% | 컨디션 ${record.conditionScore ?? '-'}점`,
-          );
-        }
-
-        doc.moveDown();
-      }
-
-      if (data.guides.length > 0) {
-        doc.fontSize(16).text('4. 패턴 및 가이드');
-        doc.moveDown(0.5);
-        doc.fontSize(10);
-
-        for (const guide of data.guides) {
-          doc.text(`[${guide.ruleCode ?? 'GUIDE'}] ${guide.title}`);
-          doc.text(guide.content);
-          doc.moveDown(0.5);
-        }
-
-        doc.moveDown();
-      }
-
-      if (data.includeDailyRecords) {
-        this.appendDailyRecordsToPdf(doc, data.boogleRecords, data.lifeRecords);
-      }
-
-      doc.end();
-    });
-  }
-
-  private registerPdfFont(doc: PDFKit.PDFDocument): void {
-    const fontPaths = [
-      join(process.cwd(), 'src', 'assets', 'fonts', 'NanumGothic.ttf'),
-      join(__dirname, '..', 'assets', 'fonts', 'NanumGothic.ttf'),
-    ];
-
-    const fontPath = fontPaths.find((path) => existsSync(path));
-
-    if (fontPath !== undefined) {
-      doc.registerFont('NanumGothic', fontPath);
-      doc.font('NanumGothic');
-      return;
-    }
-
-    doc.font('Helvetica');
-  }
-
-  private appendDailyRecordsToPdf(
-    doc: PDFKit.PDFDocument,
-    boogleRecords: BoogleRecordForPdf[],
-    lifeRecords: LifeRecordForPdf[],
-  ): void {
-    doc.addPage();
-
-    doc.fontSize(16).text('5. 일별 상세 기록');
-    doc.moveDown();
-
-    if (boogleRecords.length > 0) {
-      doc.fontSize(13).text('배변 기록');
-      doc.moveDown(0.5);
-      doc.fontSize(9);
-
-      for (const record of boogleRecords) {
-        doc.text(
-          `${this.toDateString(record.regDate)} | 배변 여부 ${record.hasBowel ? 'Y' : 'N'} | 브리스톨 ${record.stoolBristol ?? '-'} | 변 상태 ${record.stoolSimple ?? '-'} | 배변감 ${record.bowelFeeling ?? '-'} | 복통 ${record.stomach ?? '-'} | 복부팽만 ${record.distension ?? '-'}`,
-        );
-      }
-
-      doc.moveDown();
-    }
-
-    if (lifeRecords.length > 0) {
-      doc.fontSize(13).text('생활 기록');
-      doc.moveDown(0.5);
-      doc.fontSize(9);
-
-      for (const record of lifeRecords) {
-        doc.text(
-          `${this.toDateString(record.regDate)} | 수면 ${record.sleepTime ?? '-'} | 스트레스 ${record.stress ?? '-'} | 수분 ${record.water ?? '-'} | 운동 ${record.exercise ?? '-'} | 카페인 ${record.caffeine ?? '-'} | 메모 ${record.memo ?? '-'}`,
-        );
-      }
-    }
+  private buildPdfFilename(monthStartDate: Date): string {
+    const month = this.toDateString(monthStartDate)
+      .slice(0, 7)
+      .replace('-', '');
+    return `boogle_report_${month}.pdf`;
   }
 }

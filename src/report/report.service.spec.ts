@@ -71,4 +71,10 @@ describe('ReportService', () => {
       errorCode: ReportErrorCode.REPORT_INVALID_DATE_RANGE,
     });
   });
+
+  jest.mock('./pdf/monthly-pdf.renderer', () => ({
+    renderMonthlyPdf: jest
+      .fn()
+      .mockResolvedValue(Buffer.from('%PDF-test', 'ascii')),
+  }));
 });
