@@ -45,8 +45,12 @@ export function isValidSleepTime(value?: number | null): boolean {
   );
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// regDate는 KST 자정을 UTC로 변환한 절대 시각으로 저장된다 (home/calendar와
+// 동일한 규칙). "며칠"인지 읽어올 때는 KST 기준으로 다시 변환해야 한다.
 export function formatDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 export function formatDateTime(date: Date): string {
@@ -61,10 +65,6 @@ export function toNumberId(value: bigint): number {
   return Number(value);
 }
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-// regDate는 UTC 자정으로 저장되지만 "오늘"은 Asia/Seoul(KST) 기준 달력
-// 날짜여야 한다 (home.service.ts의 동일 로직과 동일한 이유).
 export function getTodayKstDateString(): string {
   return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
