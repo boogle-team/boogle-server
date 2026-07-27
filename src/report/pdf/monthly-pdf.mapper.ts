@@ -75,11 +75,6 @@ function dateKeyFromUtcDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function formatKoreanDate(dateKey: string, includeYear: boolean): string {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  return includeYear ? `${year}년 ${month}월 ${day}일` : `${month}월 ${day}일`;
-}
-
 function formatDotDate(dateKey: string): string {
   return dateKey.replaceAll('-', '.');
 }
@@ -120,7 +115,9 @@ function buildStoolDistribution(
   }));
 }
 
-function resolveDominantStool(records: BoogleRecordForReport[]): string {
+function resolveDominantStoolCode(
+  records: BoogleRecordForReport[],
+): PdfStoolCode | null {
   const counts: Record<PdfStoolCode, number> = {
     M: 0,
     H: 0,
@@ -140,19 +137,63 @@ function resolveDominantStool(records: BoogleRecordForReport[]): string {
       : STOOL_ORDER.indexOf(a) - STOOL_ORDER.indexOf(b);
   })[0];
 
-  return counts[dominant] === 0 ? '-' : DOMINANT_STOOL_LABEL[dominant];
+  return counts[dominant] === 0 ? null : dominant;
+}
+
+function resolveDominantStoolByDates(
+  symptomRecords: BoogleRecordForReport[],
+  allRecordsByDate: Map<string, BoogleRecordForReport[]>,
+): string {
+  const symptomDateKeys = [
+    ...new Set(symptomRecords.map((record) => toKstDateKey(record.regDate))),
+  ];
+  const dailyCodes = symptomDateKeys
+    .map((dateKey) =>
+      resolveDominantStoolCode(allRecordsByDate.get(dateKey) ?? []),
+    )
+    .filter((code): code is PdfStoolCode => code !== null);
+
+  if (dailyCodes.length === 0) return '-';
+
+  const counts: Record<PdfStoolCode, number> = {
+    M: 0,
+    H: 0,
+    T: 0,
+  };
+
+  for (const code of dailyCodes) {
+    counts[code] += 1;
+  }
+
+  const dominant = [...STOOL_ORDER].sort((a, b) => {
+    const countDiff = counts[b] - counts[a];
+    return countDiff !== 0
+      ? countDiff
+      : STOOL_ORDER.indexOf(a) - STOOL_ORDER.indexOf(b);
+  })[0];
+
+  return DOMINANT_STOOL_LABEL[dominant];
 }
 
 function buildDiscomfortRows(
   records: BoogleRecordForReport[],
 ): MonthlyPdfDiscomfortRow[] {
+  const recordsByDate = new Map<string, BoogleRecordForReport[]>();
+
+  for (const record of records) {
+    const dateKey = toKstDateKey(record.regDate);
+    const dailyRecords = recordsByDate.get(dateKey) ?? [];
+    dailyRecords.push(record);
+    recordsByDate.set(dateKey, dailyRecords);
+  }
+
   return DISCOMFORTS.map(({ field, label }) => {
     const matched = records.filter((record) => isDiscomfort(record[field]));
 
     return {
       label,
       count: matched.length,
-      dominantStool: resolveDominantStool(matched),
+      dominantStool: resolveDominantStoolByDates(matched, recordsByDate),
     };
   });
 }
@@ -331,8 +372,8 @@ export function buildMonthlyPdfData(
       endDate: source.endDate,
       generatedDate: source.generatedDate,
       displayRange:
-        `${formatKoreanDate(source.startDate, true)} ~ ` +
-        `${formatKoreanDate(source.endDate, false)} (${periodDays}일)`,
+        `${formatDotDate(source.startDate)} - ` +
+        `${formatDotDate(source.endDate)} (${periodDays}일)`,
       displayGeneratedDate: formatDotDate(source.generatedDate),
       inclusiveDays: periodDays,
     },

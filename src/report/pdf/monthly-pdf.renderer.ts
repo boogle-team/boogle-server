@@ -11,29 +11,134 @@ const PAGE_HEIGHT = 841.89;
 const LEFT = 42;
 const RIGHT = 42;
 const TOP = 38;
-const FOOTER_TOP = PAGE_HEIGHT - 44;
 const CONTENT_WIDTH = PAGE_WIDTH - LEFT - RIGHT;
 
+const FOOTER_TOP = PAGE_HEIGHT - 46;
+const CONTENT_BOTTOM = FOOTER_TOP - 14;
+
+const SECTION_TITLE_HEIGHT = 26;
+const TABLE_HEADER_HEIGHT = 28;
+const TABLE_MIN_ROW_HEIGHT = 28;
+
+// 섹션 1
+const SUMMARY_CARD_HEIGHT = 64;
+const SUMMARY_CARD_GAP = 10;
+
+// 섹션 2
+const BAR_ROW_HEIGHT = 21;
+
 const COLOR = {
-  orange: '#FF7650',
-  orangeLight: '#FFF0E9',
-  coral: '#FF6972',
-  yellow: '#F5C96A',
-  cream: '#FFF8EC',
-  card: '#F8F6F4',
-  tableHead: '#F7F5F3',
-  line: '#E9E4E0',
-  text: '#3F3A37',
-  muted: '#77716D',
+  orange6: '#FF8253',
+  yellow1: '#FEF9EF',
+  yellow4: '#F9D89C',
+  beige5: '#F9F7F5',
+  beige6: '#F9F3ED',
+  beige7: '#EEE7E1',
+  gray6: '#C2C2C2',
+  gray7: '#868484',
+  gray8: '#615F5F',
+  gray9: '#4E4B4B',
+  danger: '#FF7675',
   white: '#FFFFFF',
 } as const;
 
 const FONT = {
   regular: 'Pretendard-Regular',
+  medium: 'Pretendard-Medium',
   semiBold: 'Pretendard-SemiBold',
   bold: 'Pretendard-Bold',
-  black: 'Pretendard-Black',
 } as const;
+
+type PdfFontName = (typeof FONT)[keyof typeof FONT];
+
+interface TextStyle {
+  font: PdfFontName;
+  size: number;
+  color: string;
+}
+
+const TEXT_STYLE = {
+  documentTitle: {
+    font: FONT.semiBold,
+    size: 9,
+    color: COLOR.gray7,
+  },
+  period: {
+    font: FONT.bold,
+    size: 11,
+    color: COLOR.gray8,
+  },
+  generatedDate: {
+    font: FONT.regular,
+    size: 8,
+    color: COLOR.gray7,
+  },
+  disclaimer: {
+    font: FONT.regular,
+    size: 9,
+    color: COLOR.gray9,
+  },
+  sectionTitle: {
+    font: FONT.bold,
+    size: 12,
+    color: COLOR.gray9,
+  },
+  guide: {
+    font: FONT.regular,
+    size: 8,
+    color: COLOR.gray7,
+  },
+  cardLabel: {
+    font: FONT.medium,
+    size: 9,
+    color: COLOR.gray7,
+  },
+  cardValue: {
+    font: FONT.bold,
+    size: 18,
+    color: COLOR.orange6,
+  },
+  barLabel: {
+    font: FONT.bold,
+    size: 10,
+    color: COLOR.gray9,
+  },
+  barValue: {
+    font: FONT.medium,
+    size: 8.5,
+    color: COLOR.gray8,
+  },
+  tableHeader: {
+    font: FONT.bold,
+    size: 10,
+    color: COLOR.gray9,
+  },
+  tableLead: {
+    font: FONT.semiBold,
+    size: 10,
+    color: COLOR.gray9,
+  },
+  tableBody: {
+    font: FONT.regular,
+    size: 10,
+    color: COLOR.gray9,
+  },
+  patternTitle: {
+    font: FONT.bold,
+    size: 9,
+    color: COLOR.gray9,
+  },
+  patternBody: {
+    font: FONT.regular,
+    size: 9,
+    color: COLOR.gray9,
+  },
+  footer: {
+    font: FONT.regular,
+    size: 8,
+    color: COLOR.gray7,
+  },
+} satisfies Record<string, TextStyle>;
 
 interface Cursor {
   y: number;
@@ -44,6 +149,14 @@ interface TableColumn<T> {
   width: number;
   value: (row: T) => string;
   align?: 'left' | 'center' | 'right';
+  bodyStyle?: TextStyle;
+}
+
+function applyTextStyle(
+  doc: PDFKit.PDFDocument,
+  style: TextStyle,
+): PDFKit.PDFDocument {
+  return doc.font(style.font).fontSize(style.size).fillColor(style.color);
 }
 
 function resolveAssetPath(...segments: string[]): string {
@@ -69,21 +182,26 @@ function registerFonts(doc: PDFKit.PDFDocument): void {
     resolveAssetPath('fonts', 'Pretendard-Regular.ttf'),
   );
   doc.registerFont(
+    FONT.medium,
+    resolveAssetPath('fonts', 'Pretendard-Medium.ttf'),
+  );
+  doc.registerFont(
     FONT.semiBold,
     resolveAssetPath('fonts', 'Pretendard-SemiBold.ttf'),
   );
   doc.registerFont(FONT.bold, resolveAssetPath('fonts', 'Pretendard-Bold.ttf'));
-  doc.registerFont(
-    FONT.black,
-    resolveAssetPath('fonts', 'Pretendard-Black.ttf'),
-  );
   doc.font(FONT.regular);
 }
 
 function addContentPage(doc: PDFKit.PDFDocument, cursor: Cursor): void {
   doc.addPage({
     size: 'A4',
-    margins: { top: TOP, left: LEFT, right: RIGHT, bottom: 0 },
+    margins: {
+      top: TOP,
+      left: LEFT,
+      right: RIGHT,
+      bottom: 0,
+    },
   });
   cursor.y = TOP;
 }
@@ -93,7 +211,7 @@ function ensureSpace(
   cursor: Cursor,
   requiredHeight: number,
 ): boolean {
-  if (cursor.y + requiredHeight <= FOOTER_TOP - 12) {
+  if (cursor.y + requiredHeight <= CONTENT_BOTTOM) {
     return false;
   }
 
@@ -109,95 +227,144 @@ function drawFirstPageHeader(
   const logoPath = resolveAssetPath('logo', 'pdf.png');
 
   doc.image(logoPath, LEFT, 38, { width: 56 });
-  doc
-    .font(FONT.regular)
-    .fontSize(7)
-    .fillColor(COLOR.muted)
-    .text('배변·생활 패턴 기록 리포트', LEFT, 67);
+
+  applyTextStyle(doc, TEXT_STYLE.documentTitle).text(
+    '배변·생활 패턴 기록 리포트',
+    LEFT,
+    68,
+    {
+      lineBreak: false,
+    },
+  );
+
+  const rightX = 270;
+  const rightWidth = PAGE_WIDTH - RIGHT - rightX;
+
+  applyTextStyle(doc, TEXT_STYLE.period).text(
+    data.period.displayRange,
+    rightX,
+    42,
+    {
+      width: rightWidth,
+      align: 'right',
+      lineBreak: false,
+    },
+  );
+
+  applyTextStyle(doc, TEXT_STYLE.generatedDate).text(
+    `생성일: ${data.period.displayGeneratedDate}`,
+    rightX,
+    63,
+    {
+      width: rightWidth,
+      align: 'right',
+      lineBreak: false,
+    },
+  );
 
   doc
-    .font(FONT.semiBold)
-    .fontSize(9)
-    .fillColor(COLOR.text)
-    .text(data.period.displayRange, 300, 43, {
-      width: PAGE_WIDTH - RIGHT - 300,
-      align: 'right',
-    });
-  doc
-    .font(FONT.regular)
-    .fontSize(6.5)
-    .fillColor(COLOR.muted)
-    .text(`생성일: ${data.period.displayGeneratedDate}`, 300, 61, {
-      width: PAGE_WIDTH - RIGHT - 300,
-      align: 'right',
-    });
-
-  doc
-    .moveTo(LEFT, 82)
-    .lineTo(PAGE_WIDTH - RIGHT, 82)
+    .moveTo(LEFT, 86)
+    .lineTo(PAGE_WIDTH - RIGHT, 86)
     .lineWidth(1.2)
-    .strokeColor(COLOR.orange)
+    .strokeColor(COLOR.orange6)
     .stroke();
 
-  cursor.y = 92;
+  cursor.y = 96;
+}
+
+function measureTextHeight(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  width: number,
+  style: TextStyle,
+  lineGap = 2,
+): number {
+  applyTextStyle(doc, style);
+  return doc.heightOfString(text, {
+    width,
+    lineGap,
+  });
 }
 
 function drawNotice(doc: PDFKit.PDFDocument, cursor: Cursor): void {
   const text =
-    '이 문서는 부글 서비스에 사용자가 직접 기록한 데이터를 바탕으로 생성된 생활 패턴 요약입니다.\n' +
+    '이 문서는 부글 서비스에 사용자가 직접 기록한 데이터를 바탕으로 생성된 생활 패턴 요약입니다. ' +
     '의료 진단이나 질병 예측을 포함하지 않으며, 전문가 상담 시 참고 자료로 활용하실 수 있습니다.';
+  const horizontalPadding = 12;
+  const verticalPadding = 10;
+  const textWidth = CONTENT_WIDTH - horizontalPadding * 2;
+  const bodyHeight = measureTextHeight(
+    doc,
+    text,
+    textWidth,
+    TEXT_STYLE.disclaimer,
+    2,
+  );
+  const boxHeight = bodyHeight + verticalPadding * 2;
 
-  doc.roundedRect(LEFT, cursor.y, CONTENT_WIDTH, 42, 6).fill(COLOR.cream);
+  ensureSpace(doc, cursor, boxHeight);
+
   doc
-    .font(FONT.regular)
-    .fontSize(7)
-    .fillColor(COLOR.text)
-    .text(text, LEFT + 12, cursor.y + 10, {
-      width: CONTENT_WIDTH - 24,
-      lineGap: 3,
-    });
+    .roundedRect(LEFT, cursor.y, CONTENT_WIDTH, boxHeight, 6)
+    .fill(COLOR.yellow1);
 
-  cursor.y += 54;
+  applyTextStyle(doc, TEXT_STYLE.disclaimer).text(
+    text,
+    LEFT + horizontalPadding,
+    cursor.y + verticalPadding,
+    {
+      width: textWidth,
+      lineGap: 2,
+    },
+  );
+
+  cursor.y += boxHeight + 16;
 }
 
 function drawSectionTitle(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
   title: string,
-  guide?: string,
+  options: {
+    guide?: string;
+    keepWithNextHeight?: number;
+  } = {},
 ): void {
-  ensureSpace(doc, cursor, 28);
+  const keepWithNextHeight = options.keepWithNextHeight ?? 0;
 
-  doc
-    .font(FONT.bold)
-    .fontSize(10)
-    .fillColor(COLOR.text)
-    .text(title, LEFT, cursor.y);
+  ensureSpace(doc, cursor, SECTION_TITLE_HEIGHT + keepWithNextHeight);
 
-  if (guide !== undefined) {
-    doc
-      .font(FONT.regular)
-      .fontSize(5.7)
-      .fillColor(COLOR.muted)
-      .text(guide, LEFT + 100, cursor.y + 2, {
-        width: CONTENT_WIDTH - 100,
-      });
+  applyTextStyle(doc, TEXT_STYLE.sectionTitle).text(title, LEFT, cursor.y);
+
+  if (options.guide !== undefined) {
+    const titleWidth = doc.widthOfString(title);
+    const guideX = LEFT + titleWidth + 12;
+
+    applyTextStyle(doc, TEXT_STYLE.guide).text(
+      options.guide,
+      guideX,
+      cursor.y + 3,
+      {
+        width: PAGE_WIDTH - RIGHT - guideX,
+        lineBreak: false,
+      },
+    );
   }
 
-  cursor.y += 22;
+  cursor.y += SECTION_TITLE_HEIGHT;
 }
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? `${value}` : value.toFixed(1);
 }
 
+// 섹션 1
 function drawSummaryCards(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
   data: MonthlyPdfReportData,
 ): void {
-  const gap = 10;
-  const cardWidth = (CONTENT_WIDTH - gap * 2) / 3;
+  const cardWidth = (CONTENT_WIDTH - SUMMARY_CARD_GAP * 2) / 3;
   const cards = [
     {
       label: '총 배변 횟수',
@@ -213,84 +380,89 @@ function drawSummaryCards(
     },
   ];
 
+  ensureSpace(doc, cursor, SUMMARY_CARD_HEIGHT);
+
   cards.forEach((card, index) => {
-    const x = LEFT + index * (cardWidth + gap);
-    doc.roundedRect(x, cursor.y, cardWidth, 58, 6).fill(COLOR.card);
+    const x = LEFT + index * (cardWidth + SUMMARY_CARD_GAP);
+
     doc
-      .font(FONT.regular)
-      .fontSize(7)
-      .fillColor(COLOR.muted)
-      .text(card.label, x + 12, cursor.y + 12);
-    doc
-      .font(FONT.black)
-      .fontSize(16)
-      .fillColor(COLOR.orange)
-      .text(card.value, x + 12, cursor.y + 29);
+      .roundedRect(x, cursor.y, cardWidth, SUMMARY_CARD_HEIGHT, 6)
+      .fill(COLOR.beige5);
+
+    applyTextStyle(doc, TEXT_STYLE.cardLabel).text(
+      card.label,
+      x + 12,
+      cursor.y + 13,
+      {
+        width: cardWidth - 24,
+        lineBreak: false,
+      },
+    );
+
+    applyTextStyle(doc, TEXT_STYLE.cardValue).text(
+      card.value,
+      x + 12,
+      cursor.y + 33,
+      {
+        width: cardWidth - 24,
+        lineBreak: false,
+      },
+    );
   });
 
-  cursor.y += 74;
+  cursor.y += SUMMARY_CARD_HEIGHT + 18;
 }
 
+// 섹션 2
 function drawStoolBars(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
   data: MonthlyPdfReportData,
 ): void {
   const fillByCode = {
-    M: COLOR.orange,
-    H: COLOR.yellow,
-    T: COLOR.coral,
+    M: COLOR.orange6,
+    H: COLOR.yellow4,
+    T: COLOR.danger,
   } as const;
-  const barX = LEFT + 38;
-  const barWidth = 338;
+  const barX = LEFT + 44;
+  const barWidth = 330;
 
   for (const item of data.stoolDistribution) {
-    ensureSpace(doc, cursor, 18);
+    ensureSpace(doc, cursor, BAR_ROW_HEIGHT);
 
-    doc
-      .font(FONT.semiBold)
-      .fontSize(7)
-      .fillColor(COLOR.text)
-      .text(item.label, LEFT, cursor.y + 1, { width: 30 });
-    doc.roundedRect(barX, cursor.y, barWidth, 10, 5).fill(COLOR.card);
+    applyTextStyle(doc, TEXT_STYLE.barLabel).text(item.label, LEFT, cursor.y, {
+      width: 36,
+      lineBreak: false,
+    });
 
-    const fillWidth = Math.max(
-      0,
-      Math.min(barWidth, (barWidth * item.ratio) / 100),
-    );
+    doc.roundedRect(barX, cursor.y + 2, barWidth, 10, 5).fill(COLOR.beige6);
+
+    const fillWidth = Math.min(barWidth, (barWidth * item.ratio) / 100);
+
     if (fillWidth > 0) {
       doc
-        .roundedRect(barX, cursor.y, Math.max(fillWidth, 10), 10, 5)
+        .roundedRect(barX, cursor.y + 2, Math.max(fillWidth, 10), 10, 5)
         .fill(fillByCode[item.code]);
     }
 
-    doc
-      .font(FONT.regular)
-      .fontSize(6.5)
-      .fillColor(COLOR.text)
-      .text(
-        `${formatNumber(item.ratio)}% (${item.count}회)`,
-        barX + barWidth + 10,
-        cursor.y + 1,
-        { width: 88, align: 'right' },
-      );
+    applyTextStyle(doc, TEXT_STYLE.barValue).text(
+      `${formatNumber(item.ratio)}% (${item.count}회)`,
+      barX + barWidth + 10,
+      cursor.y + 1,
+      {
+        width: CONTENT_WIDTH - (barX - LEFT) - barWidth - 10,
+        align: 'right',
+        lineBreak: false,
+      },
+    );
 
-    cursor.y += 18;
+    cursor.y += BAR_ROW_HEIGHT;
   }
 
-  cursor.y += 10;
+  cursor.y += 12;
 }
 
-function textHeight(
-  doc: PDFKit.PDFDocument,
-  text: string,
-  width: number,
-  fontSize = 7,
-): number {
-  doc.font(FONT.regular).fontSize(fontSize);
-  return doc.heightOfString(text, { width, lineGap: 1.5 });
-}
-
+// 공통 표
 function drawTable<T>(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
@@ -298,52 +470,63 @@ function drawTable<T>(
   rows: T[],
 ): void {
   const drawHeader = (): void => {
-    doc.rect(LEFT, cursor.y, CONTENT_WIDTH, 25).fill(COLOR.tableHead);
+    doc
+      .rect(LEFT, cursor.y, CONTENT_WIDTH, TABLE_HEADER_HEIGHT)
+      .fill(COLOR.beige5);
 
     let x = LEFT;
+
     for (const column of columns) {
-      doc
-        .font(FONT.semiBold)
-        .fontSize(6.5)
-        .fillColor(COLOR.text)
-        .text(column.title, x + 8, cursor.y + 9, {
+      applyTextStyle(doc, TEXT_STYLE.tableHeader).text(
+        column.title,
+        x + 8,
+        cursor.y + 8,
+        {
           width: column.width - 16,
           align: column.align ?? 'left',
-        });
+          lineBreak: false,
+        },
+      );
       x += column.width;
     }
 
-    cursor.y += 25;
+    cursor.y += TABLE_HEADER_HEIGHT;
   };
 
-  ensureSpace(doc, cursor, 50);
+  ensureSpace(doc, cursor, TABLE_HEADER_HEIGHT + TABLE_MIN_ROW_HEIGHT);
   drawHeader();
 
   for (const row of rows) {
-    const values = columns.map((column) => column.value(row));
-    const contentHeight = Math.max(
-      ...values.map((value, index) =>
-        textHeight(doc, value, columns[index].width - 16),
-      ),
+    const cells = columns.map((column) => {
+      const value = column.value(row);
+      const style = column.bodyStyle ?? TEXT_STYLE.tableBody;
+      const height = measureTextHeight(doc, value, column.width - 16, style, 2);
+
+      return {
+        value,
+        style,
+        height,
+      };
+    });
+    const rowHeight = Math.max(
+      TABLE_MIN_ROW_HEIGHT,
+      ...cells.map((cell) => cell.height + 12),
     );
-    const rowHeight = Math.max(24, contentHeight + 12);
 
     if (ensureSpace(doc, cursor, rowHeight)) {
       drawHeader();
     }
 
     let x = LEFT;
-    values.forEach((value, index) => {
+
+    cells.forEach((cell, index) => {
       const column = columns[index];
-      doc
-        .font(FONT.regular)
-        .fontSize(7)
-        .fillColor(COLOR.text)
-        .text(value, x + 8, cursor.y + 7, {
-          width: column.width - 16,
-          align: column.align ?? 'left',
-          lineGap: 1.5,
-        });
+
+      applyTextStyle(doc, cell.style).text(cell.value, x + 8, cursor.y + 6, {
+        width: column.width - 16,
+        align: column.align ?? 'left',
+        lineGap: 2,
+      });
       x += column.width;
     });
 
@@ -351,15 +534,16 @@ function drawTable<T>(
       .moveTo(LEFT, cursor.y + rowHeight)
       .lineTo(PAGE_WIDTH - RIGHT, cursor.y + rowHeight)
       .lineWidth(0.5)
-      .strokeColor(COLOR.line)
+      .strokeColor(COLOR.beige7)
       .stroke();
 
     cursor.y += rowHeight;
   }
 
-  cursor.y += 16;
+  cursor.y += 18;
 }
 
+//섹션3
 function drawDiscomfortTable(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
@@ -373,6 +557,7 @@ function drawDiscomfortTable(
         title: '증상',
         width: 175,
         value: (row) => row.label,
+        bodyStyle: TEXT_STYLE.tableLead,
       },
       {
         title: '기록 횟수',
@@ -389,6 +574,7 @@ function drawDiscomfortTable(
   );
 }
 
+// 섹션 4
 function drawLifeFactorTable(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
@@ -402,6 +588,7 @@ function drawLifeFactorTable(
         title: '항목',
         width: 125,
         value: (row) => row.label,
+        bodyStyle: TEXT_STYLE.tableLead,
       },
       {
         title: '부족/낮음',
@@ -422,21 +609,49 @@ function drawLifeFactorTable(
     data.lifeFactorRows,
   );
 
-  if (data.topFoodTags.length > 0) {
-    const tags = data.topFoodTags
-      .map((item) => `${item.name} ${item.count}회`)
-      .join(' · ');
-    doc
-      .font(FONT.regular)
-      .fontSize(6.5)
-      .fillColor(COLOR.muted)
-      .text(`주요 식사 태그  ${tags}`, LEFT, cursor.y - 5, {
-        width: CONTENT_WIDTH,
-      });
-    cursor.y += 12;
-  }
+  if (data.topFoodTags.length === 0) return;
+
+  const tags = data.topFoodTags
+    .map((item) => `${item.name} ${item.count}회`)
+    .join(' · ');
+  const text = `주요 식사 태그  ${tags}`;
+  const textHeight = measureTextHeight(
+    doc,
+    text,
+    CONTENT_WIDTH,
+    TEXT_STYLE.guide,
+  );
+
+  ensureSpace(doc, cursor, textHeight);
+  applyTextStyle(doc, TEXT_STYLE.guide).text(text, LEFT, cursor.y - 4, {
+    width: CONTENT_WIDTH,
+  });
+  cursor.y += textHeight + 12;
 }
 
+//섹션5
+function measurePatternCardHeight(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  description: string,
+): number {
+  const titleWidth = 112;
+  const descriptionWidth = CONTENT_WIDTH - titleWidth - 34;
+  const titleHeight = measureTextHeight(
+    doc,
+    title,
+    titleWidth,
+    TEXT_STYLE.patternTitle,
+  );
+  const descriptionHeight = measureTextHeight(
+    doc,
+    description,
+    descriptionWidth,
+    TEXT_STYLE.patternBody,
+  );
+
+  return Math.max(34, Math.max(titleHeight, descriptionHeight) + 18);
+}
 function drawPatternCards(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
@@ -444,60 +659,65 @@ function drawPatternCards(
 ): void {
   if (data.patternCards.length === 0) return;
 
-  drawSectionTitle(doc, cursor, '5. 감지된 패턴');
+  const firstPattern = data.patternCards[0];
+  const firstCardHeight = measurePatternCardHeight(
+    doc,
+    firstPattern.title,
+    firstPattern.description,
+  );
+
+  drawSectionTitle(doc, cursor, '5. 감지된 패턴', {
+    keepWithNextHeight: firstCardHeight + 8,
+  });
 
   for (const pattern of data.patternCards) {
-    const titleWidth = 100;
-    const descriptionWidth = CONTENT_WIDTH - titleWidth - 32;
-    const descriptionHeight = textHeight(
+    const titleWidth = 112;
+    const descriptionWidth = CONTENT_WIDTH - titleWidth - 34;
+    const cardHeight = measurePatternCardHeight(
       doc,
+      pattern.title,
       pattern.description,
-      descriptionWidth,
-      6.5,
     );
-    const cardHeight = Math.max(31, descriptionHeight + 17);
 
-    ensureSpace(doc, cursor, cardHeight + 7);
+    ensureSpace(doc, cursor, cardHeight + 8);
+
     doc
       .roundedRect(LEFT, cursor.y, CONTENT_WIDTH, cardHeight, 6)
-      .fill(COLOR.cream);
-    doc
-      .font(FONT.bold)
-      .fontSize(7)
-      .fillColor(COLOR.text)
-      .text(pattern.title, LEFT + 12, cursor.y + 10, {
-        width: titleWidth,
-      });
-    doc
-      .font(FONT.regular)
-      .fontSize(6.5)
-      .fillColor(COLOR.text)
-      .text(pattern.description, LEFT + titleWidth + 18, cursor.y + 10, {
-        width: descriptionWidth,
-        lineGap: 1.5,
-      });
+      .fill(COLOR.yellow1);
 
-    cursor.y += cardHeight + 7;
+    applyTextStyle(doc, TEXT_STYLE.patternTitle).text(
+      pattern.title,
+      LEFT + 12,
+      cursor.y + 9,
+      {
+        width: titleWidth,
+      },
+    );
+
+    applyTextStyle(doc, TEXT_STYLE.patternBody).text(
+      pattern.description,
+      LEFT + titleWidth + 20,
+      cursor.y + 9,
+      {
+        width: descriptionWidth,
+        lineGap: 2,
+      },
+    );
+
+    cursor.y += cardHeight + 8;
   }
 
-  cursor.y += 8;
+  cursor.y += 10;
 }
-
+// 섹션 6
 function drawDailyTable(
   doc: PDFKit.PDFDocument,
   cursor: Cursor,
   rows: MonthlyPdfDailyRow[],
 ): void {
-  const sectionTitleHeight = 22;
-  const tableHeaderHeight = 25;
-  const minimumRowHeight = 24;
-
-  ensureSpace(
-    doc,
-    cursor,
-    sectionTitleHeight + tableHeaderHeight + minimumRowHeight,
-  );
-  drawSectionTitle(doc, cursor, '6. 일별 상세기록');
+  drawSectionTitle(doc, cursor, '6. 일별 상세 기록', {
+    keepWithNextHeight: TABLE_HEADER_HEIGHT + TABLE_MIN_ROW_HEIGHT,
+  });
 
   drawTable(
     doc,
@@ -507,6 +727,7 @@ function drawDailyTable(
         title: '날짜',
         width: 52,
         value: (row) => row.date,
+        bodyStyle: TEXT_STYLE.tableLead,
       },
       {
         title: '배변',
@@ -524,7 +745,7 @@ function drawDailyTable(
         value: (row) => row.discomfort,
       },
       {
-        title: '주요생활',
+        title: '주요 생활',
         width: CONTENT_WIDTH - 339,
         value: (row) => row.mainLife,
       },
@@ -533,6 +754,7 @@ function drawDailyTable(
   );
 }
 
+//하단 Footer
 function drawFooters(doc: PDFKit.PDFDocument): void {
   const range = doc.bufferedPageRange();
 
@@ -544,35 +766,32 @@ function drawFooters(doc: PDFKit.PDFDocument): void {
       .moveTo(LEFT, FOOTER_TOP)
       .lineTo(PAGE_WIDTH - RIGHT, FOOTER_TOP)
       .lineWidth(0.5)
-      .strokeColor(COLOR.line)
+      .strokeColor(COLOR.gray6)
       .stroke();
 
     if (isLastPage) {
-      doc
-        .font(FONT.regular)
-        .fontSize(5.5)
-        .fillColor(COLOR.muted)
-        .text(
-          '이 리포트는 의료 진단이 아닌 개인 기록 요약입니다.',
-          LEFT,
-          FOOTER_TOP + 8,
-          {
-            width: CONTENT_WIDTH - 50,
-            align: 'right',
-            lineBreak: false,
-          },
-        );
+      applyTextStyle(doc, TEXT_STYLE.footer).text(
+        '이 리포트는 의료 진단이 아닌 개인 기록 요약입니다',
+        LEFT,
+        FOOTER_TOP + 8,
+        {
+          width: CONTENT_WIDTH - 55,
+          align: 'right',
+          lineBreak: false,
+        },
+      );
     }
 
-    doc
-      .font(FONT.regular)
-      .fontSize(5.5)
-      .fillColor(COLOR.muted)
-      .text(`${index + 1} / ${range.count}`, LEFT, FOOTER_TOP + 22, {
+    applyTextStyle(doc, TEXT_STYLE.footer).text(
+      `${index + 1} / ${range.count}`,
+      LEFT,
+      FOOTER_TOP + 26,
+      {
         width: CONTENT_WIDTH,
         align: 'right',
         lineBreak: false,
-      });
+      },
+    );
   }
 }
 
@@ -602,30 +821,34 @@ export async function renderMonthlyPdf(
       drawFirstPageHeader(doc, cursor, data);
       drawNotice(doc, cursor);
 
-      drawSectionTitle(doc, cursor, '1. 기본 현황');
+      // 제목 + 카드 3개
+      drawSectionTitle(doc, cursor, '1. 기본 현황', {
+        keepWithNextHeight: SUMMARY_CARD_HEIGHT,
+      });
       drawSummaryCards(doc, cursor, data);
 
-      drawSectionTitle(
-        doc,
-        cursor,
-        '2. 변 상태 분포',
-        '브리스톨 1~2형=딱딱, 3~4형=보통, 5~7형=묽음 기준',
-      );
+      // 제목 + 첫 막대
+      drawSectionTitle(doc, cursor, '2. 변 상태 분포', {
+        guide: '브리스톨 1~2형=딱딱, 3~4형=보통, 5~7형=묽음 기준',
+        keepWithNextHeight: BAR_ROW_HEIGHT,
+      });
       drawStoolBars(doc, cursor, data);
 
-      drawSectionTitle(doc, cursor, '3. 불편감 기록');
+      // 제목 + 표 헤더 + 첫 행
+      drawSectionTitle(doc, cursor, '3. 불편감 기록', {
+        keepWithNextHeight: TABLE_HEADER_HEIGHT + TABLE_MIN_ROW_HEIGHT,
+      });
       drawDiscomfortTable(doc, cursor, data);
 
-      drawSectionTitle(
-        doc,
-        cursor,
-        '4. 생활 요인 현황',
-        '주요 식사 태그: 음주, 야식, 자극적, 기름진, 유제품',
-      );
+      // 제목 + 표 헤더 + 첫 행
+      drawSectionTitle(doc, cursor, '4. 생활 요인 현황', {
+        keepWithNextHeight: TABLE_HEADER_HEIGHT + TABLE_MIN_ROW_HEIGHT,
+      });
       drawLifeFactorTable(doc, cursor, data);
 
       drawPatternCards(doc, cursor, data);
       drawDailyTable(doc, cursor, data.dailyRows);
+
       drawFooters(doc);
       doc.end();
     } catch (error) {

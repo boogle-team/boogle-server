@@ -4,6 +4,7 @@ import { renderMonthlyPdf } from './monthly-pdf.renderer';
 interface MonthlyPdfFixtureOptions {
   dailyRowCount?: number;
   longPatternDescriptions?: boolean;
+  includePatterns?: boolean;
 }
 
 function createMonthlyPdfFixture(
@@ -11,6 +12,7 @@ function createMonthlyPdfFixture(
 ): MonthlyPdfReportData {
   const dailyRowCount = options.dailyRowCount ?? 15;
   const endDay = String(dailyRowCount).padStart(2, '0');
+  const includePatterns = options.includePatterns ?? true;
   const patternDescription = options.longPatternDescriptions
     ? '수분이 부족했던 날에 딱딱한 변이 함께 나타나는 경향이 반복해서 확인됐어요. '
         .repeat(8)
@@ -22,7 +24,7 @@ function createMonthlyPdfFixture(
       startDate: '2026-07-01',
       endDate: `2026-07-${endDay}`,
       generatedDate: '2026-07-15',
-      displayRange: `2026년 7월 1일 ~ 7월 ${dailyRowCount}일 (${dailyRowCount}일)`,
+      displayRange: `2026.07.01 - 2026.07.${endDay} ` + `(${dailyRowCount}일)`,
       displayGeneratedDate: '2026.07.15',
       inclusiveDays: dailyRowCount,
     },
@@ -103,26 +105,28 @@ function createMonthlyPdfFixture(
         count: 3,
       },
     ],
-    patternCards: [
-      {
-        level: 'WARN',
-        ruleCode: 'MONTHLY_LOW_WATER_WITH_HARD_STOOL',
-        title: '수분 부족과 딱딱한 변',
-        description: patternDescription,
-        value: 12,
-        threshold: 12,
-        unit: 'DAY',
-      },
-      {
-        level: 'WARN',
-        ruleCode: 'MONTHLY_HARD_STOOL_RATIO',
-        title: '딱딱한 변 경향',
-        description: '이번 달 변 상태의 절반 이상이 딱딱했어요.',
-        value: 55,
-        threshold: 50,
-        unit: 'PERCENT',
-      },
-    ],
+    patternCards: includePatterns
+      ? [
+          {
+            level: 'WARN',
+            ruleCode: 'MONTHLY_LOW_WATER_WITH_HARD_STOOL',
+            title: '수분 부족과 딱딱한 변',
+            description: patternDescription,
+            value: 12,
+            threshold: 12,
+            unit: 'DAY',
+          },
+          {
+            level: 'WARN',
+            ruleCode: 'MONTHLY_HARD_STOOL_RATIO',
+            title: '딱딱한 변 경향',
+            description: '이번 달 변 상태의 절반 이상이 딱딱했어요.',
+            value: 55,
+            threshold: 50,
+            unit: 'PERCENT',
+          },
+        ]
+      : [],
     dailyRows: Array.from({ length: dailyRowCount }, (_, index) => ({
       date: `7/${index + 1}`,
       bowel: index % 3 === 1 ? '없음' : '있음',
@@ -140,23 +144,40 @@ function countPdfPages(buffer: Buffer): number {
 }
 
 describe('renderMonthlyPdf', () => {
-  it('PDF 헤더를 가진 이진 Buffer를 생성한다', async () => {
-    const buffer = await renderMonthlyPdf(createMonthlyPdfFixture());
+  it('15일 디자인 fixture는 빈 footer 페이지 없이 2페이지로 생성한다', async () => {
+    const buffer = await renderMonthlyPdf(
+      createMonthlyPdfFixture({
+        dailyRowCount: 15,
+      }),
+    );
 
-    expect(Buffer.isBuffer(buffer)).toBe(true);
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(buffer.length).toBeGreaterThan(10_000);
     expect(countPdfPages(buffer)).toBe(2);
   });
 
-  it('31일과 긴 텍스트가 있어도 생성에 성공한다', async () => {
+  it('31일과 긴 패턴은 필요한 만큼 페이지가 자연스럽게 늘어난다', async () => {
     const buffer = await renderMonthlyPdf(
       createMonthlyPdfFixture({
         dailyRowCount: 31,
         longPatternDescriptions: true,
       }),
     );
+    const pageCount = countPdfPages(buffer);
 
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(pageCount).toBeGreaterThan(2);
+  });
+
+  it('감지 패턴이 없어도 일별 상세 기록까지 정상 PDF로 생성한다', async () => {
+    const buffer = await renderMonthlyPdf(
+      createMonthlyPdfFixture({
+        dailyRowCount: 7,
+        includePatterns: false,
+      }),
+    );
+
+    expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(countPdfPages(buffer)).toBe(2);
   });
 });

@@ -101,6 +101,9 @@ describe('ReportController', () => {
       'Access-Control-Expose-Headers',
       'Content-Disposition',
     );
+    expect(reportServiceMock.createPdfReport).toHaveBeenCalledWith(1n, {
+      monthStartDate: '2026-07-01',
+    });
     expect(responseMock.status).toHaveBeenCalledWith(HttpStatus.OK);
     expect(responseMock.send).toHaveBeenCalledWith(buffer);
   });
