@@ -13,8 +13,12 @@ const RIGHT = 42;
 const TOP = 38;
 const CONTENT_WIDTH = PAGE_WIDTH - LEFT - RIGHT;
 
-const FOOTER_TOP = PAGE_HEIGHT - 46;
-const CONTENT_BOTTOM = FOOTER_TOP - 14;
+const CONTENT_BOTTOM = PAGE_HEIGHT - 60;
+const FOOTER_LINE_HORIZONTAL_MARGIN = 40;
+const FOOTER_NOTICE_RIGHT_MARGIN = 39;
+const FOOTER_PAGE_NUMBER_BOTTOM_MARGIN = 22;
+const FOOTER_LINE_TO_PAGE_NUMBER_GAP = 8;
+const FOOTER_NOTICE_TO_LINE_GAP = 8;
 
 const SECTION_TITLE_HEIGHT = 26;
 const TABLE_HEADER_HEIGHT = 28;
@@ -26,6 +30,16 @@ const SUMMARY_CARD_GAP = 10;
 
 // 섹션 2
 const BAR_ROW_HEIGHT = 21;
+const BAR_LABEL_X = 40;
+const BAR_LABEL_WIDTH = 34;
+const BAR_X = 74;
+const BAR_WIDTH = 412;
+const BAR_HEIGHT = 12;
+const BAR_VALUE_RIGHT_MARGIN = 40;
+const BAR_VALUE_X = BAR_X + BAR_WIDTH;
+const BAR_VALUE_WIDTH = PAGE_WIDTH - BAR_VALUE_RIGHT_MARGIN - BAR_VALUE_X;
+
+const PATTERN_LINE_GAP = 2;
 
 const COLOR = {
   orange6: '#FF8253',
@@ -150,6 +164,14 @@ interface TableColumn<T> {
   value: (row: T) => string;
   align?: 'left' | 'center' | 'right';
   bodyStyle?: TextStyle;
+}
+
+interface PatternCardLayout {
+  titleWidth: number;
+  descriptionWidth: number;
+  titleHeight: number;
+  descriptionHeight: number;
+  cardHeight: number;
 }
 
 function applyTextStyle(
@@ -424,33 +446,44 @@ function drawStoolBars(
     H: COLOR.yellow4,
     T: COLOR.danger,
   } as const;
-  const barX = LEFT + 44;
-  const barWidth = 330;
 
   for (const item of data.stoolDistribution) {
     ensureSpace(doc, cursor, BAR_ROW_HEIGHT);
 
-    applyTextStyle(doc, TEXT_STYLE.barLabel).text(item.label, LEFT, cursor.y, {
-      width: 36,
-      lineBreak: false,
-    });
+    applyTextStyle(doc, TEXT_STYLE.barLabel).text(
+      item.label,
+      BAR_LABEL_X,
+      cursor.y,
+      {
+        width: BAR_LABEL_WIDTH,
+        lineBreak: false,
+      },
+    );
 
-    doc.roundedRect(barX, cursor.y + 2, barWidth, 10, 5).fill(COLOR.beige6);
+    doc
+      .roundedRect(BAR_X, cursor.y + 2, BAR_WIDTH, BAR_HEIGHT, BAR_HEIGHT / 2)
+      .fill(COLOR.beige6);
 
-    const fillWidth = Math.min(barWidth, (barWidth * item.ratio) / 100);
+    const fillWidth = Math.min(BAR_WIDTH, (BAR_WIDTH * item.ratio) / 100);
 
     if (fillWidth > 0) {
       doc
-        .roundedRect(barX, cursor.y + 2, Math.max(fillWidth, 10), 10, 5)
+        .roundedRect(
+          BAR_X,
+          cursor.y + 2,
+          Math.max(fillWidth, BAR_HEIGHT),
+          BAR_HEIGHT,
+          BAR_HEIGHT / 2,
+        )
         .fill(fillByCode[item.code]);
     }
 
     applyTextStyle(doc, TEXT_STYLE.barValue).text(
       `${formatNumber(item.ratio)}% (${item.count}회)`,
-      barX + barWidth + 10,
+      BAR_VALUE_X,
       cursor.y + 1,
       {
-        width: CONTENT_WIDTH - (barX - LEFT) - barWidth - 10,
+        width: BAR_VALUE_WIDTH,
         align: 'right',
         lineBreak: false,
       },
@@ -459,9 +492,8 @@ function drawStoolBars(
     cursor.y += BAR_ROW_HEIGHT;
   }
 
-  cursor.y += 12;
+  cursor.y += 18;
 }
-
 // 공통 표
 function drawTable<T>(
   doc: PDFKit.PDFDocument,
@@ -630,11 +662,11 @@ function drawLifeFactorTable(
 }
 
 //섹션5
-function measurePatternCardHeight(
+function measurePatternCardLayout(
   doc: PDFKit.PDFDocument,
   title: string,
   description: string,
-): number {
+): PatternCardLayout {
   const titleWidth = 112;
   const descriptionWidth = CONTENT_WIDTH - titleWidth - 34;
   const titleHeight = measureTextHeight(
@@ -648,9 +680,20 @@ function measurePatternCardHeight(
     description,
     descriptionWidth,
     TEXT_STYLE.patternBody,
+    PATTERN_LINE_GAP,
+  );
+  const cardHeight = Math.max(
+    34,
+    Math.max(titleHeight, descriptionHeight) + 18,
   );
 
-  return Math.max(34, Math.max(titleHeight, descriptionHeight) + 18);
+  return {
+    titleWidth,
+    descriptionWidth,
+    titleHeight,
+    descriptionHeight,
+    cardHeight,
+  };
 }
 function drawPatternCards(
   doc: PDFKit.PDFDocument,
@@ -660,55 +703,58 @@ function drawPatternCards(
   if (data.patternCards.length === 0) return;
 
   const firstPattern = data.patternCards[0];
-  const firstCardHeight = measurePatternCardHeight(
+  const firstCardLayout = measurePatternCardLayout(
     doc,
     firstPattern.title,
     firstPattern.description,
   );
 
   drawSectionTitle(doc, cursor, '5. 감지된 패턴', {
-    keepWithNextHeight: firstCardHeight + 8,
+    keepWithNextHeight: firstCardLayout.cardHeight + 8,
   });
 
   for (const pattern of data.patternCards) {
-    const titleWidth = 112;
-    const descriptionWidth = CONTENT_WIDTH - titleWidth - 34;
-    const cardHeight = measurePatternCardHeight(
+    const layout = measurePatternCardLayout(
       doc,
       pattern.title,
       pattern.description,
     );
 
-    ensureSpace(doc, cursor, cardHeight + 8);
+    ensureSpace(doc, cursor, layout.cardHeight + 8);
 
     doc
-      .roundedRect(LEFT, cursor.y, CONTENT_WIDTH, cardHeight, 6)
+      .roundedRect(LEFT, cursor.y, CONTENT_WIDTH, layout.cardHeight, 6)
       .fill(COLOR.yellow1);
+
+    const titleY = cursor.y + (layout.cardHeight - layout.titleHeight) / 2;
+    const descriptionY =
+      cursor.y + (layout.cardHeight - layout.descriptionHeight) / 2;
 
     applyTextStyle(doc, TEXT_STYLE.patternTitle).text(
       pattern.title,
       LEFT + 12,
-      cursor.y + 9,
+      titleY,
       {
-        width: titleWidth,
+        width: layout.titleWidth,
       },
     );
 
     applyTextStyle(doc, TEXT_STYLE.patternBody).text(
       pattern.description,
-      LEFT + titleWidth + 20,
-      cursor.y + 9,
+      LEFT + layout.titleWidth + 20,
+      descriptionY,
       {
-        width: descriptionWidth,
-        lineGap: 2,
+        width: layout.descriptionWidth,
+        lineGap: PATTERN_LINE_GAP,
       },
     );
 
-    cursor.y += cardHeight + 8;
+    cursor.y += layout.cardHeight + 8;
   }
 
   cursor.y += 10;
 }
+
 // 섹션 6
 function drawDailyTable(
   doc: PDFKit.PDFDocument,
@@ -757,25 +803,49 @@ function drawDailyTable(
 //하단 Footer
 function drawFooters(doc: PDFKit.PDFDocument): void {
   const range = doc.bufferedPageRange();
+  const footerLineWidth = PAGE_WIDTH - FOOTER_LINE_HORIZONTAL_MARGIN * 2;
 
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(range.start + index);
     const isLastPage = index === range.count - 1;
-
-    doc
-      .moveTo(LEFT, FOOTER_TOP)
-      .lineTo(PAGE_WIDTH - RIGHT, FOOTER_TOP)
-      .lineWidth(0.5)
-      .strokeColor(COLOR.gray6)
-      .stroke();
+    const pageNumber = `${index + 1} / ${range.count}`;
+    const pageNumberHeight = measureTextHeight(
+      doc,
+      pageNumber,
+      footerLineWidth,
+      TEXT_STYLE.footer,
+      0,
+    );
+    const pageNumberY =
+      PAGE_HEIGHT - FOOTER_PAGE_NUMBER_BOTTOM_MARGIN - pageNumberHeight;
+    const footerLineY = pageNumberY - FOOTER_LINE_TO_PAGE_NUMBER_GAP;
 
     if (isLastPage) {
+      doc
+        .moveTo(FOOTER_LINE_HORIZONTAL_MARGIN, footerLineY)
+        .lineTo(PAGE_WIDTH - FOOTER_LINE_HORIZONTAL_MARGIN, footerLineY)
+        .lineWidth(0.5)
+        .strokeColor(COLOR.gray6)
+        .stroke();
+
+      const footerNotice = '이 리포트는 의료 진단이 아닌 개인 기록 요약입니다';
+      const footerNoticeWidth = PAGE_WIDTH - LEFT - FOOTER_NOTICE_RIGHT_MARGIN;
+      const footerNoticeHeight = measureTextHeight(
+        doc,
+        footerNotice,
+        footerNoticeWidth,
+        TEXT_STYLE.footer,
+        0,
+      );
+      const footerNoticeY =
+        footerLineY - FOOTER_NOTICE_TO_LINE_GAP - footerNoticeHeight;
+
       applyTextStyle(doc, TEXT_STYLE.footer).text(
-        '이 리포트는 의료 진단이 아닌 개인 기록 요약입니다',
+        footerNotice,
         LEFT,
-        FOOTER_TOP + 8,
+        footerNoticeY,
         {
-          width: CONTENT_WIDTH - 55,
+          width: footerNoticeWidth,
           align: 'right',
           lineBreak: false,
         },
@@ -783,11 +853,11 @@ function drawFooters(doc: PDFKit.PDFDocument): void {
     }
 
     applyTextStyle(doc, TEXT_STYLE.footer).text(
-      `${index + 1} / ${range.count}`,
-      LEFT,
-      FOOTER_TOP + 26,
+      pageNumber,
+      FOOTER_LINE_HORIZONTAL_MARGIN,
+      pageNumberY,
       {
-        width: CONTENT_WIDTH,
+        width: footerLineWidth,
         align: 'right',
         lineBreak: false,
       },
