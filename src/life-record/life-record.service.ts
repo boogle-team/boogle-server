@@ -513,8 +513,10 @@ export class LifeRecordService {
     return medicines.map((medicine) => medicine.id);
   }
 
+  // home/calendar와 동일한 규칙: "YYYY-MM-DD"(KST 달력 날짜)의 자정에
+  // 해당하는 실제 UTC 시각으로 저장한다.
   private toDate(dateOnly: string): Date {
-    return new Date(`${dateOnly}T00:00:00.000Z`);
+    return new Date(`${dateOnly}T00:00:00.000+09:00`);
   }
 
   private toDetailResponse(
