@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { BusinessException } from '@/common/exceptions/business.exception';
+import { NotificationErrorCode } from './notification-error-code.enum';
 import {
   NOTIFICATION_LINK_TO,
   NotificationCategory,
   NotificationListResponseDto,
+  NotificationReadResponseDto,
   toNotificationType,
 } from './dto/notification-response.dto';
 
@@ -50,5 +53,34 @@ export class NotificationService {
       });
 
     return { unreadCount, notifications };
+  }
+
+  async markAsRead(
+    userId: string,
+    notificationId: number,
+  ): Promise<NotificationReadResponseDto> {
+    const memberId = BigInt(userId);
+    const alarmMapId = BigInt(notificationId);
+
+    // 본인 소유(userId 일치) 알림만 갱신한다. isRead를 where에 넣지 않으므로
+    // 이미 읽음(Y)인 행도 매칭되어 멱등하게 동작한다. 매칭이 0건이면
+    // 존재하지 않거나 타인의 알림이므로 404로 처리한다(존재 여부 노출 방지).
+    const { count } = await this.prisma.alarmMap.updateMany({
+      where: { id: alarmMapId, userId: memberId },
+      data: { isRead: 'Y' },
+    });
+    if (count === 0) {
+      throw new BusinessException(
+        NotificationErrorCode.NOTIFICATION_NOT_FOUND,
+        '알림을 찾을 수 없습니다.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const unreadCount = await this.prisma.alarmMap.count({
+      where: { userId: memberId, isRead: 'N' },
+    });
+
+    return { id: notificationId, isRead: true, unreadCount };
   }
 }

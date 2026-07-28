@@ -1,16 +1,26 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { NotificationErrorCode } from './notification-error-code.enum';
 import { NotificationService } from './notification.service';
 
 describe('NotificationService', () => {
   let service: NotificationService;
   let prisma: {
-    alarmMap: { findMany: jest.Mock; count: jest.Mock };
+    alarmMap: {
+      findMany: jest.Mock;
+      count: jest.Mock;
+      updateMany: jest.Mock;
+    };
   };
 
   beforeEach(async () => {
     prisma = {
-      alarmMap: { findMany: jest.fn(), count: jest.fn() },
+      alarmMap: {
+        findMany: jest.fn(),
+        count: jest.fn(),
+        updateMany: jest.fn(),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -201,6 +211,45 @@ describe('NotificationService', () => {
     );
     expect(prisma.alarmMap.count).toHaveBeenCalledWith({
       where: { userId: 1n, isRead: 'N' },
+    });
+  });
+
+  describe('markAsRead', () => {
+    it('본인 알림을 읽음 처리하고 id/isRead/갱신된 unreadCount를 반환한다', async () => {
+      prisma.alarmMap.updateMany.mockResolvedValue({ count: 1 });
+      prisma.alarmMap.count.mockResolvedValue(2);
+
+      const result = await service.markAsRead('1', 5001);
+
+      expect(result).toEqual({ id: 5001, isRead: true, unreadCount: 2 });
+      // 소유 검증: id + userId로만 갱신 (isRead는 where에 없음 → 멱등)
+      expect(prisma.alarmMap.updateMany).toHaveBeenCalledWith({
+        where: { id: 5001n, userId: 1n },
+        data: { isRead: 'Y' },
+      });
+      expect(prisma.alarmMap.count).toHaveBeenCalledWith({
+        where: { userId: 1n, isRead: 'N' },
+      });
+    });
+
+    it('이미 읽은 알림도 멱등하게 처리한다(매칭되므로 정상 응답)', async () => {
+      prisma.alarmMap.updateMany.mockResolvedValue({ count: 1 });
+      prisma.alarmMap.count.mockResolvedValue(0);
+
+      const result = await service.markAsRead('1', 5001);
+
+      expect(result).toEqual({ id: 5001, isRead: true, unreadCount: 0 });
+    });
+
+    it('존재하지 않거나 타인의 알림이면 NOTIFICATION_NOT_FOUND(404)를 던진다', async () => {
+      prisma.alarmMap.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.markAsRead('1', 9999)).rejects.toMatchObject({
+        errorCode: NotificationErrorCode.NOTIFICATION_NOT_FOUND,
+        status: HttpStatus.NOT_FOUND,
+      });
+      // 매칭 0건이면 unreadCount 재조회 없이 즉시 종료한다.
+      expect(prisma.alarmMap.count).not.toHaveBeenCalled();
     });
   });
 });
