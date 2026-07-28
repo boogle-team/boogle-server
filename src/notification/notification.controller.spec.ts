@@ -1,4 +1,8 @@
-import { ExecutionContext, INestApplication } from '@nestjs/common';
+import {
+  ExecutionContext,
+  INestApplication,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
@@ -111,6 +115,39 @@ describe('NotificationController', () => {
       await request(app.getHttpServer())
         .patch('/notifications/abc/read')
         .expect(400);
+
+      expect(service.markAsRead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('인증 실패 (401)', () => {
+    let app: INestApplication<SupertestApp>;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [NotificationController],
+        providers: [{ provide: NotificationService, useValue: service }],
+      })
+        .overrideGuard(JwtAuthGuard)
+        .useValue({
+          canActivate() {
+            throw new UnauthorizedException();
+          },
+        })
+        .compile();
+
+      app = module.createNestApplication();
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('PATCH /:id/read: 토큰이 없으면 401을 반환하고 서비스를 호출하지 않는다', async () => {
+      await request(app.getHttpServer())
+        .patch('/notifications/5001/read')
+        .expect(401);
 
       expect(service.markAsRead).not.toHaveBeenCalled();
     });
