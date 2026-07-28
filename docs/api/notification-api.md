@@ -1,8 +1,8 @@
 # API 명세서 — 알림
 
 > 담당: 알림(Notification) 백엔드
-> 범위: 알림 목록 조회 (조회 전용 / GET)
-> 관련 기능 ID: `N101`~`N105` (전부 동일 API로 커버)
+> 범위: 알림 목록 조회(GET) · 알림 읽음 처리(PATCH)
+> 관련 기능 ID: `N101`~`N105` (조회는 전부 동일 API로 커버)
 
 ---
 
@@ -105,6 +105,60 @@ Authorization: Bearer eyJhbGc...
 | alarm → (join) | alarm_id로 종류·제목·내용 조인 | category, type, title, content |
 
 > 📌 `alarm_map.alarm_id`는 스키마상 nullable이라, 알람 원본이 없는 행(`alarm: null`)은 목록에서 제외한다.
+
+---
+
+## 3-1. PATCH /api/v1/notifications/{notificationId}/read — 알림 읽음 처리
+
+알림 배너를 탭했을 때 해당 알림을 읽음 처리한다.
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+| Path | `notificationId` | int | ✅ | 알림 ID (`alarm_map.id`) |
+
+- Request Body 없음
+
+```http
+PATCH /api/v1/notifications/5001/read
+Authorization: Bearer eyJhbGc...
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "id": 5001,
+  "isRead": true,
+  "unreadCount": 1
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `id` | number | Y | 처리된 알림 ID |
+| `isRead` | boolean | Y | 처리 결과(항상 `true`) |
+| `unreadCount` | number | Y | 읽음 처리 후 재계산한 안읽음 개수(🔔 뱃지 갱신용) |
+
+> 📌 **멱등**: 이미 읽은 알림을 다시 호출해도 `isRead: true` + 현재 `unreadCount`를 동일하게 반환한다.
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | `notificationId`가 숫자가 아님 |
+| 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 |
+| 404 | `NOTIFICATION_NOT_FOUND` | 존재하지 않거나 **로그인 사용자의 알림이 아님**(소유 검증 실패) |
+
+### DB 처리
+
+| 사용 테이블 | 사용 목적 | 사용 컬럼 |
+| --- | --- | --- |
+| alarm_map | 본인 소유(`id` + `user_id`) 알림의 `is_read`='Y' 갱신 + 갱신 후 안읽음 개수 재계산 | id, user_id, is_read |
+
+> 🔒 소유 검증: `id` + `user_id`로만 갱신(`updateMany`)하고, 매칭 0건이면 404. 타인 알림 존재 여부를 노출하지 않는다.
 
 ---
 

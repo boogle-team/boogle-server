@@ -50,6 +50,13 @@ export interface NotificationItemDto {
   isRead: boolean;
 }
 
+export interface NotificationReadResponseDto {
+  id: number;
+  isRead: boolean;
+  // 읽음 처리 후 다시 센 안읽음 개수(🔔 뱃지 즉시 갱신용).
+  unreadCount: number;
+}
+
 export interface NotificationListResponseDto {
   unreadCount: number;
   notifications: NotificationItemDto[];
