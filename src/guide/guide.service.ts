@@ -369,7 +369,7 @@ export class GuideService {
       if (guide.category === 'P') {
         const patternReason = await this.buildPatternGuideReason(
           userId,
-          guide.title,
+          guide.id,
         );
 
         const response: PatternGuideDetailResponseDto = {
@@ -525,16 +525,15 @@ export class GuideService {
   // 패턴 가이드 이유
   private async buildPatternGuideReason(
     userId: bigint,
-    guideTitle: string,
+    guideId: number,
   ): Promise<PatternGuideReasonDto> {
     const binding = PATTERN_GUIDE_BINDINGS.find(
-      (item) => item.guideTitle === guideTitle,
+      (item) => item.guideId === guideId,
     );
 
     if (binding === undefined) {
-      throw new Error(`Pattern guide binding not found: ${guideTitle}`);
+      throw new Error(`Pattern guide binding not found: ${guideId}`);
     }
-
     const weekStartDate = this.getCurrentMonday();
     const weeklyReport = await this.reportService.getWeeklyReport(userId, {
       weekStartDate: this.toDateString(weekStartDate),

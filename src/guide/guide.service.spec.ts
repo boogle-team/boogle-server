@@ -29,7 +29,7 @@ describe('GuideService', () => {
   };
 
   const healthGuideRow = {
-    id: 7,
+    id: 1,
     title: '정상 배변 횟수는?',
     summary: '정상적인 배변 횟수는 사람마다 달라요.',
     category: 'H',
@@ -184,27 +184,27 @@ describe('GuideService', () => {
     expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
   });
 
-  it('Guide.id로 H 상세을 조회하고 모든 본문, 조언, 추천 Guide를 반환한다', async () => {
+  it('Guide.id로 H 상세를 조회하고 모든 본문, 조언, 추천 Guide를 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue(healthGuideRow);
     prismaMock.guide.findMany.mockResolvedValue([
       {
-        id: 8,
+        id: 2,
         title: '브리스톨 변 형태 척도란?',
         summary: '변 형태를 확인해 보세요.',
       },
       {
-        id: 9,
+        id: 3,
         title: '스트레스와 장의 관계',
         summary: '스트레스와 장의 관계를 알아보세요.',
       },
     ]);
 
-    const result = await service.getGuideDetail(1n, '7');
+    const result = await service.getGuideDetail(1n, '1');
 
     expect(prismaMock.guide.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          id: 7,
+          id: 1,
         },
       }),
     );
@@ -213,7 +213,7 @@ describe('GuideService', () => {
       expect.objectContaining({
         where: {
           id: {
-            not: 7,
+            not: 1,
           },
           category: 'H',
           status: 'A',
@@ -221,7 +221,7 @@ describe('GuideService', () => {
       }),
     );
 
-    expect(result.guideId).toBe(7);
+    expect(result.guideId).toBe(1);
     expect(result.contents).toEqual([
       {
         contentId: 103,
@@ -248,10 +248,10 @@ describe('GuideService', () => {
     expect(result.warningAnalysis).toBeNull();
   });
 
-  it('P Guide에 연결되고 실제 감지된 룰만 patternReason으로 반환한다', async () => {
+  it('P Guide를 ID로 연결해 제목이 변경되어도 실제 감지 룰만 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue({
-      id: 12,
-      title: '묽은 변이 잦다면?',
+      id: 109,
+      title: 'DB에서 문구가 변경된 묽은 변 가이드',
       summary: '묽은 변이 반복될 때 확인해 보세요.',
       category: 'P',
       source: null,
@@ -267,13 +267,13 @@ describe('GuideService', () => {
     });
     reportServiceMock.getWeeklyReport.mockResolvedValue(weeklyPatternReport);
 
-    const result = await service.getGuideDetail(1n, '12');
+    const result = await service.getGuideDetail(1n, '109');
 
     expect(reportServiceMock.getWeeklyReport).toHaveBeenCalledWith(1n, {
       weekStartDate: '2026-07-20',
       includeGuide: false,
     });
-    expect(result.guideId).toBe(12);
+    expect(result.guideId).toBe(109);
     expect(result).not.toHaveProperty('feedbackStatus');
     expect(result.patternReason?.matchedRuleCodes).toEqual([
       'FREQUENT_LOOSE_STOOL',
@@ -287,7 +287,7 @@ describe('GuideService', () => {
 
   it('주간 기록이 부족해도 P Guide의 정적 본문을 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue({
-      id: 4,
+      id: 101,
       title: '수분과 딱딱한 변의 관계',
       summary: '수분과 변 상태의 관계',
       category: 'P',
@@ -317,7 +317,7 @@ describe('GuideService', () => {
       patternCards: [],
     });
 
-    const result = await service.getGuideDetail(1n, '4');
+    const result = await service.getGuideDetail(1n, '101');
 
     expect(result.contents[0].contentId).toBe(103);
     expect(result.patternReason).toMatchObject({
@@ -342,7 +342,7 @@ describe('GuideService', () => {
 
   it('W의 정적 본문과 DB 조언, 사용자별 경고 분석을 함께 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue({
-      id: 18,
+      id: 1001,
       title: '이런 증상이면 전문가 상담을',
       summary: '증상이 지속되면 전문가와 상담해 보세요.',
       category: 'W',
@@ -371,7 +371,7 @@ describe('GuideService', () => {
       },
     ]);
 
-    const result = await service.getGuideDetail(1n, '18');
+    const result = await service.getGuideDetail(1n, '1001');
 
     expect(result.source).toBeNull();
     expect(result.advices).toEqual([
@@ -448,7 +448,7 @@ describe('GuideService', () => {
       },
       guides: [
         {
-          guideId: 4,
+          guideId: 101,
           title: '수분과 딱딱한 변의 관계',
           summary: '수분이 부족했던 날 딱딱한 변이 함께 나타났어요.',
           matchedRuleCodes: ['LOW_WATER_WITH_HARD_STOOL'],
@@ -463,7 +463,7 @@ describe('GuideService', () => {
         category: 'H',
       },
       {
-        id: 18,
+        id: 1001,
         title: '이런 증상이면 전문가 상담을',
         summary: '주의 신호를 확인해보세요.',
         category: 'W',

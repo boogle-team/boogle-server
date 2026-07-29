@@ -238,6 +238,7 @@ function buildTopFoodTags(records: LifeRecordForReport[]): MonthlyPdfFoodTag[] {
     .slice(0, 2);
 }
 
+// 불편감 코드: 'L'(Large) = 심함, 'M'(Medium) = 약간. 생활 요인의 'L'(Low)과 의미가 다름.
 function severity(value: string | null): number {
   if (value === 'L') return 2;
   if (value === 'M') return 1;

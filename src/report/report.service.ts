@@ -705,11 +705,11 @@ export class ReportService {
 
     const guides = await this.prisma.guide.findMany({
       where: {
+        id: {
+          in: matchedBindings.map((binding) => binding.guideId),
+        },
         category: 'P',
         status: 'A',
-        title: {
-          in: matchedBindings.map((binding) => binding.guideTitle),
-        },
       },
       select: {
         id: true,
@@ -738,12 +738,12 @@ export class ReportService {
     const feedbackMap = new Map(
       feedbacks.map((feedback) => [feedback.guideId, feedback.feedback]),
     );
-    const bindingMap = new Map<string, PatternGuideBinding>(
-      matchedBindings.map((binding) => [binding.guideTitle, binding]),
+    const bindingMap = new Map<number, PatternGuideBinding>(
+      matchedBindings.map((binding) => [binding.guideId, binding]),
     );
 
     return guides.flatMap((guide): WeeklyGuideDto[] => {
-      const binding = bindingMap.get(guide.title);
+      const binding = bindingMap.get(guide.id);
 
       if (binding === undefined) {
         return [];

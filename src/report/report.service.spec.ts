@@ -4,9 +4,22 @@ import { ReportService } from './report.service';
 import { ReportErrorCode } from './report-error-code.enum';
 import { BoogleRecordForReport } from './dto/report-record.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
+import type { WeeklyGuideDto } from './dto/weekly-report-response.dto';
+import {
+  WEEKLY_RULE_CODE,
+  type WeeklyRuleCode,
+} from './pattern/weekly-pattern.constants';
 
 function kstDate(dateKey: string, time = '09:00'): Date {
   return new Date(`${dateKey}T${time}:00.000+09:00`);
+}
+
+interface GuideRuleBindingTestAccessor {
+  findGuidesByRules(
+    userId: bigint,
+    ruleCodes: WeeklyRuleCode[],
+    includeGuide: boolean,
+  ): Promise<WeeklyGuideDto[]>;
 }
 
 function createBoogleRecord(
@@ -78,6 +91,49 @@ describe('ReportService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('패턴 가이드를 제목이 아닌 고정 ID로 조회하고 바인딩한다', async () => {
+    prismaMock.guide.findMany.mockResolvedValue([
+      {
+        id: 109,
+        title: 'DB에서 문구가 변경된 묽은 변 가이드',
+        summary: '묽은 변이 반복될 때 확인해 보세요.',
+        category: 'P',
+      },
+    ]);
+    prismaMock.guideFeedback.findMany.mockResolvedValue([]);
+
+    const guideRuleBindingAccessor =
+      service as unknown as GuideRuleBindingTestAccessor;
+
+    const result = await guideRuleBindingAccessor.findGuidesByRules(
+      1n,
+      [WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL],
+      true,
+    );
+
+    expect(prismaMock.guide.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: {
+            in: [109],
+          },
+          category: 'P',
+          status: 'A',
+        },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        guideId: 109,
+        category: 'P',
+        title: 'DB에서 문구가 변경된 묽은 변 가이드',
+        summary: '묽은 변이 반복될 때 확인해 보세요.',
+        matchedRuleCodes: ['FREQUENT_LOOSE_STOOL'],
+        feedbackStatus: null,
+      },
+    ]);
   });
 
   it('잘못된 주 시작일 형식은 REPORT_INVALID_DATE_FORMAT을 반환한다', async () => {

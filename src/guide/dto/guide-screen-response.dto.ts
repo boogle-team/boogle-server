@@ -1,10 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  WEEKLY_RULE_CODE,
   type WeeklyRuleCode,
+  WEEKLY_RULE_CODE,
+  WEEKLY_RULE_CODES,
 } from '@/report/pattern/weekly-pattern.constants';
-
-const WEEKLY_RULE_CODES = Object.values(WEEKLY_RULE_CODE);
 
 export type GuideCategory = 'P' | 'H' | 'W';
 export type GuideFeedbackStatus = 'G' | 'A' | 'N';
@@ -83,41 +82,10 @@ export class GuideCardDto {
   summary!: string;
 }
 
-export class MatchedEvidenceDto {
-  @ApiProperty({
-    enum: ['weekly_record', 'boogle_record', 'life_record'],
-    example: 'boogle_record',
-    description: '패턴 근거 데이터의 출처',
-  })
-  sourceTable!: 'weekly_record' | 'boogle_record' | 'life_record';
-
-  @ApiProperty({
-    type: String,
-    example: 'stoolSimple',
-    description: '패턴 판정에 사용한 필드',
-  })
-  sourceField!: string;
-
-  @ApiProperty({
-    type: String,
-    example: 'stoolSimple = H',
-    description: '패턴 판정 조건',
-  })
-  condition!: string;
-
-  @ApiProperty({
-    type: Number,
-    example: 3,
-    minimum: 0,
-    description: '조건을 만족한 기록 수',
-  })
-  count!: number;
-}
-
 export class PatternGuideDto {
   @ApiProperty({
     type: Number,
-    example: 4,
+    example: 101,
     minimum: 1,
     description: '패턴에 연결된 가이드 ID',
   })

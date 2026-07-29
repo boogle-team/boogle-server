@@ -228,7 +228,7 @@ export class PatternCardDto {
   @ApiProperty({ nullable: true, example: '딱딱한 변이 자주 나타났어요.' })
   description!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 4 })
+  @ApiPropertyOptional({ nullable: true, example: 101 })
   guideId?: number | null;
 
   @ApiPropertyOptional({ type: [PatternEvidenceMetricDto] })
@@ -236,7 +236,7 @@ export class PatternCardDto {
 }
 
 export class WeeklyGuideDto {
-  @ApiProperty({ example: 4 })
+  @ApiProperty({ example: 101 })
   guideId!: number;
 
   @ApiProperty({ enum: ['P'] })

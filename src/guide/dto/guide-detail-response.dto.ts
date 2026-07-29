@@ -1,11 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   WEEKLY_RULE_CODE,
-  type WeeklyRuleCode,
+  WEEKLY_RULE_CODES,
 } from '@/report/pattern/weekly-pattern.constants';
+import type { WeeklyRuleCode } from '@/report/pattern/weekly-pattern.constants';
 import { GuidePeriodDto } from './guide-screen-response.dto';
-
-const WEEKLY_RULE_CODES = Object.values(WEEKLY_RULE_CODE);
 
 export class GuideContentItemDto {
   @ApiProperty({

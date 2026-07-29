@@ -37,7 +37,10 @@ describe('ReportController', () => {
     expect(controller).toBeDefined();
   });
 
-  function getResponseMessage(prototype: object, methodName: string): unknown {
+  function getResponseMessage(
+    prototype: object,
+    methodName: string,
+  ): string | undefined {
     const method: unknown = Reflect.get(prototype, methodName);
 
     if (typeof method !== 'function') {

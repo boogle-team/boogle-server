@@ -26,6 +26,8 @@ export const WEEKLY_RULE_CODE = {
   NO_EXERCISE_WITH_LONG_INTERVAL: 'NO_EXERCISE_WITH_LONG_INTERVAL',
 } as const;
 
+export const WEEKLY_RULE_CODES = Object.values(WEEKLY_RULE_CODE);
+
 export type WeeklyRuleCode =
   (typeof WEEKLY_RULE_CODE)[keyof typeof WEEKLY_RULE_CODE];
 
@@ -149,7 +151,7 @@ export const WEEKLY_RULE_DEFINITIONS: readonly WeeklyRuleDefinition[] = [
     order: 16,
     ruleCode: WEEKLY_RULE_CODE.FOOD_WITH_LOOSE_STOOL,
     title: '음주·야식과 묽은 변',
-    description: '음주·야식과 묽은 변이 자주 함께 나타났어요',
+    description: '음주·야식과 묽은 변이 자주 함께 나타났어요.',
     level: 'WARN',
   },
   {
@@ -217,69 +219,89 @@ export const WEEKLY_RULE_DEFINITIONS: readonly WeeklyRuleDefinition[] = [
   },
 ] as const;
 
+export const PATTERN_GUIDE_ID = {
+  WATER_AND_HARD_STOOL: 101,
+  SLEEP_AND_GUT_CONDITION: 102,
+  REPEATED_DISTENSION: 103,
+  REPEATED_REMAINING_FEELING: 104,
+  REPEATED_URGENCY: 105,
+  PROLONGED_BOWEL_TIME: 106,
+  LOW_STOOL_AMOUNT: 107,
+  LONG_NO_BOWEL_INTERVAL: 108,
+  LOOSE_STOOL: 109,
+  FOOD_AND_GUT_HEALTH: 110,
+  HORMONE_AND_GUT_HEALTH: 111,
+  IRREGULAR_MEAL: 112,
+  CAFFEINE_AND_GUT: 113,
+  NO_EXERCISE_AND_GUT: 114,
+} as const;
+
+export type PatternGuideId =
+  (typeof PATTERN_GUIDE_ID)[keyof typeof PATTERN_GUIDE_ID];
+
 export interface PatternGuideBinding {
-  guideTitle: string;
+  guideId: PatternGuideId;
   ruleCodes: readonly WeeklyRuleCode[];
 }
 
 export const PATTERN_GUIDE_BINDINGS: readonly PatternGuideBinding[] = [
   {
-    guideTitle: '수분과 딱딱한 변의 관계',
+    guideId: PATTERN_GUIDE_ID.WATER_AND_HARD_STOOL,
     ruleCodes: [WEEKLY_RULE_CODE.LOW_WATER_WITH_HARD_STOOL],
   },
   {
-    guideTitle: '수면과 장 컨디션',
+    guideId: PATTERN_GUIDE_ID.SLEEP_AND_GUT_CONDITION,
     ruleCodes: [WEEKLY_RULE_CODE.CONTINUOUS_LOW_SLEEP],
   },
   {
-    guideTitle: '복부 팽만이 반복된다면?',
+    guideId: PATTERN_GUIDE_ID.REPEATED_DISTENSION,
     ruleCodes: [WEEKLY_RULE_CODE.REPEATED_DISTENSION],
   },
   {
-    guideTitle: '잔변감이 자주 느껴진다면',
+    guideId: PATTERN_GUIDE_ID.REPEATED_REMAINING_FEELING,
     ruleCodes: [WEEKLY_RULE_CODE.REPEATED_REMAINING_FEELING],
   },
   {
-    guideTitle: '급박감이 있다면?',
+    guideId: PATTERN_GUIDE_ID.REPEATED_URGENCY,
     ruleCodes: [WEEKLY_RULE_CODE.REPEATED_URGENCY],
   },
   {
-    guideTitle: '배변 시간이 길어진다면',
+    guideId: PATTERN_GUIDE_ID.PROLONGED_BOWEL_TIME,
     ruleCodes: [WEEKLY_RULE_CODE.PROLONGED_BOWEL_TIME],
   },
   {
-    guideTitle: '배변 양이란?',
+    guideId: PATTERN_GUIDE_ID.LOW_STOOL_AMOUNT,
     ruleCodes: [WEEKLY_RULE_CODE.LOW_STOOL_AMOUNT],
   },
   {
-    guideTitle: '배변이 며칠간 없다면?',
+    guideId: PATTERN_GUIDE_ID.LONG_NO_BOWEL_INTERVAL,
     ruleCodes: [WEEKLY_RULE_CODE.LONG_NO_BOWEL_INTERVAL],
   },
   {
-    guideTitle: '묽은 변이 잦다면?',
+    guideId: PATTERN_GUIDE_ID.LOOSE_STOOL,
     ruleCodes: [
       WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL,
       WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL,
     ],
   },
   {
-    guideTitle: '음식과 장 건강의 관계',
+    guideId: PATTERN_GUIDE_ID.FOOD_AND_GUT_HEALTH,
     ruleCodes: [WEEKLY_RULE_CODE.FOOD_WITH_LOOSE_STOOL],
   },
   {
-    guideTitle: '호르몬과 장 건강의 관계',
+    guideId: PATTERN_GUIDE_ID.HORMONE_AND_GUT_HEALTH,
     ruleCodes: [WEEKLY_RULE_CODE.HORMONE_WITH_STOOL_CHANGE],
   },
   {
-    guideTitle: '식사가 불규칙하다면?',
+    guideId: PATTERN_GUIDE_ID.IRREGULAR_MEAL,
     ruleCodes: [WEEKLY_RULE_CODE.IRREGULAR_MEAL],
   },
   {
-    guideTitle: '카페인과 장의 관계',
+    guideId: PATTERN_GUIDE_ID.CAFFEINE_AND_GUT,
     ruleCodes: [WEEKLY_RULE_CODE.CAFFEINE_WITH_STOOL_CHANGE],
   },
   {
-    guideTitle: '운동 부족과 장의 관계',
+    guideId: PATTERN_GUIDE_ID.NO_EXERCISE_AND_GUT,
     ruleCodes: [WEEKLY_RULE_CODE.NO_EXERCISE_WITH_LONG_INTERVAL],
   },
 ] as const;

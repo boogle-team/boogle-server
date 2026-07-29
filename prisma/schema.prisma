@@ -294,7 +294,7 @@ model Guide {
   summary   String @db.VarChar(255)
   category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
   regDate   DateTime @default(now())
-  updateAt  DateTime? @map("update_date")
+  updateAt  DateTime? @updatedAt @map("update_date")
   status    String @db.Char(1) @default("A")
   source    String? @db.VarChar(255)
 
@@ -334,7 +334,7 @@ model GuideFeedback {
   guideId        Int       @map("guide_id")
   feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
   regDate        DateTime  @default(now()) @map("reg_date")
-  updateDate     DateTime? @map("update_date") // 수정시 수정시각
+  updateDate     DateTime? @updatedAt @map("update_date") // 수정시 수정시각
 
   user         Member       @relation(fields: [userId], references: [id])
   guide Guide @relation(fields: [guideId], references: [id])
