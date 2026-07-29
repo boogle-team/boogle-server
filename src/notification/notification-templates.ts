@@ -60,17 +60,23 @@ export const NOTIFICATION_TEMPLATES: Record<
 
 export type NotificationTemplateParams = Record<string, string | number>;
 
-// 템플릿 문자열의 `{키}`를 params 값으로 치환한다. 치환 후에도 `{...}`가
-// 남아 있으면(= 값 누락) 에러를 던져 호출부 실수를 조기에 드러낸다.
+// 템플릿 문자열에 등장하는 `{키}` 자리표시자 목록을 추출한다.
+// (템플릿의 placeholder가 requiredParams에 빠짐없이 선언됐는지 테스트로 검증)
+export function extractPlaceholders(template: string): string[] {
+  return [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]);
+}
+
+// 템플릿 문자열의 `{키}`를 params 값으로 치환한다.
+// 필수 파라미터 검증은 NotificationCreationService에서 requiredParams 기준으로
+// 선행(BusinessException)하므로, 여기까지 값이 없다면 템플릿 설정 오류
+// (placeholder가 requiredParams에 누락)다. 이는 단위 테스트가 잡으며, 런타임에선
+// 크래시 대신 원본 자리표시자를 그대로 남긴다.
 export function renderTemplate(
   template: string,
   params?: NotificationTemplateParams,
 ): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
     const value = params?.[key];
-    if (value === undefined || value === null) {
-      throw new Error(`알림 템플릿 파라미터 누락: {${key}}`);
-    }
-    return String(value);
+    return value === undefined || value === null ? match : String(value);
   });
 }
