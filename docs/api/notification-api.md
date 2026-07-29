@@ -164,7 +164,10 @@ Authorization: Bearer eyJhbGc...
 
 ## 4. 알림 생성(트리거) 규칙 — 이 API 범위 밖 (참고용)
 
-`alarm_map` insert는 각 도메인/배치가 담당하며, 이 조회 API는 관여하지 않는다.
+알림 생성(어느 유저에게 어떤 알림을 심을지)은 각 도메인/배치가 담당하며, 이
+조회 API는 관여하지 않는다. **단, `alarm`/`alarm_map`을 직접 insert하지 말고
+§4-1의 `NotificationCreationService.create()`를 호출한다** (문구·category·소유
+처리를 공용 헬퍼가 담당). "언제 심을지"(트리거)만 각 도메인이 붙이면 된다.
 
 | 기능ID | 발송 조건 | 트리거 방식 | 담당(추정) |
 | --- | --- | --- | --- |

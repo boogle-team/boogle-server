@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { BusinessException } from '@/common/exceptions/business.exception';
+import { NotificationErrorCode } from './notification-error-code.enum';
 import { NotificationType } from './dto/notification-response.dto';
 import {
   NOTIFICATION_TEMPLATES,
@@ -33,6 +35,20 @@ export class NotificationCreationService {
 
   async create(input: CreateNotificationInput): Promise<CreatedNotification> {
     const template = NOTIFICATION_TEMPLATES[input.type];
+
+    // 유형별 필수 파라미터 누락은 호출부(도메인) 계약 위반이므로, 일반 Error가
+    // 아니라 도메인 예외로 변환해 표준 에러 응답 형식으로 노출한다.
+    const missingParams = template.requiredParams.filter(
+      (key) =>
+        input.params?.[key] === undefined || input.params?.[key] === null,
+    );
+    if (missingParams.length > 0) {
+      throw new BusinessException(
+        NotificationErrorCode.NOTIFICATION_INVALID_PARAMS,
+        `알림(${input.type}) 생성에 필요한 파라미터가 누락됐습니다: ${missingParams.join(', ')}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     // 치환된 최종 문구를 alarm 행에 저장한다(조회 API가 alarm.title/content를
     // 그대로 내려주므로 유저별 문구가 그대로 반영된다).

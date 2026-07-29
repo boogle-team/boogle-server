@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { NotificationErrorCode } from './notification-error-code.enum';
 import { NotificationCreationService } from './notification-creation.service';
 
 describe('NotificationCreationService', () => {
@@ -92,10 +94,22 @@ describe('NotificationCreationService', () => {
     });
   });
 
-  it('필수 파라미터가 없으면 에러를 던지고 alarm을 생성하지 않는다', async () => {
+  it('STREAK의 days 누락 시 NOTIFICATION_INVALID_PARAMS(500)를 던지고 alarm을 생성하지 않는다', async () => {
     await expect(
       service.create({ userId: '1', type: 'STREAK' }),
-    ).rejects.toThrow('알림 템플릿 파라미터 누락: {days}');
+    ).rejects.toMatchObject({
+      errorCode: NotificationErrorCode.NOTIFICATION_INVALID_PARAMS,
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+    });
+    expect(tx.alarm.create).not.toHaveBeenCalled();
+  });
+
+  it('WARNING의 color 누락 시 NOTIFICATION_INVALID_PARAMS를 던진다', async () => {
+    await expect(
+      service.create({ userId: '1', type: 'WARNING' }),
+    ).rejects.toMatchObject({
+      errorCode: NotificationErrorCode.NOTIFICATION_INVALID_PARAMS,
+    });
     expect(tx.alarm.create).not.toHaveBeenCalled();
   });
 });
