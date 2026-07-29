@@ -13,6 +13,7 @@ export interface GuideDetailRow {
   id: number;
   title: string;
   summary: string;
+  source: string | null;
   category: string;
   status: string;
   guideContents: GuideContentRow[];

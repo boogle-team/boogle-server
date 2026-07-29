@@ -3,10 +3,7 @@ import {
   WEEKLY_RULE_CODE,
   type WeeklyRuleCode,
 } from '@/report/pattern/weekly-pattern.constants';
-import {
-  GuidePeriodDto,
-  type GuideFeedbackStatus,
-} from './guide-screen-response.dto';
+import { GuidePeriodDto } from './guide-screen-response.dto';
 
 const WEEKLY_RULE_CODES = Object.values(WEEKLY_RULE_CODE);
 
@@ -339,13 +336,12 @@ export class GuideDetailCommonDto {
   recommendedGuides!: RecommendedGuideDto[];
 
   @ApiProperty({
-    enum: ['G', 'A', 'N'],
+    type: String,
     nullable: true,
-    example: 'G',
-    description:
-      '현재 사용자의 가이드 피드백. G 도움됨, A 이미 알고 있음, N 잘 모르겠음. 피드백이 없으면 null',
+    example: 'NIDDK · 질병관리청 국가건강정보포털',
+    description: '가이드 내용의 출처. 등록된 출처가 없으면 null',
   })
-  feedbackStatus!: GuideFeedbackStatus | null;
+  source!: string | null;
 }
 
 export class HealthGuideDetailResponseDto extends GuideDetailCommonDto {

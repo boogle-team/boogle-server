@@ -81,15 +81,6 @@ export class GuideCardDto {
     description: '가이드 요약',
   })
   summary!: string;
-
-  @ApiProperty({
-    enum: ['G', 'A', 'N'],
-    nullable: true,
-    example: null,
-    description:
-      '가이드 피드백. G 도움됨, A 이미 알고 있음, N 잘 모르겠음. 피드백이 없거나 includeFeedback=false이면 null',
-  })
-  feedbackStatus!: GuideFeedbackStatus | null;
 }
 
 export class MatchedEvidenceDto {
@@ -163,15 +154,6 @@ export class PatternGuideDto {
     description: '이 가이드에 매칭된 주간 패턴 rule code',
   })
   matchedRuleCodes!: WeeklyRuleCode[];
-
-  @ApiProperty({
-    enum: ['G', 'A', 'N'],
-    nullable: true,
-    example: null,
-    description:
-      '가이드 피드백. 피드백이 없거나 includeFeedback=false이면 null',
-  })
-  feedbackStatus!: GuideFeedbackStatus | null;
 }
 
 export class PatternGuideSectionDto {
@@ -188,10 +170,11 @@ export class PatternGuideSectionDto {
   categoryLabel!: '패턴 기반';
 
   @ApiProperty({
-    type: String,
-    example: '내 패턴 기반 가이드',
+    enum: ['내 패턴 기반'],
+    example: '내 패턴 기반',
+    description: '패턴 기반 가이드 섹션 제목',
   })
-  sectionTitle!: string;
+  sectionTitle!: '내 패턴 기반';
 
   @ApiProperty({
     type: String,
@@ -256,10 +239,11 @@ export class HealthGuideSectionDto {
   categoryLabel!: '장 건강';
 
   @ApiProperty({
-    type: String,
+    enum: ['장 건강 기본 정보'],
     example: '장 건강 기본 정보',
+    description: '장 건강 기본 정보 가이드 섹션 제목',
   })
-  sectionTitle!: string;
+  sectionTitle!: '장 건강 기본 정보';
 
   @ApiProperty({
     type: String,
@@ -312,10 +296,11 @@ export class WarningGuideSectionDto {
   categoryLabel!: '주의 신호';
 
   @ApiProperty({
-    type: String,
+    enum: ['주의 신호'],
     example: '주의 신호',
+    description: '주의 신호 가이드 섹션 제목',
   })
-  sectionTitle!: string;
+  sectionTitle!: '주의 신호';
 
   @ApiProperty({
     type: String,

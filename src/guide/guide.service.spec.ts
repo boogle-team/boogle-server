@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GuideService } from './guide.service';
 import { ReportService } from '@/report/report.service';
-import { GuideErrorCode } from './guide-error-code.enum';
 
 describe('GuideService', () => {
   let service: GuideService;
@@ -34,6 +33,7 @@ describe('GuideService', () => {
     title: '정상 배변 횟수는?',
     summary: '정상적인 배변 횟수는 사람마다 달라요.',
     category: 'H',
+    source: null,
     status: 'A',
     guideContents: [
       {
@@ -101,6 +101,8 @@ describe('GuideService', () => {
   };
 
   beforeEach(async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-22T03:00:00.000Z'));
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -118,6 +120,10 @@ describe('GuideService', () => {
     }).compile();
 
     service = module.get<GuideService>(GuideService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should be defined', () => {
@@ -142,10 +148,7 @@ describe('GuideService', () => {
     prismaMock.guide.findMany.mockResolvedValue([]);
     prismaMock.boogleRecord.findMany.mockResolvedValue([]);
 
-    await service.getGuideScreen(1n, {
-      monthStartDate: '2026-07-01',
-      weekStartDate: '2026-07-20',
-    });
+    await service.getGuideScreen(1n);
 
     expect(prismaMock.boogleRecord.findMany).toHaveBeenCalledWith({
       where: {
@@ -177,23 +180,12 @@ describe('GuideService', () => {
         regDate: 'asc',
       },
     });
-  });
 
-  it('월요일이 아닌 주 시작일을 Report 호출 전에 거부한다', async () => {
-    await expect(
-      service.getGuideScreen(1n, {
-        weekStartDate: '2026-07-21',
-      }),
-    ).rejects.toMatchObject({
-      errorCode: GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-    });
-
-    expect(reportServiceMock.getWeeklyReport).not.toHaveBeenCalled();
+    expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
   });
 
   it('Guide.id로 H 상세을 조회하고 모든 본문, 조언, 추천 Guide를 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue(healthGuideRow);
-    prismaMock.guideFeedback.findUnique.mockResolvedValue(null);
     prismaMock.guide.findMany.mockResolvedValue([
       {
         id: 8,
@@ -207,7 +199,7 @@ describe('GuideService', () => {
       },
     ]);
 
-    const result = await service.getGuideDetail(1n, '7', {});
+    const result = await service.getGuideDetail(1n, '7');
 
     expect(prismaMock.guide.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -262,6 +254,7 @@ describe('GuideService', () => {
       title: '묽은 변이 잦다면?',
       summary: '묽은 변이 반복될 때 확인해 보세요.',
       category: 'P',
+      source: null,
       status: 'A',
       guideContents: [
         {
@@ -272,21 +265,16 @@ describe('GuideService', () => {
       ],
       guideAdvices: [],
     });
-    prismaMock.guideFeedback.findUnique.mockResolvedValue({
-      feedback: 'G',
-    });
     reportServiceMock.getWeeklyReport.mockResolvedValue(weeklyPatternReport);
 
-    const result = await service.getGuideDetail(1n, '12', {
-      weekStartDate: '2026-07-20',
-    });
+    const result = await service.getGuideDetail(1n, '12');
 
     expect(reportServiceMock.getWeeklyReport).toHaveBeenCalledWith(1n, {
       weekStartDate: '2026-07-20',
       includeGuide: false,
     });
     expect(result.guideId).toBe(12);
-    expect(result.feedbackStatus).toBe('G');
+    expect(result).not.toHaveProperty('feedbackStatus');
     expect(result.patternReason?.matchedRuleCodes).toEqual([
       'FREQUENT_LOOSE_STOOL',
       'CONTINUOUS_LOOSE_STOOL',
@@ -303,6 +291,7 @@ describe('GuideService', () => {
       title: '수분과 딱딱한 변의 관계',
       summary: '수분과 변 상태의 관계',
       category: 'P',
+      source: null,
       status: 'A',
       guideContents: [
         {
@@ -313,7 +302,6 @@ describe('GuideService', () => {
       ],
       guideAdvices: [],
     });
-    prismaMock.guideFeedback.findUnique.mockResolvedValue(null);
     reportServiceMock.getWeeklyReport.mockResolvedValue({
       period: {
         type: 'WEEKLY',
@@ -329,9 +317,7 @@ describe('GuideService', () => {
       patternCards: [],
     });
 
-    const result = await service.getGuideDetail(1n, '4', {
-      weekStartDate: '2026-07-20',
-    });
+    const result = await service.getGuideDetail(1n, '4');
 
     expect(result.contents[0].contentId).toBe(103);
     expect(result.patternReason).toMatchObject({
@@ -360,6 +346,7 @@ describe('GuideService', () => {
       title: '이런 증상이면 전문가 상담을',
       summary: '증상이 지속되면 전문가와 상담해 보세요.',
       category: 'W',
+      source: null,
       status: 'A',
       guideContents: [
         {
@@ -375,7 +362,6 @@ describe('GuideService', () => {
         },
       ],
     });
-    prismaMock.guideFeedback.findUnique.mockResolvedValue(null);
     prismaMock.boogleRecord.findMany.mockResolvedValue([
       {
         id: 9001n,
@@ -385,10 +371,9 @@ describe('GuideService', () => {
       },
     ]);
 
-    const result = await service.getGuideDetail(1n, '18', {
-      monthStartDate: '2026-07-01',
-    });
+    const result = await service.getGuideDetail(1n, '18');
 
+    expect(result.source).toBeNull();
     expect(result.advices).toEqual([
       {
         adviceId: 501,
@@ -439,15 +424,65 @@ describe('GuideService', () => {
       },
     ]);
 
-    const result = await service.getGuideScreen(1n, {
-      weekStartDate: '2026-07-20',
-      monthStartDate: '2026-07-01',
-    });
+    const result = await service.getGuideScreen(1n);
 
     expect(result.warningGuideSection.detectedFlags).toContainEqual({
       flagCode: 'FLAG_PAIN_SEVERE',
       label: '심한 복통이 기록되었어요.',
       detectedDate: '2026-07-23',
     });
+  });
+
+  it('가이드 화면의 섹션 제목을 고정하고 피드백 필드를 반환하지 않는다', async () => {
+    reportServiceMock.getWeeklyReport.mockResolvedValue({
+      period: {
+        type: 'WEEKLY',
+        startDate: '2026-07-20',
+        endDate: '2026-07-26',
+      },
+      dataStatus: 'ENOUGH',
+      recordStats: {
+        recordedDays: 5,
+        requiredDays: 3,
+        completionScore: 71.4,
+      },
+      guides: [
+        {
+          guideId: 4,
+          title: '수분과 딱딱한 변의 관계',
+          summary: '수분이 부족했던 날 딱딱한 변이 함께 나타났어요.',
+          matchedRuleCodes: ['LOW_WATER_WITH_HARD_STOOL'],
+        },
+      ],
+    });
+    prismaMock.guide.findMany.mockResolvedValue([
+      {
+        id: 1,
+        title: '정상 배변 횟수는?',
+        summary: '정상 배변 범위를 확인해보세요.',
+        category: 'H',
+      },
+      {
+        id: 18,
+        title: '이런 증상이면 전문가 상담을',
+        summary: '주의 신호를 확인해보세요.',
+        category: 'W',
+      },
+    ]);
+    prismaMock.boogleRecord.findMany.mockResolvedValue([]);
+
+    const result = await service.getGuideScreen(1n);
+    const cards = [
+      ...result.patternGuideSection.guides,
+      ...result.healthGuideSection.guides,
+      ...result.warningGuideSection.guides,
+    ];
+
+    expect(result.patternGuideSection.sectionTitle).toBe('내 패턴 기반');
+    expect(cards).toHaveLength(3);
+    cards.forEach((card) => {
+      expect(card).not.toHaveProperty('feedbackStatus');
+    });
+    expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
   });
 });

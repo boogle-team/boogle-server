@@ -11,14 +11,12 @@ import {
   kstDayStart,
   toKstDateKey,
 } from '@/common/utils/kst-date.util';
-import type { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
 import type {
   GuideFeedbackStatus,
   GuideScreenResponseDto,
   WarningFlagDto,
 } from './dto/guide-screen-response.dto';
 import { GuideErrorCode } from './guide-error-code.enum';
-import type { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
 import type {
   GuideAdviceItemDto,
   GuideContentItemDto,
@@ -43,12 +41,6 @@ import type {
   WarningRecordRow,
 } from './dto/guide-record.dto';
 
-const GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES: ReadonlySet<string> =
-  new Set<string>([
-    GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-    GuideErrorCode.GUIDE_INVALID_MONTH_FORMAT,
-  ]);
-
 const INTERNAL_SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
 
 @Injectable()
@@ -58,14 +50,10 @@ export class GuideService {
     private readonly reportService: ReportService,
   ) {}
 
-  async getGuideScreen(
-    userId: bigint,
-    query: GetGuideScreenQueryDto,
-  ): Promise<GuideScreenResponseDto> {
+  async getGuideScreen(userId: bigint): Promise<GuideScreenResponseDto> {
     try {
-      const includeFeedback = query.includeFeedback ?? true;
-      const weekStartDate = this.resolveWeekStartDate(query.weekStartDate);
-      const monthStartDate = this.resolveMonthStartDate(query.monthStartDate);
+      const weekStartDate = this.getCurrentMonday();
+      const monthStartDate = this.getCurrentMonthStartDate();
       const nextMonthStartDate = this.addMonths(monthStartDate, 1);
       const monthEndDate = this.addDays(nextMonthStartDate, -1);
 
@@ -104,15 +92,6 @@ export class GuideService {
       const warningGuideRows = staticGuides.filter(
         (guide) => guide.category === 'W',
       );
-      const allGuideIds = [
-        ...weeklyReport.guides.map((guide) => guide.guideId),
-        ...staticGuides.map((guide) => guide.id),
-      ];
-      const feedbackMap = await this.findFeedbackMap(
-        userId,
-        allGuideIds,
-        includeFeedback,
-      );
 
       const patternGuides =
         weeklyReport.dataStatus === 'ENOUGH'
@@ -122,7 +101,6 @@ export class GuideService {
               title: guide.title,
               summary: guide.summary,
               matchedRuleCodes: guide.matchedRuleCodes,
-              feedbackStatus: feedbackMap.get(guide.guideId) ?? null,
             }))
           : [];
 
@@ -136,7 +114,7 @@ export class GuideService {
         patternGuideSection: {
           category: 'P',
           categoryLabel: '패턴 기반',
-          sectionTitle: '내 패턴 기반 가이드',
+          sectionTitle: '내 패턴 기반',
           sectionDescription:
             '이번 주 기록을 바탕으로 맞춤 가이드를 보여드려요.',
           period: weeklyReport.period,
@@ -165,7 +143,6 @@ export class GuideService {
             category: 'H' as const,
             title: guide.title,
             summary: guide.summary,
-            feedbackStatus: feedbackMap.get(guide.id) ?? null,
           })),
         },
         warningGuideSection: {
@@ -185,18 +162,10 @@ export class GuideService {
             category: 'W' as const,
             title: guide.title,
             summary: guide.summary,
-            feedbackStatus: feedbackMap.get(guide.id) ?? null,
           })),
         },
       };
-    } catch (error) {
-      if (
-        error instanceof BusinessException &&
-        GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES.has(error.errorCode)
-      ) {
-        throw error;
-      }
-
+    } catch {
       throw new BusinessException(
         GuideErrorCode.GUIDE_FETCH_FAILED,
         '가이드 화면 조회 중 오류가 발생했습니다.',
@@ -244,41 +213,6 @@ export class GuideService {
     });
   }
 
-  private async findFeedbackMap(
-    userId: bigint,
-    guideIds: number[],
-    includeFeedback: boolean,
-  ): Promise<Map<number, GuideFeedbackStatus>> {
-    if (!includeFeedback || guideIds.length === 0) {
-      return new Map();
-    }
-
-    const uniqueGuideIds = [...new Set(guideIds)];
-
-    const feedbacks = await this.prisma.guideFeedback.findMany({
-      where: {
-        userId,
-        guideId: {
-          in: uniqueGuideIds,
-        },
-      },
-      select: {
-        guideId: true,
-        feedback: true,
-      },
-    });
-
-    const feedbackMap = new Map<number, GuideFeedbackStatus>();
-
-    for (const feedback of feedbacks) {
-      if (this.isGuideFeedbackStatus(feedback.feedback)) {
-        feedbackMap.set(feedback.guideId, feedback.feedback);
-      }
-    }
-
-    return feedbackMap;
-  }
-
   private detectWarningFlags(records: WarningRecordRow[]): WarningFlagDto[] {
     const flagMap = new Map<WarningFlagDto['flagCode'], WarningFlagDto>();
 
@@ -323,53 +257,9 @@ export class GuideService {
     });
   }
 
-  private isGuideFeedbackStatus(value: string): value is GuideFeedbackStatus {
-    return value === 'G' || value === 'A' || value === 'N';
-  }
-
-  private resolveWeekStartDate(value?: string): Date {
-    if (value === undefined || value.trim() === '') {
-      return this.getCurrentMonday();
-    }
-
-    const parsedDate = this.parseDateString(value);
-
-    if (parsedDate === null) {
-      throw new BusinessException(
-        GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-        'weekStartDate는 YYYY-MM-DD 형식이어야 합니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    if (parsedDate.getUTCDay() !== 1) {
-      throw new BusinessException(
-        GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-        'weekStartDate는 월요일이어야 합니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return parsedDate;
-  }
-
-  private resolveMonthStartDate(value?: string): Date {
-    if (value === undefined || value.trim() === '') {
-      const todayKey = getTodayKstDateKey();
-      return this.parseDateString(`${todayKey.slice(0, 7)}-01`)!;
-    }
-
-    const parsedDate = this.parseDateString(value);
-
-    if (parsedDate === null || parsedDate.getUTCDate() !== 1) {
-      throw new BusinessException(
-        GuideErrorCode.GUIDE_INVALID_MONTH_FORMAT,
-        'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return parsedDate;
+  private getCurrentMonthStartDate(): Date {
+    const todayKey = getTodayKstDateKey();
+    return this.parseDateString(`${todayKey.slice(0, 7)}-01`)!;
   }
 
   private toKstBoundary(calendarDate: Date): Date {
@@ -429,7 +319,6 @@ export class GuideService {
   async getGuideDetail(
     userId: bigint,
     rawGuideId: string,
-    query: GetGuideDetailQueryDto,
   ): Promise<GuideDetailResponseDto> {
     try {
       const guideId = this.parseGuideId(rawGuideId);
@@ -451,15 +340,13 @@ export class GuideService {
         );
       }
 
-      const feedbackStatus = await this.findGuideFeedback(userId, guideId);
-
       const common = {
         guideId: guide.id,
         title: guide.title,
         summary: guide.summary,
+        source: guide.source,
         contents: this.mapGuideContents(guide.guideContents),
         advices: this.mapGuideAdvices(guide.guideAdvices),
-        feedbackStatus,
       };
 
       if (guide.category === 'H') {
@@ -483,7 +370,6 @@ export class GuideService {
         const patternReason = await this.buildPatternGuideReason(
           userId,
           guide.title,
-          query,
         );
 
         const response: PatternGuideDetailResponseDto = {
@@ -499,10 +385,7 @@ export class GuideService {
       }
 
       if (guide.category === 'W') {
-        const warningAnalysis = await this.buildWarningGuideAnalysis(
-          userId,
-          query,
-        );
+        const warningAnalysis = await this.buildWarningGuideAnalysis(userId);
 
         const response: WarningGuideDetailResponseDto = {
           ...common,
@@ -542,6 +425,7 @@ export class GuideService {
         id: true,
         title: true,
         summary: true,
+        source: true,
         category: true,
         status: true,
         guideContents: {
@@ -588,26 +472,6 @@ export class GuideService {
     }));
   }
 
-  private async findGuideFeedback(
-    userId: bigint,
-    guideId: number,
-  ): Promise<GuideFeedbackStatus | null> {
-    const feedback = await this.prisma.guideFeedback.findUnique({
-      where: {
-        userId_guideId: {
-          userId,
-          guideId,
-        },
-      },
-      select: {
-        feedback: true,
-      },
-    });
-
-    return feedback !== null && this.isGuideFeedbackStatus(feedback.feedback)
-      ? feedback.feedback
-      : null;
-  }
   // 현재 가이드 제외 활성 장건강 추천
   private async findRecommendedHealthGuides(
     currentGuideId: number,
@@ -662,7 +526,6 @@ export class GuideService {
   private async buildPatternGuideReason(
     userId: bigint,
     guideTitle: string,
-    query: GetGuideDetailQueryDto,
   ): Promise<PatternGuideReasonDto> {
     const binding = PATTERN_GUIDE_BINDINGS.find(
       (item) => item.guideTitle === guideTitle,
@@ -672,7 +535,7 @@ export class GuideService {
       throw new Error(`Pattern guide binding not found: ${guideTitle}`);
     }
 
-    const weekStartDate = this.resolveWeekStartDate(query.weekStartDate);
+    const weekStartDate = this.getCurrentMonday();
     const weeklyReport = await this.reportService.getWeeklyReport(userId, {
       weekStartDate: this.toDateString(weekStartDate),
       includeGuide: false,
@@ -784,12 +647,10 @@ export class GuideService {
 
   private async buildWarningGuideAnalysis(
     userId: bigint,
-    query: GetGuideDetailQueryDto,
   ): Promise<WarningGuideAnalysisDto> {
-    const monthStartDate = this.resolveMonthStartDate(query.monthStartDate);
+    const monthStartDate = this.getCurrentMonthStartDate();
     const nextMonthStartDate = this.addMonths(monthStartDate, 1);
     const monthEndDate = this.addDays(nextMonthStartDate, -1);
-
     const records = await this.findWarningDetailRecords(
       userId,
       monthStartDate,

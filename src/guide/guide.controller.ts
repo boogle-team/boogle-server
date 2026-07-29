@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -28,13 +27,8 @@ import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ResponseMessage } from '@/common/decorators/response-message.decorator';
 import { ErrorResponseDto } from '@/common/dto/api-response.dto';
-import {
-  errorExample,
-  errorExamples,
-} from '@/common/swagger/error-example.util';
-import { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
+import { errorExamples } from '@/common/swagger/error-example.util';
 import { GuideScreenResponseDto } from './dto/guide-screen-response.dto';
-import { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
 import {
   type GuideDetailResponseDto,
   HealthGuideDetailResponseDto,
@@ -87,31 +81,6 @@ export class GuideController {
     description: '가이드 화면 조회 성공',
     message: '가이드 화면 조회에 성공했습니다.',
   })
-  @ApiBadRequestResponse({
-    type: ErrorResponseDto,
-    description: 'weekStartDate, monthStartDate 또는 includeFeedback 값 오류',
-    examples: {
-      INVALID_WEEK_FORMAT: {
-        summary: 'weekStartDate 형식 오류',
-        value: errorExample(
-          'GUIDE_INVALID_WEEK_FORMAT',
-          'weekStartDate는 YYYY-MM-DD 형식이어야 합니다.',
-        ),
-      },
-      INVALID_WEEKDAY: {
-        summary: 'weekStartDate가 월요일이 아님',
-        value: errorExample(
-          'GUIDE_INVALID_WEEK_FORMAT',
-          'weekStartDate는 월요일이어야 합니다.',
-        ),
-      },
-      ...errorExamples({
-        GUIDE_INVALID_MONTH_FORMAT:
-          'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
-        BAD_REQUEST: '요청 값이 올바르지 않습니다.',
-      }),
-    },
-  })
   @ApiUnauthorizedResponse({
     type: ErrorResponseDto,
     description: 'token 누락 또는 유효하지 않거나 만료된 token',
@@ -125,19 +94,18 @@ export class GuideController {
     }),
   })
   async getGuideScreen(
-    @Query() query: GetGuideScreenQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GuideScreenResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.getGuideScreen(userId, query);
+    return this.guideService.getGuideScreen(userId);
   }
 
   @Get(':guideId')
   @ApiOperation({
     summary: '가이드 상세 조회',
     description:
-      'guideId로 가이드 기본 정보와 순서가 보장된 상세 본문을 조회합니다. 장 건강(H)은 다른 장 건강 가이드를 추천하고, 패턴(P)은 해당 주의 기록 상태와 감지 근거를, 주의 신호(W)는 해당 월의 감지 기록을 함께 반환합니다.',
+      'guideId로 가이드 기본 정보와 순서가 보장된 상세 본문을 조회합니다. 장 건강(H)은 다른 장 건강 가이드를 추천하고, 패턴(P)은 KST 현재 주의 기록 상태와 감지 근거를, 주의 신호(W)는 KST 현재 월의 감지 기록을 함께 반환합니다.',
   })
   @ResponseMessage('가이드 상세 조회에 성공했습니다.')
   @ApiParam({
@@ -170,28 +138,8 @@ export class GuideController {
   })
   @ApiBadRequestResponse({
     type: ErrorResponseDto,
-    description: 'guideId 또는 분석 기준 날짜 형식 오류',
-    examples: {
-      ...errorExamples(GUIDE_ID_ERROR_EXAMPLES),
-      INVALID_WEEK_FORMAT: {
-        summary: 'weekStartDate 형식 오류',
-        value: errorExample(
-          'GUIDE_INVALID_WEEK_FORMAT',
-          'weekStartDate는 YYYY-MM-DD 형식이어야 합니다.',
-        ),
-      },
-      INVALID_WEEKDAY: {
-        summary: 'weekStartDate가 월요일이 아님',
-        value: errorExample(
-          'GUIDE_INVALID_WEEK_FORMAT',
-          'weekStartDate는 월요일이어야 합니다.',
-        ),
-      },
-      ...errorExamples({
-        GUIDE_INVALID_MONTH_FORMAT:
-          'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
-      }),
-    },
+    description: 'guideId 형식 오류',
+    examples: errorExamples(GUIDE_ID_ERROR_EXAMPLES),
   })
   @ApiUnauthorizedResponse({
     type: ErrorResponseDto,
@@ -212,12 +160,11 @@ export class GuideController {
   })
   async getGuideDetail(
     @Param('guideId') guideId: string,
-    @Query() query: GetGuideDetailQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GuideDetailResponseDto> {
     const userId = BigInt(user.id);
 
-    return this.guideService.getGuideDetail(userId, guideId, query);
+    return this.guideService.getGuideDetail(userId, guideId);
   }
 
   @Post(':guideId/feedback')

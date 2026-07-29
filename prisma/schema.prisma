@@ -296,6 +296,7 @@ model Guide {
   regDate   DateTime @default(now())
   updateAt  DateTime? @map("update_date")
   status    String @db.Char(1) @default("A")
+  source    String? @db.VarChar(255)
 
   @@unique([category, title], map: "guide_category_title_uq")
 
