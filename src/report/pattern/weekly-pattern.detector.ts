@@ -94,6 +94,7 @@ export function detectWeeklyPatterns(
         ruleCode,
         title: definition.title,
         description: options?.descriptionOverride ?? definition.description,
+        guideId: null,
         evidence: options?.evidence ?? [],
       },
     });
