@@ -311,4 +311,112 @@ describe('buildMonthlyPdfData', () => {
 
     expect(result.patternCards).toEqual([patternCard]);
   });
+
+  it('우세 변 상태가 동률이면 M, H, T 순서로 결정한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        boogleRecords: [
+          createBoogleRecord({
+            id: 1n,
+            regDate: kstDate('2026-07-01'),
+            stoolSimple: 'H',
+            stomach: 'M',
+          }),
+          createBoogleRecord({
+            id: 2n,
+            regDate: kstDate('2026-07-02'),
+            stoolSimple: 'M',
+            stomach: 'M',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.discomfortRows[0]).toEqual({
+      label: '복통 (약간 이상)',
+      count: 2,
+      dominantStool: '보통 변',
+    });
+  });
+
+  it('원본 기록이 없으면 0값 분포와 날짜별 빈 상태를 반환한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-03',
+      }),
+    );
+
+    expect(result.stoolDistribution).toEqual([
+      { code: 'M', label: '보통', count: 0, ratio: 0 },
+      { code: 'H', label: '딱딱', count: 0, ratio: 0 },
+      { code: 'T', label: '묽음', count: 0, ratio: 0 },
+    ]);
+    expect(result.discomfortRows).toEqual([
+      {
+        label: '복통 (약간 이상)',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '복부 팽만',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '잔변감',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '급박감',
+        count: 0,
+        dominantStool: '-',
+      },
+    ]);
+    expect(result.lifeFactorRows).toEqual([
+      {
+        label: '수면',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+      {
+        label: '수분',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+      {
+        label: '스트레스',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+    ]);
+    expect(result.topFoodTags).toEqual([]);
+    expect(result.dailyRows).toEqual([
+      {
+        date: '7/1',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+      {
+        date: '7/2',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+      {
+        date: '7/3',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+    ]);
+  });
 });

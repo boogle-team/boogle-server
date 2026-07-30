@@ -180,4 +180,28 @@ describe('renderMonthlyPdf', () => {
     expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(countPdfPages(buffer)).toBe(2);
   });
+
+  it('모든 반복 섹션이 비어도 유효한 PDF를 생성한다', async () => {
+    const fixture = createMonthlyPdfFixture({
+      dailyRowCount: 1,
+      includePatterns: false,
+    });
+
+    fixture.summary = {
+      bowelCount: 0,
+      intervalAvg: 0,
+      completionScore: 0,
+    };
+    fixture.stoolDistribution = [];
+    fixture.discomfortRows = [];
+    fixture.lifeFactorRows = [];
+    fixture.topFoodTags = [];
+    fixture.dailyRows = [];
+
+    const buffer = await renderMonthlyPdf(fixture);
+
+    expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(buffer.length).toBeGreaterThan(1_000);
+    expect(countPdfPages(buffer)).toBeGreaterThanOrEqual(1);
+  });
 });

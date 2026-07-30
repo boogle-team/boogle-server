@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GuideService } from './guide.service';
 import { ReportService } from '@/report/report.service';
+import { GuideErrorCode } from './guide-error-code.enum';
 
 describe('GuideService', () => {
   let service: GuideService;
@@ -128,6 +129,158 @@ describe('GuideService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('가이드 상세 조회 예외', () => {
+    it.each(['abc', '0'])(
+      'guideId=%s이면 GUIDE_INVALID_ID를 반환한다',
+      async (guideId) => {
+        await expect(service.getGuideDetail(1n, guideId)).rejects.toMatchObject(
+          {
+            errorCode: GuideErrorCode.GUIDE_INVALID_ID,
+          },
+        );
+
+        expect(prismaMock.guide.findUnique).not.toHaveBeenCalled();
+      },
+    );
+
+    it('가이드가 없으면 GUIDE_CONTENT_NOT_FOUND를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.getGuideDetail(1n, '1')).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
+      });
+    });
+
+    it('비활성 가이드면 GUIDE_CONTENT_INACTIVE를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        ...healthGuideRow,
+        status: 'D',
+      });
+
+      await expect(service.getGuideDetail(1n, '1')).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_CONTENT_INACTIVE,
+      });
+
+      expect(prismaMock.guide.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('가이드 피드백 예외', () => {
+    it('허용되지 않은 피드백이면 GUIDE_INVALID_FEEDBACK을 반환한다', async () => {
+      await expect(
+        service.createGuideFeedback(1n, '101', {
+          feedback: 'X',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_INVALID_FEEDBACK,
+      });
+
+      expect(prismaMock.guide.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.guideFeedback.create).not.toHaveBeenCalled();
+    });
+
+    it('피드백 대상 가이드가 없으면 GUIDE_CONTENT_NOT_FOUND를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.createGuideFeedback(1n, '101', {
+          feedback: 'G',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
+      });
+
+      expect(prismaMock.guideFeedback.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('피드백 대상 가이드가 비활성이면 GUIDE_CONTENT_INACTIVE를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        status: 'D',
+      });
+
+      await expect(
+        service.createGuideFeedback(1n, '101', {
+          feedback: 'G',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_CONTENT_INACTIVE,
+      });
+
+      expect(prismaMock.guideFeedback.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('이미 피드백이 있으면 GUIDE_FEEDBACK_ALREADY_EXISTS를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        status: 'A',
+      });
+      prismaMock.guideFeedback.findUnique.mockResolvedValueOnce({
+        id: 501n,
+      });
+
+      await expect(
+        service.createGuideFeedback(1n, '101', {
+          feedback: 'G',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_FEEDBACK_ALREADY_EXISTS,
+      });
+
+      expect(prismaMock.guideFeedback.create).not.toHaveBeenCalled();
+    });
+
+    it('동시 등록으로 P2002가 발생해도 GUIDE_FEEDBACK_ALREADY_EXISTS를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        status: 'A',
+      });
+      prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
+      prismaMock.guideFeedback.create.mockRejectedValueOnce(
+        Object.assign(new Error('unique constraint'), {
+          code: 'P2002',
+        }),
+      );
+
+      await expect(
+        service.createGuideFeedback(1n, '101', {
+          feedback: 'G',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_FEEDBACK_ALREADY_EXISTS,
+      });
+    });
+
+    it('수정할 피드백이 없으면 GUIDE_FEEDBACK_NOT_FOUND를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        status: 'A',
+      });
+      prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateGuideFeedback(1n, '101', {
+          feedback: 'A',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_FEEDBACK_NOT_FOUND,
+      });
+
+      expect(prismaMock.guideFeedback.update).not.toHaveBeenCalled();
+    });
+
+    it('삭제할 피드백이 없으면 GUIDE_FEEDBACK_NOT_FOUND를 반환한다', async () => {
+      prismaMock.guide.findUnique.mockResolvedValueOnce({
+        status: 'A',
+      });
+      prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.deleteGuideFeedback(1n, '101'),
+      ).rejects.toMatchObject({
+        errorCode: GuideErrorCode.GUIDE_FEEDBACK_NOT_FOUND,
+      });
+
+      expect(prismaMock.guideFeedback.delete).not.toHaveBeenCalled();
+    });
   });
 
   it('주의 신호를 KST 월 경계로 조회한다', async () => {

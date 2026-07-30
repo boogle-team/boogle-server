@@ -67,6 +67,7 @@ import {
 
 const TOTAL_WEEK_DAYS = 7;
 const REQUIRED_RECORDED_DAYS = 3;
+const REQUIRED_MONTHLY_RECORDED_DAYS = 7;
 
 const MONTHLY_PDF_ENDPOINT = '/api/v1/reports/pdf';
 
@@ -308,8 +309,8 @@ export class ReportService {
       );
 
       const canCompareImprovements =
-        currentComparisonRecordedDays >= 7 &&
-        previousComparisonRecordedDays >= 7;
+        currentComparisonRecordedDays >= REQUIRED_MONTHLY_RECORDED_DAYS &&
+        previousComparisonRecordedDays >= REQUIRED_MONTHLY_RECORDED_DAYS;
 
       let improvements: MonthlyImprovementDto[] = [];
 
@@ -351,9 +352,11 @@ export class ReportService {
         previousMonthEndDate.getUTCDate(),
       );
       const period = this.buildMonthlyPeriod(monthStartDate, effectiveMonthEnd);
-      const pdf = this.buildMonthlyPdf(recordStats.recordedDays >= 7);
+      const hasEnoughMonthlyRecords =
+        recordStats.recordedDays >= REQUIRED_MONTHLY_RECORDED_DAYS;
+      const pdf = this.buildMonthlyPdf(hasEnoughMonthlyRecords);
 
-      if (recordStats.recordedDays < 7) {
+      if (!hasEnoughMonthlyRecords) {
         return {
           period,
           dataStatus: 'INSUFFICIENT',
@@ -372,7 +375,7 @@ export class ReportService {
             code: 'MONTHLY_RECORD_NOT_ENOUGH',
             message:
               `현재 ${recordStats.recordedDays}일째 기록 중이에요. ` +
-              '7일 이상 기록하면 월간 리포트를 볼 수 있어요.',
+              `${REQUIRED_MONTHLY_RECORDED_DAYS}일 이상 기록하면 월간 리포트를 볼 수 있어요.`,
           },
         };
       }
@@ -383,7 +386,7 @@ export class ReportService {
         recordStats,
       );
       const previousSummary =
-        previousRecordStats.recordedDays < 7
+        previousRecordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
           ? null
           : this.buildPreviousMonthlySummaryFromRaw(
               previousBoogleRecords,
@@ -510,7 +513,7 @@ export class ReportService {
 
       // 프론트가 downloadAvailable=true일 때만 호출하더라도
       // 직접 API를 호출하는 경우를 막기 위한 서버 측 방어다.
-      if (recordStats.recordedDays < 7) {
+      if (recordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS) {
         throw new BusinessException(
           ReportErrorCode.REPORT_DATA_NOT_FOUND,
           'PDF 리포트 생성에 필요한 기록이 부족합니다.',
@@ -1240,7 +1243,7 @@ export class ReportService {
       recordedDays: recordedDateSet.size,
       boogleRecordDays: boogleRecordDateSet.size,
       lifeRecordDays: lifeRecordDateSet.size,
-      requiredDays: 7,
+      requiredDays: REQUIRED_MONTHLY_RECORDED_DAYS,
       completionScore,
     };
   }

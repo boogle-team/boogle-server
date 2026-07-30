@@ -115,6 +115,16 @@ function buildStoolDistribution(
   }));
 }
 
+function resolveDominantStoolCodeFromCounts(
+  counts: Readonly<Record<PdfStoolCode, number>>,
+): PdfStoolCode | null {
+  const dominant = STOOL_ORDER.reduce((current, candidate) =>
+    counts[candidate] > counts[current] ? candidate : current,
+  );
+
+  return counts[dominant] === 0 ? null : dominant;
+}
+
 function resolveDominantStoolCode(
   records: BoogleRecordForReport[],
 ): PdfStoolCode | null {
@@ -130,14 +140,7 @@ function resolveDominantStoolCode(
     }
   }
 
-  const dominant = [...STOOL_ORDER].sort((a, b) => {
-    const countDiff = counts[b] - counts[a];
-    return countDiff !== 0
-      ? countDiff
-      : STOOL_ORDER.indexOf(a) - STOOL_ORDER.indexOf(b);
-  })[0];
-
-  return counts[dominant] === 0 ? null : dominant;
+  return resolveDominantStoolCodeFromCounts(counts);
 }
 
 function resolveDominantStoolByDates(
@@ -165,14 +168,9 @@ function resolveDominantStoolByDates(
     counts[code] += 1;
   }
 
-  const dominant = [...STOOL_ORDER].sort((a, b) => {
-    const countDiff = counts[b] - counts[a];
-    return countDiff !== 0
-      ? countDiff
-      : STOOL_ORDER.indexOf(a) - STOOL_ORDER.indexOf(b);
-  })[0];
+  const dominant = resolveDominantStoolCodeFromCounts(counts);
 
-  return DOMINANT_STOOL_LABEL[dominant];
+  return dominant === null ? '-' : DOMINANT_STOOL_LABEL[dominant];
 }
 
 function buildDiscomfortRows(

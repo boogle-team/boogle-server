@@ -309,6 +309,96 @@ describe('weekly-pattern.detector', () => {
     );
   });
 
+  it('이전 사용자 유형 L이면 룰 7 묽은 변 횟수 기준을 5회로 완화한다', () => {
+    const boogleRecords = [
+      '2026-07-20',
+      '2026-07-22',
+      '2026-07-24',
+      '2026-07-26',
+    ].map((date) =>
+      createBoogleRecord(`${date}T08:00:00+09:00`, {
+        stoolBristol: 6,
+        stoolSimple: 'T',
+      }),
+    );
+
+    const defaultResult = detect({
+      boogleRecords,
+    });
+    const looseTypeResult = detect({
+      boogleRecords,
+      context: {
+        previousMonthlyUserType: 'L',
+        sensitiveInfoAgreed: false,
+      },
+    });
+
+    expect(getRuleCodes(defaultResult)).toContain(
+      WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL,
+    );
+    expect(getRuleCodes(looseTypeResult)).not.toContain(
+      WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL,
+    );
+  });
+
+  it('이전 사용자 유형 L이면 룰 8 연속 묽은 변 기준을 5일로 완화한다', () => {
+    const fourDayRecords = [
+      '2026-07-20',
+      '2026-07-21',
+      '2026-07-22',
+      '2026-07-23',
+    ].map((date) =>
+      createBoogleRecord(`${date}T08:00:00+09:00`, {
+        stoolBristol: 6,
+        stoolSimple: 'T',
+      }),
+    );
+    const fiveDayRecords = [
+      ...fourDayRecords,
+      createBoogleRecord('2026-07-24T08:00:00+09:00', {
+        stoolBristol: 6,
+        stoolSimple: 'T',
+      }),
+    ];
+    const looseTypeContext: WeeklyPatternContext = {
+      previousMonthlyUserType: 'L',
+      sensitiveInfoAgreed: false,
+    };
+
+    const defaultFourDayResult = detect({
+      boogleRecords: fourDayRecords,
+    });
+    const looseTypeFourDayResult = detect({
+      boogleRecords: fourDayRecords,
+      context: looseTypeContext,
+    });
+    const looseTypeFiveDayResult = detect({
+      boogleRecords: fiveDayRecords,
+      context: looseTypeContext,
+    });
+
+    expect(getRuleCodes(defaultFourDayResult)).toContain(
+      WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL,
+    );
+    expect(getRuleCodes(looseTypeFourDayResult)).not.toContain(
+      WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL,
+    );
+    expect(getRuleCodes(looseTypeFiveDayResult)).toContain(
+      WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL,
+    );
+
+    const rule = requireRule(
+      looseTypeFiveDayResult,
+      WEEKLY_RULE_CODE.CONTINUOUS_LOOSE_STOOL,
+    );
+
+    expect(requireEvidence(rule, 'looseStoolStreakDays')).toMatchObject({
+      value: 5,
+      threshold: 5,
+      unit: 'DAY',
+    });
+  });
+
   it('민감정보 동의가 있을 때만 호르몬 룰을 감지한다', () => {
     const boogleRecords = [
       createBoogleRecord('2026-07-20T08:00:00+09:00', {
@@ -382,5 +472,58 @@ describe('weekly-pattern.detector', () => {
 
     expect(ruleCodes).toContain(WEEKLY_RULE_CODE.NO_BOWEL_WITH_PAIN);
     expect(ruleCodes).not.toContain(WEEKLY_RULE_CODE.LONG_NO_BOWEL_INTERVAL);
+  });
+
+  it('최근 30일 부글 기록이 없으면 룰 3을 감지하지 않는다', () => {
+    const result = detect();
+
+    expect(getRuleCodes(result)).not.toContain(
+      WEEKLY_RULE_CODE.LOW_BOWEL_FREQUENCY_30D,
+    );
+  });
+
+  it('최근 30일 부글 기록일이 3일 미만이면 룰 3을 감지하지 않는다', () => {
+    const result = detect({
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T08:00:00+09:00', {
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+        }),
+        createBoogleRecord('2026-07-21T08:00:00+09:00', {
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+        }),
+      ],
+    });
+
+    expect(getRuleCodes(result)).not.toContain(
+      WEEKLY_RULE_CODE.LOW_BOWEL_FREQUENCY_30D,
+    );
+  });
+
+  it('최근 30일 부글 기록일이 3일 이상이고 배변 횟수가 기준 미만이면 룰 3을 감지한다', () => {
+    const result = detect({
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T08:00:00+09:00', {
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+        }),
+        createBoogleRecord('2026-07-21T08:00:00+09:00', {
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+        }),
+        createBoogleRecord('2026-07-22T08:00:00+09:00', {
+          hasBowel: true,
+        }),
+      ],
+    });
+
+    expect(getRuleCodes(result)).toContain(
+      WEEKLY_RULE_CODE.LOW_BOWEL_FREQUENCY_30D,
+    );
   });
 });

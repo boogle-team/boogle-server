@@ -22,8 +22,10 @@ import type { PatternCardDto } from '../dto/weekly-report-response.dto';
 import { getKstHour } from '@/common/utils/kst-date.util';
 
 const RULE_20_MAX_INTERVAL_STANDARD_DEVIATION = 0.5;
+const LOW_BOWEL_30D_MIN_OBSERVED_DAYS = 3;
 
 interface DetectWeeklyPatternsInput {
+  // KST 달력 날짜를 UTC 자정 Date에 담은 운반값이다.
   weekStartDate: Date;
   weekEndDateExclusive: Date;
   boogleRecords: BoogleRecordForReport[];
@@ -114,8 +116,15 @@ export function detectWeeklyPatterns(
   }
 
   // 룰 3
+  const observedBoogleDays30 = uniqueDateKeys(
+    boogleRecords30.map((record) => record.regDate),
+  ).length;
   const lowBowel30Threshold = previousType === 'C' ? 8 : 12;
-  if (bowelRecords30.length < lowBowel30Threshold) {
+
+  if (
+    observedBoogleDays30 >= LOW_BOWEL_30D_MIN_OBSERVED_DAYS &&
+    bowelRecords30.length < lowBowel30Threshold
+  ) {
     addRule(WEEKLY_RULE_CODE.LOW_BOWEL_FREQUENCY_30D);
   }
 

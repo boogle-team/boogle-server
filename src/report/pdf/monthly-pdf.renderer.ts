@@ -63,6 +63,8 @@ const FONT = {
   bold: 'Pretendard-Bold',
 } as const;
 
+const ASSET_PATH_CACHE = new Map<string, string>();
+
 type PdfFontName = (typeof FONT)[keyof typeof FONT];
 
 interface TextStyle {
@@ -182,6 +184,13 @@ function applyTextStyle(
 }
 
 function resolveAssetPath(...segments: string[]): string {
+  const cacheKey = join(process.cwd(), ...segments);
+  const cached = ASSET_PATH_CACHE.get(cacheKey);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const candidates = [
     join(process.cwd(), 'src', 'assets', ...segments),
     join(process.cwd(), 'dist', 'src', 'assets', ...segments),
@@ -194,6 +203,8 @@ function resolveAssetPath(...segments: string[]): string {
   if (found === undefined) {
     throw new Error(`PDF asset not found: ${segments.join('/')}`);
   }
+
+  ASSET_PATH_CACHE.set(cacheKey, found);
 
   return found;
 }

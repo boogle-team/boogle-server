@@ -47,10 +47,11 @@ model Member {
 }
 
 model Alarm {
-  id       Int    @id @default(autoincrement())
-  category String @db.Char(1) // W/R/P
-  title    String @db.VarChar(40)
-  content  String @db.VarChar(255)
+  id       Int     @id @default(autoincrement())
+  category String  @db.Char(1) // W/R/P (점 색 표시용)
+  type     String? @db.VarChar(20) // 아이콘 구분용 의미 코드: WARNING/RECORD_REMINDER/REPORT_READY/PDF_SAVED/STREAK
+  title    String  @db.VarChar(40)
+  content  String  @db.VarChar(255)
 
   alarmMaps AlarmMap[]
 

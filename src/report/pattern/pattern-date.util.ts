@@ -10,6 +10,12 @@ export function addUtcDays(date: Date, days: number): Date {
   return copied;
 }
 
+/**
+ * date는 DB에 저장된 실제 시각이다.
+ * start/end는 KST 달력 날짜를 UTC 자정 Date에 담은 운반값이며,
+ * 실제 UTC 시각 경계가 아니다.
+ */
+
 export function isInKstCalendarRange(
   date: Date,
   startCalendarDate: Date,
