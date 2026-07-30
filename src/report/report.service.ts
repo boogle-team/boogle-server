@@ -414,10 +414,7 @@ export class ReportService {
         summary,
         recordStats,
         previousSummary,
-        changeSummary:
-          previousSummary === null
-            ? null
-            : this.buildMonthlyChangeSummary(summary, previousSummary),
+        changeSummary: this.buildMonthlyChangeSummary(summary, previousSummary),
         stoolDistribution,
         weeklyTrend: this.buildWeeklyTrend(
           weeklyRecords,

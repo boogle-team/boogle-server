@@ -7,13 +7,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export type WeeklyReportDataStatus = 'ENOUGH' | 'INSUFFICIENT';
 export type ReportPeriodType = 'WEEKLY';
 export type CompareType = 'PREVIOUS_WEEK';
-export type ChangeTrend =
-  | 'INCREASE'
-  | 'DECREASE'
-  | 'SAME'
-  | 'IMPROVED'
-  | 'WORSENED'
-  | 'NO_PREVIOUS_DATA';
+export type ChangeTrend = 'INCREASE' | 'DECREASE' | 'SAME';
 
 const WEEKLY_RULE_CODES = Object.values(WEEKLY_RULE_CODE);
 
@@ -106,14 +100,9 @@ export class ChangeSummaryDto {
   completionScoreDiff!: number;
 
   @ApiProperty({
-    enum: [
-      'INCREASE',
-      'DECREASE',
-      'SAME',
-      'IMPROVED',
-      'WORSENED',
-      'NO_PREVIOUS_DATA',
-    ],
+    enum: ['INCREASE', 'DECREASE', 'SAME'],
+    example: 'INCREASE',
+    description: '이전 주 대비 배변 횟수 변화 방향',
   })
   trend!: ChangeTrend;
 
@@ -228,8 +217,13 @@ export class PatternCardDto {
   @ApiProperty({ nullable: true, example: '딱딱한 변이 자주 나타났어요.' })
   description!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 101 })
-  guideId?: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    example: 101,
+    description: '연결된 패턴 가이드 ID. 연결 가이드가 없으면 null',
+  })
+  guideId!: number | null;
 
   @ApiPropertyOptional({ type: [PatternEvidenceMetricDto] })
   evidence?: PatternEvidenceMetricDto[];

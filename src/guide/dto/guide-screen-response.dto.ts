@@ -12,11 +12,11 @@ export type PatternGuideDataStatus = 'AVAILABLE' | 'INSUFFICIENT';
 
 export class GuidePeriodDto {
   @ApiProperty({
-    enum: ['WEEKLY', 'MONTHLY'],
+    enum: ['WEEKLY'],
     example: 'WEEKLY',
     description: '가이드 분석 기간 단위',
   })
-  type!: 'WEEKLY' | 'MONTHLY';
+  type!: 'WEEKLY';
 
   @ApiProperty({
     type: String,
