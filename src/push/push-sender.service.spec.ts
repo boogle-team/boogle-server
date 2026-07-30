@@ -92,10 +92,46 @@ describe('PushSenderService', () => {
 
     await service.send('1', payload);
 
-    // 죽은 토큰만 정확히 삭제
+    // 죽은 토큰만, 그리고 현재 소유자(userId)로 스코프해 삭제
     expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
-      where: { token: { in: ['tok-dead'] } },
+      where: { userId: 1n, token: { in: ['tok-dead'] } },
     });
+  });
+
+  it('invalid-argument는 무효 토큰이 아니므로 삭제하지 않는다', async () => {
+    // invalid-argument는 메시지 인자 문제에서도 발생 → 토큰을 지우면 안 됨
+    prisma.pushToken.findMany.mockResolvedValue([{ token: 'tok-A' }]);
+    firebase.sendEachForMulticast.mockResolvedValue({
+      responses: [
+        { success: false, error: { code: 'messaging/invalid-argument' } },
+      ],
+    });
+
+    await service.send('1', payload);
+
+    expect(prisma.pushToken.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('토큰이 500개를 넘으면 여러 번 나눠 발송한다', async () => {
+    const tokens = Array.from({ length: 501 }, (_, i) => ({
+      token: `tok-${i}`,
+    }));
+    prisma.pushToken.findMany.mockResolvedValue(tokens);
+    firebase.sendEachForMulticast.mockImplementation(
+      (message: { tokens: string[] }) => ({
+        responses: message.tokens.map(() => ({ success: true })),
+      }),
+    );
+
+    await service.send('1', payload);
+
+    // 501개 → 500 + 1로 두 번 호출
+    expect(firebase.sendEachForMulticast).toHaveBeenCalledTimes(2);
+    const calls = firebase.sendEachForMulticast.mock.calls as Array<
+      [{ tokens: string[] }]
+    >;
+    expect(calls[0][0].tokens).toHaveLength(500);
+    expect(calls[1][0].tokens).toHaveLength(1);
   });
 
   it('일시적 오류(무효 토큰 아님)는 토큰을 삭제하지 않는다', async () => {

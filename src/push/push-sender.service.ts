@@ -10,12 +10,17 @@ export interface PushPayload {
 }
 
 // FCM이 "이 토큰은 더 이상 유효하지 않다"고 알리는 에러 코드들.
-// 이 경우 해당 토큰은 죽은 것이므로 저장소에서 제거한다.
+// 이 경우에만 해당 토큰을 죽은 것으로 보고 제거한다.
+// (invalid-argument는 토큰이 아니라 메시지 인자 문제에서도 나므로 제외 —
+//  포함하면 페이로드 오류 때 멀쩡한 토큰까지 지울 수 있다.)
 const UNREGISTERED_TOKEN_ERROR_CODES = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
 ]);
+
+// FCM sendEachForMulticast의 1회 토큰 상한. 초과 시 요청 전체가 실패하므로
+// 이 크기로 나눠 순차 발송한다.
+const FCM_MULTICAST_LIMIT = 500;
 
 /**
  * 특정 유저의 모든 기기(push_token)로 웹 푸시를 발송한다.
@@ -46,27 +51,35 @@ export class PushSenderService {
     }
 
     const tokens = rows.map((row) => row.token);
-    const response = await this.firebase.sendEachForMulticast({
-      tokens,
-      notification: { title: payload.title, body: payload.body },
-      ...(payload.link
-        ? { webpush: { fcmOptions: { link: payload.link } } }
-        : {}),
-    });
+    const invalidTokens: string[] = [];
 
-    // 발송 결과에서 "죽은 토큰"만 골라 정리한다(누적 방지).
-    const invalidTokens = response.responses
-      .map((result, index) => ({ result, token: tokens[index] }))
-      .filter(
-        ({ result }) =>
+    // FCM 상한(500) 단위로 나눠 발송하고, 각 청크의 죽은 토큰을 모은다.
+    for (let start = 0; start < tokens.length; start += FCM_MULTICAST_LIMIT) {
+      const chunk = tokens.slice(start, start + FCM_MULTICAST_LIMIT);
+      const response = await this.firebase.sendEachForMulticast({
+        tokens: chunk,
+        notification: { title: payload.title, body: payload.body },
+        ...(payload.link
+          ? { webpush: { fcmOptions: { link: payload.link } } }
+          : {}),
+      });
+
+      response.responses.forEach((result, index) => {
+        if (
           result.error !== undefined &&
-          UNREGISTERED_TOKEN_ERROR_CODES.has(result.error.code),
-      )
-      .map(({ token }) => token);
+          UNREGISTERED_TOKEN_ERROR_CODES.has(result.error.code)
+        ) {
+          invalidTokens.push(chunk[index]);
+        }
+      });
+    }
 
     if (invalidTokens.length > 0) {
+      // 삭제는 반드시 현재 소유자(userId)로 스코프한다. 조회~삭제 사이에 다른
+      // 유저가 같은 토큰을 재등록(upsert로 소유 이전)했을 수 있어, token만으로
+      // 지우면 남의 유효 토큰을 지울 수 있다.
       await this.prisma.pushToken.deleteMany({
-        where: { token: { in: invalidTokens } },
+        where: { userId: memberId, token: { in: invalidTokens } },
       });
       this.logger.log(`무효 푸시 토큰 ${invalidTokens.length}개 정리`);
     }
