@@ -164,7 +164,10 @@ Authorization: Bearer eyJhbGc...
 
 ## 4. 알림 생성(트리거) 규칙 — 이 API 범위 밖 (참고용)
 
-`alarm_map` insert는 각 도메인/배치가 담당하며, 이 조회 API는 관여하지 않는다.
+알림 생성(어느 유저에게 어떤 알림을 심을지)은 각 도메인/배치가 담당하며, 이
+조회 API는 관여하지 않는다. **단, `alarm`/`alarm_map`을 직접 insert하지 말고
+§4-1의 `NotificationCreationService.create()`를 호출한다** (문구·category·소유
+처리를 공용 헬퍼가 담당). "언제 심을지"(트리거)만 각 도메인이 붙이면 된다.
 
 | 기능ID | 발송 조건 | 트리거 방식 | 담당(추정) |
 | --- | --- | --- | --- |
@@ -173,6 +176,40 @@ Authorization: Bearer eyJhbGc...
 | N103 리포트 도착 | 주간 리포트 생성 완료 | 이벤트성 (리포트 생성 로직 내부) | 리포트팀 |
 | N104 PDF 저장 완료 | 월간 리포트 PDF 생성 완료 | 이벤트성 (PDF 생성 로직 내부) | 리포트팀 |
 | N105 연속 기록 독려 | 연속 기록 3/7/30일, 이후 +10일마다 | 배치/스케줄러 (매일 실행) | 미정 |
+
+### 4-1. 알림 생성 공용 헬퍼 — 각 도메인은 이것만 호출
+
+각 도메인은 `alarm`/`alarm_map` 스키마를 직접 다루지 말고 **`NotificationCreationService.create()`** 만 호출한다. (문구·category·소유 처리를 내부에서 담당)
+
+**사용법**: 사용하는 모듈에서 `NotificationModule`을 import → `NotificationCreationService` 주입 → 호출.
+
+```ts
+// 고정 문구 유형 (params 불필요)
+await notificationCreationService.create({ userId, type: 'REPORT_READY' });
+
+// 파라미터 유형 (템플릿 {키} 치환)
+await notificationCreationService.create({
+  userId,
+  type: 'STREAK',
+  params: { days: 3 }, // → "3일째 기록 중이에요!"
+});
+await notificationCreationService.create({
+  userId,
+  type: 'WARNING',
+  params: { color: '붉은색' }, // → "오늘 기록에서 붉은색 변이 감지됐어요..."
+});
+```
+
+| type | 필수 params | 비고 |
+| --- | --- | --- |
+| `WARNING` | `color` | 감지된 변 색상 |
+| `RECORD_REMINDER` | 없음 | 고정 문구 |
+| `REPORT_READY` | 없음 | 고정 문구 |
+| `PDF_SAVED` | 없음 | 고정 문구 |
+| `STREAK` | `days` | 연속 일수 |
+
+> 📌 문구 템플릿은 코드 상수(`notification-templates.ts`)로 관리한다. 필수 params 누락 시 생성 단계에서 에러가 발생하므로 호출부에서 바로 잡을 수 있다.
+> 📌 생성 시 유형별 문구를 치환해 **alarm 행에 최종 문구를 저장**하므로, 조회 API는 별도 처리 없이 그대로 내려준다.
 
 ## 5. 확인 필요 사항
 
