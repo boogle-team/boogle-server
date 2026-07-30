@@ -6,6 +6,7 @@ import { BoogleRecordForReport } from './dto/report-record.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
 import type {
   ChangeTrend,
+  FrequentTimeSlotDto,
   WeeklyGuideDto,
 } from './dto/weekly-report-response.dto';
 import {
@@ -29,14 +30,37 @@ interface WeeklyTrendTestAccessor {
   resolveTrend(bowelCountDiff: number): ChangeTrend;
 }
 
+interface FrequentTimeSlotsTestAccessor {
+  buildFrequentTimeSlots(
+    records: BoogleRecordForReport[],
+  ): FrequentTimeSlotDto[];
+}
+
+interface BoogleRecordQueryTestAccessor {
+  findBoogleRecords(
+    userId: bigint,
+    startDate: Date,
+    endDateExclusive: Date,
+  ): Promise<BoogleRecordForReport[]>;
+}
+
 function createBoogleRecord(
   dateKey: string,
   overrides: Partial<BoogleRecordForReport> = {},
 ): BoogleRecordForReport {
+  const {
+    id = BigInt(dateKey.slice(-2)),
+    regDate = kstDate(dateKey),
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
   return {
-    id: BigInt(dateKey.slice(-2)),
-    regDate: kstDate(dateKey),
-    hasBowel: true,
+    id,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
     stoolBristol: 4,
     stoolSimple: 'M',
     bowelFeeling: null,
@@ -46,7 +70,7 @@ function createBoogleRecord(
     urgency: null,
     takenTime: null,
     amount: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -174,6 +198,71 @@ describe('ReportService', () => {
     ).rejects.toMatchObject({
       errorCode: ReportErrorCode.REPORT_INVALID_DATE_RANGE,
     });
+  });
+
+  it('Boogle 조회에 bowelMovementAt과 결정적인 정렬 순서를 포함한다', async () => {
+    prismaMock.boogleRecord.findMany.mockResolvedValueOnce([]);
+    const accessor = service as unknown as BoogleRecordQueryTestAccessor;
+
+    await accessor.findBoogleRecords(
+      1n,
+      new Date('2026-07-20T00:00:00.000Z'),
+      new Date('2026-07-27T00:00:00.000Z'),
+    );
+
+    expect(prismaMock.boogleRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          regDate: true,
+          bowelMovementAt: true,
+          hasBowel: true,
+          stoolBristol: true,
+          stoolSimple: true,
+          bowelFeeling: true,
+          stomach: true,
+          distension: true,
+          remainingFeeling: true,
+          urgency: true,
+          takenTime: true,
+          amount: true,
+        },
+        orderBy: [
+          { regDate: 'asc' },
+          { bowelMovementAt: 'asc' },
+          { id: 'asc' },
+        ],
+      }),
+    );
+  });
+
+  it('주간 시간대 통계는 유효한 bowelMovementAt만 사용한다', () => {
+    const accessor = service as unknown as FrequentTimeSlotsTestAccessor;
+    const records = [
+      createBoogleRecord('2026-07-20', {
+        regDate: kstDate('2026-07-20', '09:00'),
+        bowelMovementAt: kstDate('2026-07-20', '20:30'),
+      }),
+      createBoogleRecord('2026-07-21', {
+        regDate: kstDate('2026-07-21', '09:00'),
+        bowelMovementAt: kstDate('2026-07-21', '21:15'),
+      }),
+      createBoogleRecord('2026-07-22', {
+        bowelMovementAt: null,
+      }),
+      createBoogleRecord('2026-07-23', {
+        hasBowel: false,
+        bowelMovementAt: kstDate('2026-07-23', '08:00'),
+      }),
+    ];
+
+    expect(accessor.buildFrequentTimeSlots(records)).toEqual([
+      {
+        timeSlot: 'EVENING',
+        label: '저녁',
+        count: 2,
+      },
+    ]);
   });
 
   describe('createPdfReport', () => {

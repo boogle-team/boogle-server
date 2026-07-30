@@ -12,10 +12,19 @@ function kstDate(dateKey: string, time = '09:00'): Date {
 function createBoogleRecord(
   overrides: Partial<BoogleRecordForReport> = {},
 ): BoogleRecordForReport {
+  const {
+    id = 1n,
+    regDate = kstDate('2026-07-01'),
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
   return {
-    id: 1n,
-    regDate: kstDate('2026-07-01'),
-    hasBowel: true,
+    id,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
     stoolBristol: 4,
     stoolSimple: 'M',
     bowelFeeling: null,
@@ -25,7 +34,7 @@ function createBoogleRecord(
     urgency: null,
     takenTime: null,
     amount: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -121,7 +130,7 @@ describe('buildMonthlyPdfData', () => {
         regDate: kstDate('2026-07-01', `09:0${index}`),
         stoolBristol: 2,
         stoolSimple: 'H',
-        stomach: 'M',
+        stomach: 1,
       }),
     );
     const normalRecordsOnTwoDays = [
@@ -129,13 +138,13 @@ describe('buildMonthlyPdfData', () => {
         id: 4n,
         regDate: kstDate('2026-07-02'),
         stoolSimple: 'M',
-        stomach: 'M',
+        stomach: 1,
       }),
       createBoogleRecord({
         id: 5n,
         regDate: kstDate('2026-07-03'),
         stoolSimple: 'M',
-        stomach: 'L',
+        stomach: 3,
       }),
     ];
 
@@ -227,14 +236,14 @@ describe('buildMonthlyPdfData', () => {
             regDate: new Date('2026-06-30T15:30:00.000Z'),
             stoolBristol: 2,
             stoolSimple: 'H',
-            stomach: 'M',
+            stomach: 1,
           }),
           createBoogleRecord({
             id: 2n,
             regDate: new Date('2026-07-01T11:00:00.000Z'),
             stoolBristol: 4,
             stoolSimple: 'M',
-            stomach: 'L',
+            stomach: 3,
             distension: 'M',
             remainingFeeling: 'L',
             urgency: 'M',
@@ -320,13 +329,13 @@ describe('buildMonthlyPdfData', () => {
             id: 1n,
             regDate: kstDate('2026-07-01'),
             stoolSimple: 'H',
-            stomach: 'M',
+            stomach: 1,
           }),
           createBoogleRecord({
             id: 2n,
             regDate: kstDate('2026-07-02'),
             stoolSimple: 'M',
-            stomach: 'M',
+            stomach: 1,
           }),
         ],
       }),
@@ -419,4 +428,78 @@ describe('buildMonthlyPdfData', () => {
       },
     ]);
   });
+
+  it('일별 변 상태는 배열과 regDate 순서가 아니라 가장 늦은 bowelMovementAt을 사용한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-01',
+        boogleRecords: [
+          createBoogleRecord({
+            id: 1n,
+            regDate: kstDate('2026-07-01', '08:00'),
+            bowelMovementAt: kstDate('2026-07-01', '20:00'),
+            stoolBristol: 2,
+            stoolSimple: 'H',
+          }),
+          createBoogleRecord({
+            id: 2n,
+            regDate: kstDate('2026-07-01', '22:00'),
+            bowelMovementAt: kstDate('2026-07-01', '08:00'),
+            stoolBristol: 4,
+            stoolSimple: 'M',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.dailyRows[0].stoolState).toBe('딱딱(2형)');
+  });
+
+  it('배변 기록이어도 bowelMovementAt이 없으면 일별 변 상태에서 제외한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-01',
+        boogleRecords: [
+          createBoogleRecord({
+            bowelMovementAt: null,
+            stoolBristol: 4,
+            stoolSimple: 'M',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.dailyRows[0]).toEqual(
+      expect.objectContaining({
+        bowel: '있음',
+        stoolState: '-',
+      }),
+    );
+  });
+
+  it.each([
+    { stomach: 0, expectedCount: 0, expectedLabel: '-' },
+    { stomach: 2, expectedCount: 1, expectedLabel: '복통 약간' },
+    { stomach: 3, expectedCount: 1, expectedLabel: '복통 심함' },
+  ] as const)(
+    'PDF에서 stomach=$stomach을 올바른 복통 단계로 표시한다',
+    ({ stomach, expectedCount, expectedLabel }) => {
+      const result = buildMonthlyPdfData(
+        createSourceFixture({
+          startDate: '2026-07-01',
+          endDate: '2026-07-01',
+          boogleRecords: [
+            createBoogleRecord({
+              stomach,
+            }),
+          ],
+        }),
+      );
+
+      expect(result.discomfortRows[0].count).toBe(expectedCount);
+      expect(result.dailyRows[0].discomfort).toBe(expectedLabel);
+    },
+  );
 });

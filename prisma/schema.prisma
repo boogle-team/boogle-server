@@ -138,7 +138,8 @@ model BoogleRecord {
   stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
   stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
   bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
-  stomach          String?   @db.Char(1) // 복통 N/M/L
+  stomach          Int?      // 복통 -> 숫자로 표기
+  bowelMovementAt  DateTime? @map("bowel_movement_at") // 배변 발생 시각 
   distension       String?   @db.Char(1) // 복부팽만 N/M/L
   remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
   urgency          String?   @db.Char(1) // 긴박감 N/M/L

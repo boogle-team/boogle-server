@@ -23,10 +23,18 @@ function createBoogleRecord(
   const id = nextBoogleId;
   nextBoogleId += 1n;
 
+  const regDate = new Date(dateTime);
+  const {
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
   return {
     id,
-    regDate: new Date(dateTime),
-    hasBowel: true,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
     stoolBristol: 4,
     stoolSimple: 'M',
     bowelFeeling: null,
@@ -36,7 +44,7 @@ function createBoogleRecord(
     urgency: null,
     takenTime: null,
     amount: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -87,7 +95,7 @@ describe('monthly-pattern.calculator', () => {
         createBoogleRecord('2026-07-02T00:30:00+09:00', {
           stoolBristol: 2,
           stoolSimple: 'H',
-          stomach: 'M',
+          stomach: 1,
         }),
         createBoogleRecord('2026-07-02T09:00:00+09:00', {
           stoolBristol: 4,
@@ -96,7 +104,7 @@ describe('monthly-pattern.calculator', () => {
         createBoogleRecord('2026-07-03T00:30:00+09:00', {
           stoolBristol: 6,
           stoolSimple: 'T',
-          stomach: 'L',
+          stomach: 3,
         }),
       ];
       const lifeRecords = [
@@ -130,7 +138,7 @@ describe('monthly-pattern.calculator', () => {
         createBoogleRecord('2026-07-02T08:00:00+09:00', {
           stoolBristol: 4,
           stoolSimple: 'M',
-          stomach: 'N',
+          stomach: 0,
         }),
       ];
       const lifeRecords = [
@@ -152,6 +160,32 @@ describe('monthly-pattern.calculator', () => {
         lowSleepDays: 0,
         hardStoolRatio: 0,
       });
+    });
+
+    it('스트레스성 복통은 stomach 0을 제외하고 1부터 집계한다', () => {
+      const boogleRecords = [
+        createBoogleRecord('2026-07-02T08:00:00+09:00', {
+          stomach: 0,
+        }),
+        createBoogleRecord('2026-07-03T08:00:00+09:00', {
+          stomach: 1,
+        }),
+      ];
+      const lifeRecords = [
+        createLifeRecord('2026-07-02T09:00:00+09:00', {
+          stress: 'H',
+        }),
+        createLifeRecord('2026-07-03T09:00:00+09:00', {
+          stress: 'H',
+        }),
+      ];
+
+      const metrics = calculateMonthlyPatternMetrics(
+        boogleRecords,
+        lifeRecords,
+      );
+
+      expect(metrics.stressWithPainCount).toBe(1);
     });
   });
 

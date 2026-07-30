@@ -13,9 +13,16 @@ import type {
   PdfStoolCode,
 } from '../dto/pdf-report-data.dto';
 import { toKstDateKey } from '@/common/utils/kst-date.util';
+import {
+  isSevereStomachPain,
+  isStomachPainAtLeastMild,
+} from '@/common/utils/stomach-pain.util';
+import {
+  hasBowelMovementAt,
+  type TimedBowelRecord,
+} from '../util/bowel-record.util';
 
-type DiscomfortField =
-  'stomach' | 'distension' | 'remainingFeeling' | 'urgency';
+type CodedDiscomfortField = 'distension' | 'remainingFeeling' | 'urgency';
 
 const STOOL_ORDER: PdfStoolCode[] = ['M', 'H', 'T'];
 
@@ -31,14 +38,30 @@ const DOMINANT_STOOL_LABEL: Record<PdfStoolCode, string> = {
   T: '묽은 변',
 };
 
+function isCodedDiscomfort(value: string | null): boolean {
+  return value === 'M' || value === 'L';
+}
+
 const DISCOMFORTS: Array<{
-  field: DiscomfortField;
   label: string;
+  matches: (record: BoogleRecordForReport) => boolean;
 }> = [
-  { field: 'stomach', label: '복통 (약간 이상)' },
-  { field: 'distension', label: '복부 팽만' },
-  { field: 'remainingFeeling', label: '잔변감' },
-  { field: 'urgency', label: '급박감' },
+  {
+    label: '복통 (약간 이상)',
+    matches: (record) => isStomachPainAtLeastMild(record.stomach),
+  },
+  {
+    label: '복부 팽만',
+    matches: (record) => isCodedDiscomfort(record.distension),
+  },
+  {
+    label: '잔변감',
+    matches: (record) => isCodedDiscomfort(record.remainingFeeling),
+  },
+  {
+    label: '급박감',
+    matches: (record) => isCodedDiscomfort(record.urgency),
+  },
 ];
 
 const DAILY_FOOD_LABEL: Record<string, string> = {
@@ -55,10 +78,6 @@ function round1(value: number): number {
 
 function isStoolCode(value: string | null): value is PdfStoolCode {
   return value === 'M' || value === 'H' || value === 'T';
-}
-
-function isDiscomfort(value: string | null): boolean {
-  return value === 'M' || value === 'L';
 }
 
 function utcDateFromKey(dateKey: string): Date {
@@ -185,8 +204,8 @@ function buildDiscomfortRows(
     recordsByDate.set(dateKey, dailyRecords);
   }
 
-  return DISCOMFORTS.map(({ field, label }) => {
-    const matched = records.filter((record) => isDiscomfort(record[field]));
+  return DISCOMFORTS.map(({ label, matches }) => {
+    const matched = records.filter(matches);
 
     return {
       label,
@@ -237,18 +256,18 @@ function buildTopFoodTags(records: LifeRecordForReport[]): MonthlyPdfFoodTag[] {
 }
 
 // 불편감 코드: 'L'(Large) = 심함, 'M'(Medium) = 약간. 생활 요인의 'L'(Low)과 의미가 다름.
-function severity(value: string | null): number {
+function codedSeverity(value: string | null): number {
   if (value === 'L') return 2;
   if (value === 'M') return 1;
   return 0;
 }
 
-function maxSeverity(
+function maxCodedSeverity(
   records: BoogleRecordForReport[],
-  field: DiscomfortField,
+  field: CodedDiscomfortField,
 ): number {
   return records.reduce(
-    (max, record) => Math.max(max, severity(record[field])),
+    (max, record) => Math.max(max, codedSeverity(record[field])),
     0,
   );
 }
@@ -256,19 +275,26 @@ function maxSeverity(
 function buildDailyDiscomfort(records: BoogleRecordForReport[]): string {
   const labels: string[] = [];
 
-  const stomach = maxSeverity(records, 'stomach');
-  if (stomach === 1) labels.push('복통 약간');
-  if (stomach === 2) labels.push('복통 심함');
+  const maxStomachPain = records.reduce(
+    (max, record) => Math.max(max, record.stomach ?? 0),
+    0,
+  );
 
-  const distension = maxSeverity(records, 'distension');
+  if (isSevereStomachPain(maxStomachPain)) {
+    labels.push('복통 심함');
+  } else if (isStomachPainAtLeastMild(maxStomachPain)) {
+    labels.push('복통 약간');
+  }
+
+  const distension = maxCodedSeverity(records, 'distension');
   if (distension === 1) labels.push('복부팽만 약간');
   if (distension === 2) labels.push('복부팽만 심함');
 
-  const remaining = maxSeverity(records, 'remainingFeeling');
+  const remaining = maxCodedSeverity(records, 'remainingFeeling');
   if (remaining === 1) labels.push('잔변감 약간');
   if (remaining === 2) labels.push('잔변감 있음');
 
-  const urgency = maxSeverity(records, 'urgency');
+  const urgency = maxCodedSeverity(records, 'urgency');
   if (urgency === 1) labels.push('급박감 약간');
   if (urgency === 2) labels.push('급박감 있음');
 
@@ -276,9 +302,18 @@ function buildDailyDiscomfort(records: BoogleRecordForReport[]): string {
 }
 
 function buildDailyStoolState(records: BoogleRecordForReport[]): string {
-  const latestBowelRecord = [...records]
-    .reverse()
-    .find((record) => record.hasBowel);
+  const latestBowelRecord = records
+    .filter(hasBowelMovementAt)
+    .reduce<TimedBowelRecord | undefined>((latest, record) => {
+      if (
+        latest === undefined ||
+        record.bowelMovementAt.getTime() > latest.bowelMovementAt.getTime()
+      ) {
+        return record;
+      }
+
+      return latest;
+    }, undefined);
 
   if (
     latestBowelRecord === undefined ||
