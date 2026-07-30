@@ -80,3 +80,26 @@ Content-Type: application/json
 | `FIREBASE_VAPID_KEY` | 웹 푸시 VAPID 공개키 | 주로 프론트 토큰 발급 |
 
 > 🔒 서비스 계정 키는 시크릿이므로 레포에 커밋 금지, 배포 env로만 주입한다.
+
+---
+
+## 4. 발송 모듈 (2단계) — 내부 서비스 (API 아님)
+
+각 도메인/배치는 아래 서비스를 주입해 푸시를 발송한다. (HTTP 엔드포인트 아님)
+
+**`PushSenderService.send(userId, { title, body, link? })`**
+- 해당 유저의 `push_token` 전부를 조회해 **모든 기기로 발송**(멀티 기기).
+- 발송 결과에서 만료·무효 토큰(`registration-token-not-registered` 등)은 `push_token`에서 **자동 삭제**(죽은 토큰 누적 방지).
+- `FIREBASE_SERVICE_ACCOUNT_BASE64` 미설정 환경에서는 앱을 죽이지 않고 **발송을 no-op**으로 처리한다(토큰 등록 등 나머지 기능은 정상 동작).
+
+```ts
+// 사용 예 (3단계 스케줄러 등에서)
+await pushSenderService.send(userId, {
+  title: '기록할 시간이에요',
+  body: '30초면 충분해요. 지금 기록해볼까요?',
+  link: 'https://app/home',
+});
+```
+
+> 📌 **범위**: 이 모듈은 "발송하는 도구"까지다. "언제 보낼지"(리마인더/연속기록 조건 판정)와 in-app 알림 생성(`NotificationCreationService`)을 함께 부르는 오케스트레이션은 **3단계(스케줄러)** 몫이다.
+> 📌 발송 검증: 유닛테스트는 firebase-admin mock으로 커버. **실제 브라우저 수신**은 프론트(PWA)가 발급한 FCM 토큰이 있어야 확인 가능하다.
