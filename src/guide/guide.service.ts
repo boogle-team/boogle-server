@@ -6,15 +6,10 @@ import {
   PATTERN_GUIDE_BINDINGS,
   type WeeklyRuleCode,
 } from '@/report/pattern/weekly-pattern.constants';
-import {
-  getTodayKstDateKey,
-  kstDayStart,
-  toKstDateKey,
-} from '@/common/utils/kst-date.util';
+import { getTodayKstDateKey } from '@/common/utils/kst-date.util';
 import type {
   GuideFeedbackStatus,
   GuideScreenResponseDto,
-  WarningFlagDto,
 } from './dto/guide-screen-response.dto';
 import { GuideErrorCode } from './guide-error-code.enum';
 import type {
@@ -25,8 +20,6 @@ import type {
   PatternGuideDetailResponseDto,
   PatternGuideReasonDto,
   RecommendedGuideDto,
-  WarningDetailFlagDto,
-  WarningGuideAnalysisDto,
   WarningGuideDetailResponseDto,
 } from './dto/guide-detail-response.dto';
 import type { GuideFeedbackRequestDto } from './dto/guide-feedback-request.dto';
@@ -35,11 +28,7 @@ import type {
   DeleteGuideFeedbackResponseDto,
   UpdateGuideFeedbackResponseDto,
 } from './dto/guide-feedback-response.dto';
-import type {
-  GuideDetailRow,
-  WarningDetailRecordRow,
-  WarningRecordRow,
-} from './dto/guide-record.dto';
+import type { GuideDetailRow } from './dto/guide-record.dto';
 
 const INTERNAL_SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
 
@@ -53,11 +42,8 @@ export class GuideService {
   async getGuideScreen(userId: bigint): Promise<GuideScreenResponseDto> {
     try {
       const weekStartDate = this.getCurrentMonday();
-      const monthStartDate = this.getCurrentMonthStartDate();
-      const nextMonthStartDate = this.addMonths(monthStartDate, 1);
-      const monthEndDate = this.addDays(nextMonthStartDate, -1);
 
-      const [weeklyReport, staticGuides, warningRecords] = await Promise.all([
+      const [weeklyReport, staticGuides] = await Promise.all([
         this.reportService.getWeeklyReport(userId, {
           weekStartDate: this.toDateString(weekStartDate),
           includeGuide: true,
@@ -79,11 +65,6 @@ export class GuideService {
             id: 'asc',
           },
         }),
-        this.findMonthlyWarningRecords(
-          userId,
-          monthStartDate,
-          nextMonthStartDate,
-        ),
       ]);
 
       const healthGuideRows = staticGuides.filter(
@@ -104,13 +85,8 @@ export class GuideService {
             }))
           : [];
 
-      const detectedFlags = this.detectWarningFlags(warningRecords);
-      const warningDetected = detectedFlags.length > 0;
-
       return {
-        sectionOrder: warningDetected
-          ? ['WARNING', 'PATTERN', 'HEALTH']
-          : ['PATTERN', 'HEALTH', 'WARNING'],
+        sectionOrder: ['PATTERN', 'HEALTH', 'WARNING'],
         patternGuideSection: {
           category: 'P',
           categoryLabel: '패턴 기반',
@@ -150,13 +126,6 @@ export class GuideService {
           categoryLabel: '주의 신호',
           sectionTitle: '주의 신호',
           sectionDescription: '다음 증상이 반복된다면 전문가 상담을 권장해요.',
-          period: {
-            type: 'MONTHLY',
-            startDate: this.toDateString(monthStartDate),
-            endDate: this.toDateString(monthEndDate),
-          },
-          highlighted: warningDetected,
-          detectedFlags,
           guides: warningGuideRows.map((guide) => ({
             guideId: guide.id,
             category: 'W' as const,
@@ -172,98 +141,6 @@ export class GuideService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  // 월간 위험 신호 판정에 필요한 컬럼만 조회
-
-  private async findMonthlyWarningRecords(
-    userId: bigint,
-    monthStartDate: Date,
-    nextMonthStartDate: Date,
-  ): Promise<WarningRecordRow[]> {
-    return this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: {
-          gte: this.toKstBoundary(monthStartDate),
-          lt: this.toKstBoundary(nextMonthStartDate),
-        },
-        OR: [
-          {
-            hasBowel: true,
-            color: {
-              in: ['R', 'N'],
-            },
-          },
-          {
-            stomach: 'L',
-          },
-        ],
-      },
-      select: {
-        regDate: true,
-        hasBowel: true,
-        color: true,
-        stomach: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  private detectWarningFlags(records: WarningRecordRow[]): WarningFlagDto[] {
-    const flagMap = new Map<WarningFlagDto['flagCode'], WarningFlagDto>();
-
-    // 오름차순으로 조회한 뒤 같은 신호가 반복되면 덮어쓰기
-    // 최종적으로 가장 최근 감지일이 저장
-
-    for (const record of records) {
-      if (record.color === 'R') {
-        flagMap.set('FLAG_BLOOD_RED', {
-          flagCode: 'FLAG_BLOOD_RED',
-          label: '붉은색 변이 기록되었어요.',
-          detectedDate: toKstDateKey(record.regDate),
-        });
-      }
-
-      if (record.color === 'N') {
-        flagMap.set('FLAG_BLOOD_BLACK', {
-          flagCode: 'FLAG_BLOOD_BLACK',
-          label: '검은색 변이 기록되었어요.',
-          detectedDate: toKstDateKey(record.regDate),
-        });
-      }
-
-      if (record.stomach === 'L') {
-        flagMap.set('FLAG_PAIN_SEVERE', {
-          flagCode: 'FLAG_PAIN_SEVERE',
-          label: '심한 복통이 기록되었어요.',
-          detectedDate: toKstDateKey(record.regDate),
-        });
-      }
-    }
-
-    const flagOrder: WarningFlagDto['flagCode'][] = [
-      'FLAG_BLOOD_RED',
-      'FLAG_BLOOD_BLACK',
-      'FLAG_PAIN_SEVERE',
-    ];
-
-    return flagOrder.flatMap((flagCode) => {
-      const flag = flagMap.get(flagCode);
-      return flag === undefined ? [] : [flag];
-    });
-  }
-
-  private getCurrentMonthStartDate(): Date {
-    const todayKey = getTodayKstDateKey();
-    return this.parseDateString(`${todayKey.slice(0, 7)}-01`)!;
-  }
-
-  private toKstBoundary(calendarDate: Date): Date {
-    return kstDayStart(this.toDateString(calendarDate));
   }
 
   private parseDateString(value: string): Date | null {
@@ -303,12 +180,6 @@ export class GuideService {
     const copiedDate = new Date(date);
     copiedDate.setUTCDate(copiedDate.getUTCDate() + days);
     return copiedDate;
-  }
-
-  private addMonths(date: Date, months: number): Date {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
-    );
   }
 
   private toDateString(date: Date): string {
@@ -360,7 +231,6 @@ export class GuideService {
           categoryLabel: '장 건강',
           recommendedGuides,
           patternReason: null,
-          warningAnalysis: null,
         };
 
         return response;
@@ -378,22 +248,18 @@ export class GuideService {
           categoryLabel: '패턴 기반',
           recommendedGuides: [],
           patternReason,
-          warningAnalysis: null,
         };
 
         return response;
       }
 
       if (guide.category === 'W') {
-        const warningAnalysis = await this.buildWarningGuideAnalysis(userId);
-
         const response: WarningGuideDetailResponseDto = {
           ...common,
           category: 'W',
           categoryLabel: '주의 신호',
           recommendedGuides: [],
           patternReason: null,
-          warningAnalysis,
         };
 
         return response;
@@ -562,109 +428,6 @@ export class GuideService {
       matched: matchedPatterns.length > 0,
       matchedRuleCodes: matchedPatterns.map((pattern) => pattern.ruleCode),
       matchedPatterns,
-    };
-  }
-
-  //월간 기록 조회
-  private async findWarningDetailRecords(
-    userId: bigint,
-    monthStartDate: Date,
-    nextMonthStartDate: Date,
-  ): Promise<WarningDetailRecordRow[]> {
-    return this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        regDate: {
-          gte: this.toKstBoundary(monthStartDate),
-          lt: this.toKstBoundary(nextMonthStartDate),
-        },
-        OR: [
-          {
-            hasBowel: true,
-            color: {
-              in: ['R', 'N'],
-            },
-          },
-          {
-            stomach: 'L',
-          },
-        ],
-      },
-      select: {
-        id: true,
-        regDate: true,
-        color: true,
-        stomach: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  // 주의 신호 생성
-  private detectWarningDetailFlags(
-    records: WarningDetailRecordRow[],
-  ): WarningDetailFlagDto[] {
-    const flagMap = new Map<
-      WarningDetailFlagDto['flagCode'],
-      WarningDetailFlagDto
-    >();
-
-    for (const record of records) {
-      if (record.color === 'R') {
-        flagMap.set('FLAG_BLOOD_RED', {
-          flagCode: 'FLAG_BLOOD_RED',
-          label: '붉은색 변 기록',
-          detectedDate: toKstDateKey(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-
-      if (record.color === 'N') {
-        flagMap.set('FLAG_BLOOD_BLACK', {
-          flagCode: 'FLAG_BLOOD_BLACK',
-          label: '검은색 변 기록',
-          detectedDate: toKstDateKey(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-
-      if (record.stomach === 'L') {
-        flagMap.set('FLAG_PAIN_SEVERE', {
-          flagCode: 'FLAG_PAIN_SEVERE',
-          label: '심한 복통 기록',
-          detectedDate: toKstDateKey(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-    }
-
-    return [...flagMap.values()];
-  }
-
-  private async buildWarningGuideAnalysis(
-    userId: bigint,
-  ): Promise<WarningGuideAnalysisDto> {
-    const monthStartDate = this.getCurrentMonthStartDate();
-    const nextMonthStartDate = this.addMonths(monthStartDate, 1);
-    const monthEndDate = this.addDays(nextMonthStartDate, -1);
-    const records = await this.findWarningDetailRecords(
-      userId,
-      monthStartDate,
-      nextMonthStartDate,
-    );
-    const detectedFlags = this.detectWarningDetailFlags(records);
-
-    return {
-      period: {
-        type: 'MONTHLY',
-        startDate: this.toDateString(monthStartDate),
-        endDate: this.toDateString(monthEndDate),
-      },
-      matched: detectedFlags.length > 0,
-      detectedFlags,
     };
   }
 

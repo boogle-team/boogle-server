@@ -20,9 +20,6 @@ describe('GuideService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    boogleRecord: {
-      findMany: jest.fn(),
-    },
   };
 
   const reportServiceMock = {
@@ -283,60 +280,6 @@ describe('GuideService', () => {
     });
   });
 
-  it('주의 신호를 KST 월 경계로 조회한다', async () => {
-    reportServiceMock.getWeeklyReport.mockResolvedValue({
-      period: {
-        type: 'WEEKLY',
-        startDate: '2026-07-20',
-        endDate: '2026-07-26',
-      },
-      dataStatus: 'INSUFFICIENT',
-      recordStats: {
-        recordedDays: 0,
-        requiredDays: 3,
-        completionScore: 0,
-      },
-      guides: [],
-    });
-    prismaMock.guide.findMany.mockResolvedValue([]);
-    prismaMock.boogleRecord.findMany.mockResolvedValue([]);
-
-    await service.getGuideScreen(1n);
-
-    expect(prismaMock.boogleRecord.findMany).toHaveBeenCalledWith({
-      where: {
-        userId: 1n,
-        status: 'A',
-        regDate: {
-          gte: new Date('2026-06-30T15:00:00.000Z'),
-          lt: new Date('2026-07-31T15:00:00.000Z'),
-        },
-        OR: [
-          {
-            hasBowel: true,
-            color: {
-              in: ['R', 'N'],
-            },
-          },
-          {
-            stomach: 'L',
-          },
-        ],
-      },
-      select: {
-        regDate: true,
-        hasBowel: true,
-        color: true,
-        stomach: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-
-    expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
-  });
-
   it('Guide.id로 H 상세를 조회하고 모든 본문, 조언, 추천 Guide를 반환한다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue(healthGuideRow);
     prismaMock.guide.findMany.mockResolvedValue([
@@ -398,7 +341,7 @@ describe('GuideService', () => {
     ]);
     expect(result.recommendedGuides).toHaveLength(2);
     expect(result.patternReason).toBeNull();
-    expect(result.warningAnalysis).toBeNull();
+    expect(result).not.toHaveProperty('warningAnalysis');
   });
 
   it('P Guide를 ID로 연결해 제목이 변경되어도 실제 감지 룰만 반환한다', async () => {
@@ -493,7 +436,7 @@ describe('GuideService', () => {
     });
   });
 
-  it('W의 정적 본문과 DB 조언, 사용자별 경고 분석을 함께 반환한다', async () => {
+  it('W의 정적 본문과 DB 조언을 반환하고 사용자 위험 신호 분석은 포함하지 않는다', async () => {
     prismaMock.guide.findUnique.mockResolvedValue({
       id: 1001,
       title: '이런 증상이면 전문가 상담을',
@@ -515,18 +458,19 @@ describe('GuideService', () => {
         },
       ],
     });
-    prismaMock.boogleRecord.findMany.mockResolvedValue([
-      {
-        id: 9001n,
-        regDate: new Date('2026-07-22T15:30:00.000Z'),
-        color: 'R',
-        stomach: null,
-      },
-    ]);
 
     const result = await service.getGuideDetail(1n, '1001');
 
+    expect(result.category).toBe('W');
     expect(result.source).toBeNull();
+    expect(result.contents).toEqual([
+      {
+        contentId: 401,
+        order: 1,
+        subtitle: '혈변·흑변',
+        content: '붉은색이나 검은색 변이 보이는 경우',
+      },
+    ]);
     expect(result.advices).toEqual([
       {
         adviceId: 501,
@@ -534,56 +478,9 @@ describe('GuideService', () => {
         content: '증상이 지속되면 병원에 방문하세요.',
       },
     ]);
-    expect(result.warningAnalysis).toEqual({
-      period: {
-        type: 'MONTHLY',
-        startDate: '2026-07-01',
-        endDate: '2026-07-31',
-      },
-      matched: true,
-      detectedFlags: [
-        {
-          flagCode: 'FLAG_BLOOD_RED',
-          label: '붉은색 변 기록',
-          detectedDate: '2026-07-23',
-          sourceRecordId: '9001',
-        },
-      ],
-    });
-  });
-
-  it('배변이 없어도 심한 복통이면 주의 신호를 반환한다', async () => {
-    reportServiceMock.getWeeklyReport.mockResolvedValue({
-      period: {
-        type: 'WEEKLY',
-        startDate: '2026-07-20',
-        endDate: '2026-07-26',
-      },
-      dataStatus: 'INSUFFICIENT',
-      recordStats: {
-        recordedDays: 0,
-        requiredDays: 3,
-        completionScore: 0,
-      },
-      guides: [],
-    });
-    prismaMock.guide.findMany.mockResolvedValue([]);
-    prismaMock.boogleRecord.findMany.mockResolvedValue([
-      {
-        regDate: new Date('2026-07-22T16:30:00.000Z'),
-        hasBowel: false,
-        color: null,
-        stomach: 'L',
-      },
-    ]);
-
-    const result = await service.getGuideScreen(1n);
-
-    expect(result.warningGuideSection.detectedFlags).toContainEqual({
-      flagCode: 'FLAG_PAIN_SEVERE',
-      label: '심한 복통이 기록되었어요.',
-      detectedDate: '2026-07-23',
-    });
+    expect(result.recommendedGuides).toEqual([]);
+    expect(result.patternReason).toBeNull();
+    expect(result).not.toHaveProperty('warningAnalysis');
   });
 
   it('가이드 화면의 섹션 제목을 고정하고 피드백 필드를 반환하지 않는다', async () => {
@@ -622,7 +519,6 @@ describe('GuideService', () => {
         category: 'W',
       },
     ]);
-    prismaMock.boogleRecord.findMany.mockResolvedValue([]);
 
     const result = await service.getGuideScreen(1n);
     const cards = [
@@ -636,6 +532,21 @@ describe('GuideService', () => {
     cards.forEach((card) => {
       expect(card).not.toHaveProperty('feedbackStatus');
     });
+
+    expect(result.sectionOrder).toEqual(['PATTERN', 'HEALTH', 'WARNING']);
+
+    expect(result.warningGuideSection.guides).toEqual([
+      {
+        guideId: 1001,
+        category: 'W',
+        title: '이런 증상이면 전문가 상담을',
+        summary: '주의 신호를 확인해보세요.',
+      },
+    ]);
+
+    expect(result.warningGuideSection).not.toHaveProperty('period');
+    expect(result.warningGuideSection).not.toHaveProperty('highlighted');
+    expect(result.warningGuideSection).not.toHaveProperty('detectedFlags');
     expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
   });
 });

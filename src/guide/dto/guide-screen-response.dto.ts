@@ -226,30 +226,6 @@ export class HealthGuideSectionDto {
   guides!: GuideCardDto[];
 }
 
-export class WarningFlagDto {
-  @ApiProperty({
-    enum: ['FLAG_BLOOD_RED', 'FLAG_BLOOD_BLACK', 'FLAG_PAIN_SEVERE'],
-    example: 'FLAG_BLOOD_RED',
-    description: '감지된 주의 신호 코드',
-  })
-  flagCode!: 'FLAG_BLOOD_RED' | 'FLAG_BLOOD_BLACK' | 'FLAG_PAIN_SEVERE';
-
-  @ApiProperty({
-    type: String,
-    example: '붉은색 변이 기록되었어요.',
-    description: '주의 신호 표시 문구',
-  })
-  label!: string;
-
-  @ApiProperty({
-    type: String,
-    format: 'date',
-    example: '2026-07-23',
-    description: '해당 주의 신호가 마지막으로 감지된 KST 날짜',
-  })
-  detectedDate!: string;
-}
-
 export class WarningGuideSectionDto {
   @ApiProperty({
     enum: ['W'],
@@ -277,26 +253,6 @@ export class WarningGuideSectionDto {
   sectionDescription!: string;
 
   @ApiProperty({
-    type: GuidePeriodDto,
-    description: '주의 신호 감지에 사용한 월간 기간',
-  })
-  period!: GuidePeriodDto;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true,
-    description:
-      '월간 기간에서 혈변, 흑변 또는 심한 복통이 하나 이상 감지됐는지 여부',
-  })
-  highlighted!: boolean;
-
-  @ApiProperty({
-    type: [WarningFlagDto],
-    description: '감지된 주의 신호. 감지되지 않으면 빈 배열',
-  })
-  detectedFlags!: WarningFlagDto[];
-
-  @ApiProperty({
     type: [GuideCardDto],
     description: '활성 상태인 모든 주의 신호 가이드',
   })
@@ -307,9 +263,9 @@ export class GuideScreenResponseDto {
   @ApiProperty({
     enum: ['PATTERN', 'HEALTH', 'WARNING'],
     isArray: true,
-    example: ['WARNING', 'PATTERN', 'HEALTH'],
+    example: ['PATTERN', 'HEALTH', 'WARNING'],
     description:
-      '프론트엔드 가이드 섹션 표시 순서. 주의 신호가 감지되면 WARNING이 첫 번째',
+      '프론트엔드 가이드 섹션 표시 순서. 패턴 기반, 장 건강, 주의 신호 순으로 고정',
   })
   sectionOrder!: GuideSectionKey[];
 

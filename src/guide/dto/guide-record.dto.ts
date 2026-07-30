@@ -19,17 +19,3 @@ export interface GuideDetailRow {
   guideContents: GuideContentRow[];
   guideAdvices: GuideAdviceRow[];
 }
-
-export interface WarningRecordRow {
-  regDate: Date;
-  hasBowel: boolean;
-  color: string | null;
-  stomach: string | null;
-}
-
-export interface WarningDetailRecordRow {
-  id: bigint;
-  regDate: Date;
-  color: string | null;
-  stomach: string | null;
-}
