@@ -68,9 +68,11 @@ jobs:
             git fetch origin
             git checkout develop
             git pull origin develop
-            echo '${{ secrets.PROD_ENV_FILE }}' | base64 -d > .env.new
+            aws ssm get-parameters-by-path --path "/boogle/prod" --with-decryption \
+              --region ap-northeast-2 --query "Parameters[*].[Name,Value]" --output text \
+              | awk -F'\t' '{ n=split($1,a,"/"); print a[n]"="$2 }' > .env.new
             if [ ! -s .env.new ]; then
-              echo "PROD_ENV_FILE secret is empty or invalid, aborting" >&2
+              echo "SSM Parameter Store fetch failed or empty, aborting" >&2
               rm -f .env.new
               exit 1
             fi
