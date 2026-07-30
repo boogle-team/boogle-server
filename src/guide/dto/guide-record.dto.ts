@@ -1,13 +1,23 @@
 export interface GuideContentRow {
   id: number;
-  category: string | null;
-  title: string;
+  subtitle: string | null;
   content: string;
 }
 
-export interface PatternGuideRuleRow {
-  ruleCode: string | null;
-  guideContent: GuideContentRow;
+export interface GuideAdviceRow {
+  id: number;
+  content: string;
+}
+
+export interface GuideDetailRow {
+  id: number;
+  title: string;
+  summary: string;
+  source: string | null;
+  category: string;
+  status: string;
+  guideContents: GuideContentRow[];
+  guideAdvices: GuideAdviceRow[];
 }
 
 export interface WarningRecordRow {
@@ -15,20 +25,6 @@ export interface WarningRecordRow {
   hasBowel: boolean;
   color: string | null;
   stomach: string | null;
-}
-
-export interface GuideRuleRow {
-  ruleCode: string | null;
-  condition: string | null;
-}
-
-export interface GuideContentDetailRow {
-  id: number;
-  category: string | null;
-  title: string;
-  content: string;
-  status: string;
-  guideRules: GuideRuleRow[];
 }
 
 export interface WarningDetailRecordRow {

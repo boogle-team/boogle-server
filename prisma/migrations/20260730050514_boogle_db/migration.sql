@@ -3,8 +3,9 @@ CREATE TABLE `member` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `login_id` VARCHAR(20) NULL,
     `password` VARCHAR(255) NULL,
-    `nickname` VARCHAR(40) NULL,
+    `nickname` VARCHAR(10) NULL,
     `profile_img` VARCHAR(255) NULL,
+    `profile_image_key` VARCHAR(255) NULL,
     `email` VARCHAR(255) NULL,
     `name` VARCHAR(20) NULL,
     `gender` CHAR(1) NULL,
@@ -23,6 +24,7 @@ CREATE TABLE `member` (
     `warn_alarm` CHAR(1) NULL DEFAULT 'Y',
 
     UNIQUE INDEX `member_login_id_key`(`login_id`),
+    UNIQUE INDEX `member_nickname_key`(`nickname`),
     UNIQUE INDEX `member_email_key`(`email`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -31,6 +33,7 @@ CREATE TABLE `member` (
 CREATE TABLE `alarm` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `category` CHAR(1) NOT NULL,
+    `type` VARCHAR(20) NULL,
     `title` VARCHAR(40) NOT NULL,
     `content` VARCHAR(255) NOT NULL,
 
@@ -59,6 +62,51 @@ CREATE TABLE `social_account` (
 
     UNIQUE INDEX `social_account_index_0`(`provider`, `provider_id`),
     UNIQUE INDEX `social_account_index_1`(`user_id`, `provider`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `refresh_token` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NOT NULL,
+    `token_hash` VARCHAR(64) NOT NULL,
+    `expires_at` DATETIME(3) NOT NULL,
+    `revoked_at` DATETIME(3) NULL,
+    `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `refresh_token_token_hash_key`(`token_hash`),
+    INDEX `refresh_token_user_id_idx`(`user_id`),
+    INDEX `refresh_token_expires_at_idx`(`expires_at`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `member_consent` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NOT NULL,
+    `consent_type` VARCHAR(20) NOT NULL,
+    `agreed` BOOLEAN NOT NULL DEFAULT false,
+    `policy_version` VARCHAR(20) NOT NULL,
+    `agreed_at` DATETIME(3) NULL,
+    `withdrawn_at` DATETIME(3) NULL,
+    `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `member_consent_user_type_id_idx`(`user_id`, `consent_type`, `id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `auth_temporary_token` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `token_hash` VARCHAR(64) NOT NULL,
+    `token_type` VARCHAR(20) NOT NULL,
+    `payload` JSON NOT NULL,
+    `expires_at` DATETIME(3) NOT NULL,
+    `used_at` DATETIME(3) NULL,
+    `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `auth_temporary_token_token_hash_key`(`token_hash`),
+    INDEX `auth_temporary_token_type_expires_idx`(`token_type`, `expires_at`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -92,6 +140,7 @@ CREATE TABLE `life_record` (
     `sleep` CHAR(1) NULL,
     `stress` CHAR(1) NULL,
     `water` CHAR(1) NULL,
+    `water_intake` TINYINT NULL,
     `meal_regular` CHAR(1) NULL,
     `memo` VARCHAR(255) NULL,
     `auto_tags` VARCHAR(255) NULL,
@@ -172,6 +221,20 @@ CREATE TABLE `monthly_record` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `monthly_rule_result` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `user_id` BIGINT NOT NULL,
+    `month_start_date` DATE NOT NULL,
+    `rule_code` VARCHAR(40) NOT NULL,
+    `value` DOUBLE NOT NULL,
+    `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `update_date` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `monthly_rule_result_user_month_rule_uq`(`user_id`, `month_start_date`, `rule_code`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `life_food_tag` (
     `life_id` BIGINT NOT NULL,
     `food_id` INTEGER NOT NULL,
@@ -189,22 +252,35 @@ CREATE TABLE `food` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `guide_content` (
+CREATE TABLE `guide` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `title` VARCHAR(255) NOT NULL,
-    `category` CHAR(1) NULL,
-    `content` TEXT NOT NULL,
+    `summary` VARCHAR(255) NOT NULL,
+    `category` CHAR(1) NOT NULL,
+    `regDate` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `update_date` DATETIME(3) NULL,
     `status` CHAR(1) NOT NULL DEFAULT 'A',
+    `source` VARCHAR(255) NULL,
+
+    UNIQUE INDEX `guide_category_title_uq`(`category`, `title`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `guide_content` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `guide_id` INTEGER NOT NULL,
+    `subtitle` VARCHAR(255) NULL,
+    `content` TEXT NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `guide_rule` (
+CREATE TABLE `guide_advice` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `guide_content_id` INTEGER NOT NULL,
-    `rule_code` VARCHAR(40) NULL,
-    `condition` TEXT NULL,
+    `guide_id` INTEGER NOT NULL,
+    `content` TEXT NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -213,12 +289,12 @@ CREATE TABLE `guide_rule` (
 CREATE TABLE `guide_feedback` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `user_id` BIGINT NOT NULL,
-    `guide_content_id` INTEGER NOT NULL,
+    `guide_id` INTEGER NOT NULL,
     `feedback` CHAR(1) NOT NULL,
     `reg_date` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `update_date` DATETIME(3) NULL,
 
-    UNIQUE INDEX `guide_feedback_index_5`(`user_id`, `guide_content_id`),
+    UNIQUE INDEX `guide_feedback_index_5`(`user_id`, `guide_id`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -230,6 +306,12 @@ ALTER TABLE `alarm_map` ADD CONSTRAINT `alarm_map_alarm_id_fkey` FOREIGN KEY (`a
 
 -- AddForeignKey
 ALTER TABLE `social_account` ADD CONSTRAINT `social_account_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `refresh_token` ADD CONSTRAINT `refresh_token_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `member_consent` ADD CONSTRAINT `member_consent_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `boogle_record` ADD CONSTRAINT `boogle_record_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -256,19 +338,25 @@ ALTER TABLE `weekly_record` ADD CONSTRAINT `weekly_record_user_id_fkey` FOREIGN 
 ALTER TABLE `monthly_record` ADD CONSTRAINT `monthly_record_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `monthly_rule_result` ADD CONSTRAINT `monthly_rule_result_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `life_food_tag` ADD CONSTRAINT `life_food_tag_life_id_fkey` FOREIGN KEY (`life_id`) REFERENCES `life_record`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `life_food_tag` ADD CONSTRAINT `life_food_tag_food_id_fkey` FOREIGN KEY (`food_id`) REFERENCES `food`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `guide_rule` ADD CONSTRAINT `guide_rule_guide_content_id_fkey` FOREIGN KEY (`guide_content_id`) REFERENCES `guide_content`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `guide_content` ADD CONSTRAINT `guide_content_guide_id_fkey` FOREIGN KEY (`guide_id`) REFERENCES `guide`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `guide_advice` ADD CONSTRAINT `guide_advice_guide_id_fkey` FOREIGN KEY (`guide_id`) REFERENCES `guide`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `guide_feedback` ADD CONSTRAINT `guide_feedback_user_id_fkey` FOREIGN KEY (`user_id`) REFERENCES `member`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `guide_feedback` ADD CONSTRAINT `guide_feedback_guide_content_id_fkey` FOREIGN KEY (`guide_content_id`) REFERENCES `guide_content`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `guide_feedback` ADD CONSTRAINT `guide_feedback_guide_id_fkey` FOREIGN KEY (`guide_id`) REFERENCES `guide`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE `boogle_record`
   ADD CONSTRAINT `chk_has_bowel_stool_bristol`
@@ -276,4 +364,4 @@ ALTER TABLE `boogle_record`
     (`has_bowel` = 0 AND `stool_bristol` IS NULL)
     OR
     (`has_bowel` = 1 AND `stool_bristol` BETWEEN 1 AND 7)
-  );
+ );

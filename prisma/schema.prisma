@@ -40,6 +40,7 @@ model Member {
   lifeRecords    LifeRecord[]
   weeklyRecords  WeeklyRecord[]
   monthlyRecords MonthlyRecord[]
+  monthlyRuleResults MonthlyRuleResult[]
   guideFeedbacks GuideFeedback[]
 
   @@map("member")
@@ -253,6 +254,21 @@ model MonthlyRecord {
   @@map("monthly_record")
 }
 
+model MonthlyRuleResult {
+  id             BigInt   @id @default(autoincrement())
+  userId         BigInt   @map("user_id")
+  monthStartDate DateTime @map("month_start_date") @db.Date
+  ruleCode       String   @map("rule_code") @db.VarChar(40)
+  value          Float    @db.Double
+  regDate        DateTime @default(now()) @map("reg_date")
+  updateDate     DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, monthStartDate, ruleCode], map: "monthly_rule_result_user_month_rule_uq")
+  @@map("monthly_rule_result")
+}
+
 model LifeFoodTag {
   lifeId BigInt @map("life_id")
   foodId Int    @map("food_id")
@@ -273,41 +289,57 @@ model Food {
   @@map("food")
 }
 
+model Guide {
+  id  Int   @id @default(autoincrement())
+  title String @db.VarChar(255)
+  summary   String @db.VarChar(255)
+  category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
+  regDate   DateTime @default(now())
+  updateAt  DateTime? @updatedAt @map("update_date")
+  status    String @db.Char(1) @default("A")
+  source    String? @db.VarChar(255)
+
+  @@unique([category, title], map: "guide_category_title_uq")
+
+  guideContents   GuideContent[]
+  guideAdvices    GuideAdvice[]
+  guideFeedbacks  GuideFeedback[]
+
+  @@map("guide")
+}
+
 model GuideContent {
   id       Int     @id @default(autoincrement())
-  title    String  @db.VarChar(255)
-  category String? @db.Char(1) // 패턴P/장건강H/주의W
-  content  String  @db.Text
-  status   String  @default("A") @db.Char(1)
+  guideId   Int     @map("guide_id")
+  subtitle  String? @db.VarChar(255)
+  content   String  @db.Text
 
-  guideRules     GuideRule[]
-  guideFeedbacks GuideFeedback[]
+  guide Guide @relation(fields: [guideId], references: [id])
 
   @@map("guide_content")
 }
 
-model GuideRule {
-  id             Int     @id @default(autoincrement())
-  guideContentId Int     @map("guide_content_id")
-  ruleCode       String? @map("rule_code") @db.VarChar(40)
-  condition      String? @db.Text
+model GuideAdvice {
+  id      Int     @id @default(autoincrement())
+  guideId Int     @map("guide_id")
+  content String  @db.Text
 
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide   Guide   @relation(fields: [guideId], references: [id])
 
-  @@map("guide_rule")
+  @@map("guide_advice")
 }
 
 model GuideFeedback {
   id             BigInt    @id @default(autoincrement())
   userId         BigInt    @map("user_id")
-  guideContentId Int       @map("guide_content_id")
+  guideId        Int       @map("guide_id")
   feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
   regDate        DateTime  @default(now()) @map("reg_date")
-  updateDate     DateTime? @map("update_date") // 수정시 수정시각
+  updateDate     DateTime? @updatedAt @map("update_date") // 수정시 수정시각
 
   user         Member       @relation(fields: [userId], references: [id])
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide Guide @relation(fields: [guideId], references: [id])
 
-  @@unique([userId, guideContentId], map: "guide_feedback_index_5")
+  @@unique([userId, guideId], map: "guide_feedback_index_5")
   @@map("guide_feedback")
 }
