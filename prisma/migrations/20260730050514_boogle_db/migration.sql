@@ -33,6 +33,7 @@ CREATE TABLE `member` (
 CREATE TABLE `alarm` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `category` CHAR(1) NOT NULL,
+    `type` VARCHAR(20) NULL,
     `title` VARCHAR(40) NOT NULL,
     `content` VARCHAR(255) NOT NULL,
 
@@ -259,6 +260,7 @@ CREATE TABLE `guide` (
     `regDate` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `update_date` DATETIME(3) NULL,
     `status` CHAR(1) NOT NULL DEFAULT 'A',
+    `source` VARCHAR(255) NULL,
 
     UNIQUE INDEX `guide_category_title_uq`(`category`, `title`),
     PRIMARY KEY (`id`)
