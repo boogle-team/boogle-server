@@ -68,7 +68,7 @@
 | `stoolBristol` | `1`~`7` (브리스톨 척도) |
 | `stoolSimple` | `H` 딱딱 / `M` 보통 / `T` 묽음 *(백엔드 자동 변환: 1~2=H, 3~4=M, 5~7=T)* |
 | `bowelFeeling` | `C` 편안 / `N` 보통 / `H` 힘듦 |
-| `stomach` (복통) | `N` 없음 / `M` 보통 / `L` 심함 |
+| `stomach` (복통) | 복통 강도(**숫자**). 문자 코드(N/M/L)→숫자로 변경됨. 값 범위·의미는 부글 기록 정의 참고 |
 | `distension` (복부팽만) | `N` 없음 / `M` 보통 / `L` 심함 |
 | `remainingFeeling` (잔변감) | `N` 없음 / `M` 보통 / `L` 심함 |
 | `urgency` (긴박감) | `N` 없음 / `M` 보통 / `L` 심함 |
@@ -109,7 +109,7 @@
 | --- | --- |
 | `FLAG_BLOOD_RED` | 변 색상 `R` (붉은색 의심) |
 | `FLAG_BLOOD_BLACK` | 변 색상 `N` (검은색 의심) |
-| `FLAG_PAIN_SEVERE` | 복통 `L` (심함) |
+| `FLAG_PAIN_SEVERE` | 복통 심함 *(stomach이 숫자로 변경됨 — 기준값 재정의 필요, 가이드/알림 도메인 소관)* |
 
 ---
 
@@ -175,7 +175,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 4,
       "stoolSimple": "M",
       "bowelFeeling": "C",
-      "stomach": "N"
+      "stomach": 1
     },
     {
       "id": 101,
@@ -184,7 +184,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 6,
       "stoolSimple": "T",
       "bowelFeeling": "H",
-      "stomach": "N"
+      "stomach": 1
     }
   ],
   "lifeRecord": {
@@ -390,7 +390,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 4,
       "stoolSimple": "M",
       "bowelFeeling": "C",
-      "stomach": "N",
+      "stomach": 1,
       "distension": "N",
       "remainingFeeling": "N",
       "urgency": "N",
