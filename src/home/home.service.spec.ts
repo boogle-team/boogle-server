@@ -107,7 +107,7 @@ describe('HomeService', () => {
         stoolBristol: 4,
         stoolSimple: 'M',
         bowelFeeling: 'C',
-        stomach: 'N',
+        stomach: 1,
       },
     ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
