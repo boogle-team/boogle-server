@@ -85,7 +85,8 @@ export class NotificationSchedulerService {
     const members = await this.findAlarmEnabledMembers();
     if (members.length === 0) return;
 
-    const todaysRecorderIds = await this.findTodayRecorderIds(today);
+    const memberIds = members.map((member) => member.id);
+    const todaysRecorderIds = await this.findTodayRecorderIds(today, memberIds);
     const template = NOTIFICATION_TEMPLATES.RECORD_REMINDER;
 
     let sent = 0;
@@ -93,23 +94,34 @@ export class NotificationSchedulerService {
       const userId = member.id.toString();
       if (todaysRecorderIds.has(userId)) continue; // 이미 오늘 기록함 → 스킵
 
-      await this.creation.create({ userId, type: 'RECORD_REMINDER' });
-      await this.pushSender.send(userId, {
-        title: template.title,
-        body: template.content,
-      });
-      sent += 1;
+      // 한 유저 실패가 배치 전체를 멈추지 않도록 유저별로 격리한다.
+      try {
+        await this.creation.create({ userId, type: 'RECORD_REMINDER' });
+        await this.pushSender.send(userId, {
+          title: template.title,
+          body: template.content,
+        });
+        sent += 1;
+      } catch (error) {
+        this.logger.error(
+          `기록 리마인더 실패 userId=${userId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     }
     this.logger.log(`기록 리마인더 발송 ${sent}명`);
   }
 
-  // 연속 기록 중(streak ≥ 1)인 유저에게 독려 발송(며칠째인지 params로 치환).
+  // 연속 기록 중(어제까지 streak ≥ 1)인 유저에게 독려 발송(며칠째인지 params로 치환).
   async runStreakEncouragement(today: string): Promise<void> {
     const members = await this.findAlarmEnabledMembers();
     if (members.length === 0) return;
 
-    const datesByUser = await this.loadRecordDatesByUser(today);
+    const memberIds = members.map((member) => member.id);
+    const datesByUser = await this.loadRecordDatesByUser(today, memberIds);
     const template = NOTIFICATION_TEMPLATES.STREAK;
+    // 아침 배치이므로 "어제까지"의 연속 기록을 기준으로 한다(오늘 기록은 제외).
+    const referenceDay = addDaysKey(today, -1);
 
     let sent = 0;
     for (const member of members) {
@@ -117,16 +129,23 @@ export class NotificationSchedulerService {
       const dates = datesByUser.get(userId);
       if (!dates) continue;
 
-      const streak = calculateStreak(today, dates);
+      const streak = calculateStreak(referenceDay, dates);
       if (streak < 1) continue;
 
       const params = { days: streak };
-      await this.creation.create({ userId, type: 'STREAK', params });
-      await this.pushSender.send(userId, {
-        title: renderTemplate(template.title, params),
-        body: renderTemplate(template.content, params),
-      });
-      sent += 1;
+      try {
+        await this.creation.create({ userId, type: 'STREAK', params });
+        await this.pushSender.send(userId, {
+          title: renderTemplate(template.title, params),
+          body: renderTemplate(template.content, params),
+        });
+        sent += 1;
+      } catch (error) {
+        this.logger.error(
+          `연속기록 독려 실패 userId=${userId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
     }
     this.logger.log(`연속기록 독려 발송 ${sent}명`);
   }
@@ -142,10 +161,14 @@ export class NotificationSchedulerService {
     });
   }
 
-  private async findTodayRecorderIds(today: string): Promise<Set<string>> {
+  private async findTodayRecorderIds(
+    today: string,
+    memberIds: bigint[],
+  ): Promise<Set<string>> {
     const records = await this.prisma.boogleRecord.findMany({
       where: {
         status: 'A',
+        userId: { in: memberIds },
         regDate: {
           gte: kstDayStart(today),
           lt: kstDayStart(addDaysKey(today, 1)),
@@ -158,13 +181,16 @@ export class NotificationSchedulerService {
 
   private async loadRecordDatesByUser(
     today: string,
+    memberIds: bigint[],
   ): Promise<Map<string, Set<string>>> {
     const records = await this.prisma.boogleRecord.findMany({
       where: {
         status: 'A',
+        userId: { in: memberIds },
+        // "어제까지"만 필요하므로 오늘은 범위에서 제외(lt 오늘 자정).
         regDate: {
           gte: kstDayStart(addDaysKey(today, -STREAK_LOOKBACK_DAYS)),
-          lt: kstDayStart(addDaysKey(today, 1)),
+          lt: kstDayStart(today),
         },
       },
       select: { userId: true, regDate: true },

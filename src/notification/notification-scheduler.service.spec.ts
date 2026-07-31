@@ -104,12 +104,13 @@ describe('NotificationSchedulerService', () => {
   });
 
   describe('runStreakEncouragement', () => {
-    it('연속 기록 중인 유저에게 며칠째인지 채워 발송한다', async () => {
+    it('어제까지 연속 기록 중인 유저에게 며칠째인지 채워 발송한다', async () => {
       prisma.member.findMany.mockResolvedValue([{ id: 1n }]);
+      // today=05-12 기준, 어제(05-11)까지 3일 연속
       prisma.boogleRecord.findMany.mockResolvedValue([
+        { userId: 1n, regDate: new Date('2026-05-09T08:00:00.000+09:00') },
         { userId: 1n, regDate: new Date('2026-05-10T08:00:00.000+09:00') },
         { userId: 1n, regDate: new Date('2026-05-11T08:00:00.000+09:00') },
-        { userId: 1n, regDate: new Date('2026-05-12T08:00:00.000+09:00') },
       ]);
 
       await service.runStreakEncouragement('2026-05-12');
@@ -125,20 +126,54 @@ describe('NotificationSchedulerService', () => {
       });
     });
 
-    it('연속 기록이 없는(streak 0) 유저는 발송하지 않는다', async () => {
+    it('오늘만 기록한(어제 연속 아님) 유저는 발송하지 않는다', async () => {
       prisma.member.findMany.mockResolvedValue([{ id: 1n }, { id: 2n }]);
-      // 유저 1은 최근 연속, 유저 2는 오래전 기록만
+      // 유저 1: 어제(05-11) 연속 있음 / 유저 2: 오래전 기록만 → streak 0
       prisma.boogleRecord.findMany.mockResolvedValue([
-        { userId: 1n, regDate: new Date('2026-05-12T08:00:00.000+09:00') },
+        { userId: 1n, regDate: new Date('2026-05-11T08:00:00.000+09:00') },
         { userId: 2n, regDate: new Date('2026-04-01T08:00:00.000+09:00') },
       ]);
 
       await service.runStreakEncouragement('2026-05-12');
 
       expect(creation.create).toHaveBeenCalledTimes(1);
-      expect(creation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: '1', type: 'STREAK' }),
-      );
+      expect(creation.create).toHaveBeenCalledWith({
+        userId: '1',
+        type: 'STREAK',
+        params: { days: 1 },
+      });
+    });
+
+    it('연속기록 조회를 회원 ID로 DB에서 필터한다(오늘 제외)', async () => {
+      prisma.member.findMany.mockResolvedValue([{ id: 1n }, { id: 2n }]);
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+
+      await service.runStreakEncouragement('2026-05-12');
+
+      const calls = prisma.boogleRecord.findMany.mock.calls as Array<
+        [{ where: { status: string; userId: { in: bigint[] } } }]
+      >;
+      expect(calls[0][0].where.status).toBe('A');
+      expect(calls[0][0].where.userId).toEqual({ in: [1n, 2n] });
+    });
+  });
+
+  describe('유저별 실패 격리', () => {
+    it('한 유저 발송이 실패해도 나머지 유저는 계속 처리한다', async () => {
+      prisma.member.findMany.mockResolvedValue([{ id: 1n }, { id: 2n }]);
+      prisma.boogleRecord.findMany.mockResolvedValue([]); // 아무도 오늘 기록 안 함
+      // 유저 1에서 예외 → 유저 2는 정상 처리돼야 함
+      creation.create
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({ id: 2 });
+
+      await service.runRecordReminders('2026-05-12');
+
+      expect(creation.create).toHaveBeenCalledTimes(2);
+      expect(creation.create).toHaveBeenLastCalledWith({
+        userId: '2',
+        type: 'RECORD_REMINDER',
+      });
     });
   });
 });
