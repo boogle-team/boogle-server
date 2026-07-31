@@ -23,12 +23,17 @@ export class RecordService {
   ): Promise<RecordResponseDto> {
     this.validateRecord(dto);
 
+    const bowelMovementAt = dto.bowelMovementAt
+      ? new Date(`${dto.regDate}T${dto.bowelMovementAt}:00+09:00`)
+      : null;
+
     const record = await this.prisma.boogleRecord.create({
       data: {
         userId,
         ...dto,
+        bowelMovementAt,
         stoolSimple: this.convertStoolSimple(dto.stoolBristol),
-        regDate: new Date(dto.regDate),
+        regDate: new Date(`${dto.regDate}T00:00:00+09:00`),
       },
     });
 

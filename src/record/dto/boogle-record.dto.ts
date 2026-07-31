@@ -6,6 +6,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
 } from 'class-validator';
 
 // 부글 기록 생성 dto
@@ -34,7 +35,10 @@ export class CreateRecordDto {
     description: '배변 시간',
   })
   @IsOptional()
-  @IsInt()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, {
+    message: 'bowelMovementAt must be HH:mm format',
+  })
   bowelMovementAt?: string;
 
   @ApiPropertyOptional({
@@ -58,7 +62,7 @@ export class CreateRecordDto {
     description: '복통 없음 0 / 중간 1~3 / 심함 4',
   })
   @IsOptional()
-  @IsString()
+  @IsInt()
   stomach?: number;
 
   @ApiPropertyOptional({
