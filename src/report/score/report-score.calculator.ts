@@ -4,6 +4,10 @@ import type {
 } from '../dto/report-record.dto';
 import { toDateKey } from '../pattern/pattern-date.util';
 import { getKstTimeInHours } from '@/common/utils/kst-date.util';
+import {
+  hasBowelMovementAt,
+  type TimedBowelRecord,
+} from '../util/bowel-record.util';
 
 const MONTHLY_SCORE_DAYS = 30;
 
@@ -24,17 +28,18 @@ export function calculateReportScores(
     ...lifeRecords.map((record) => toDateKey(record.regDate)),
   ]);
   const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
+  const timedBowelRecords = bowelRecords.filter(hasBowelMovementAt);
 
   const completionScore = round1(
     Math.min((recordedDateSet.size / scoringDays) * 100, 100),
   );
 
   const rhythmScore =
-    bowelRecords.length === 0
+    timedBowelRecords.length === 0
       ? 50
       : round1(
-          (findMaxCircularTwoHourWindowCount(bowelRecords) /
-            bowelRecords.length) *
+          (findMaxCircularTwoHourWindowCount(timedBowelRecords) /
+            timedBowelRecords.length) *
             100,
         );
 
@@ -70,9 +75,11 @@ export function calculateMonthlyScores(
 }
 
 function findMaxCircularTwoHourWindowCount(
-  bowelRecords: BoogleRecordForReport[],
+  bowelRecords: TimedBowelRecord[],
 ): number {
-  const hours = bowelRecords.map((record) => getKstTimeInHours(record.regDate));
+  const hours = bowelRecords.map((record) =>
+    getKstTimeInHours(record.bowelMovementAt),
+  );
 
   return hours.reduce((maxCount, centerHour) => {
     const count = hours.filter(

@@ -10,11 +10,9 @@ export type MonthlyChangeTrend =
   | 'SAME'
   | 'IMPROVED'
   | 'WORSENED'
-  | 'NO_PREVIOUS_DATA'
-  | 'LOW_COMPLETION';
+  | 'NO_PREVIOUS_DATA';
 
-export type MonthlyChangeReasonCode =
-  'PREVIOUS_MONTH_NOT_FOUND' | 'CURRENT_LOW_COMPLETION';
+export type MonthlyChangeReasonCode = 'PREVIOUS_MONTH_NOT_FOUND';
 
 export class MonthlyReportPeriodDto {
   @ApiProperty({
@@ -218,9 +216,10 @@ export class MonthlyChangeSummaryDto {
   compareAvailable!: boolean;
 
   @ApiPropertyOptional({
-    enum: ['PREVIOUS_MONTH_NOT_FOUND', 'CURRENT_LOW_COMPLETION'],
+    enum: ['PREVIOUS_MONTH_NOT_FOUND'],
     example: 'PREVIOUS_MONTH_NOT_FOUND',
-    description: '비교할 수 없을 때의 사유 코드',
+    description:
+      '이전 달 기록이 7일 미만이라 비교할 수 없을 때 반환되는 사유 코드',
   })
   reasonCode?: MonthlyChangeReasonCode;
 
@@ -273,7 +272,6 @@ export class MonthlyChangeSummaryDto {
       'IMPROVED',
       'WORSENED',
       'NO_PREVIOUS_DATA',
-      'LOW_COMPLETION',
     ],
     example: 'IMPROVED',
     description: '이전 달 대비 변화 방향',
@@ -633,7 +631,8 @@ export class MonthlyReportResponseDto {
   @ApiProperty({
     type: MonthlyChangeSummaryDto,
     nullable: true,
-    description: '이전 달과 비교할 수 없거나 기록이 부족하면 null',
+    description:
+      '현재 월 기록이 7일 미만이면 null. 현재 월 기록은 충분하지만 이전 달 기록이 부족하면 compareAvailable=false',
   })
   changeSummary!: MonthlyChangeSummaryDto | null;
 

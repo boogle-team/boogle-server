@@ -238,59 +238,6 @@ export class PatternGuideReasonDto {
   matchedPatterns!: PatternReasonItemDto[];
 }
 
-export class WarningDetailFlagDto {
-  @ApiProperty({
-    enum: ['FLAG_BLOOD_RED', 'FLAG_BLOOD_BLACK', 'FLAG_PAIN_SEVERE'],
-    example: 'FLAG_BLOOD_RED',
-    description: '감지된 주의 신호 코드',
-  })
-  flagCode!: 'FLAG_BLOOD_RED' | 'FLAG_BLOOD_BLACK' | 'FLAG_PAIN_SEVERE';
-
-  @ApiProperty({
-    type: String,
-    example: '붉은색 변 기록',
-    description: '감지된 주의 신호 표시 이름',
-  })
-  label!: string;
-
-  @ApiProperty({
-    type: String,
-    format: 'date',
-    example: '2026-07-23',
-    description: '해당 주의 신호가 마지막으로 감지된 KST 날짜',
-  })
-  detectedDate!: string;
-
-  @ApiProperty({
-    type: String,
-    example: '125',
-    description:
-      '주의 신호가 감지된 배변 기록 ID. BigInt 정밀도 손실을 피하기 위해 문자열로 반환',
-  })
-  sourceRecordId!: string;
-}
-
-export class WarningGuideAnalysisDto {
-  @ApiProperty({
-    type: GuidePeriodDto,
-    description: '주의 신호 감지 기준 월간 기간',
-  })
-  period!: GuidePeriodDto;
-
-  @ApiProperty({
-    type: Boolean,
-    example: true,
-    description: '월간 기간에 주의 신호가 하나 이상 감지됐는지 여부',
-  })
-  matched!: boolean;
-
-  @ApiProperty({
-    type: [WarningDetailFlagDto],
-    description: '감지된 주의 신호. 감지되지 않으면 빈 배열',
-  })
-  detectedFlags!: WarningDetailFlagDto[];
-}
-
 export class GuideDetailCommonDto {
   @ApiProperty({
     type: Number,
@@ -363,14 +310,6 @@ export class HealthGuideDetailResponseDto extends GuideDetailCommonDto {
     description: '장 건강 가이드에서는 항상 null',
   })
   patternReason!: null;
-
-  @ApiProperty({
-    type: Object,
-    nullable: true,
-    example: null,
-    description: '장 건강 가이드에서는 항상 null',
-  })
-  warningAnalysis!: null;
 }
 
 export class PatternGuideDetailResponseDto extends GuideDetailCommonDto {
@@ -391,14 +330,6 @@ export class PatternGuideDetailResponseDto extends GuideDetailCommonDto {
     description: '현재 조회 주의 패턴 감지 상태와 근거',
   })
   patternReason!: PatternGuideReasonDto;
-
-  @ApiProperty({
-    type: Object,
-    nullable: true,
-    example: null,
-    description: '패턴 기반 가이드에서는 항상 null',
-  })
-  warningAnalysis!: null;
 }
 
 export class WarningGuideDetailResponseDto extends GuideDetailCommonDto {
@@ -421,12 +352,6 @@ export class WarningGuideDetailResponseDto extends GuideDetailCommonDto {
     description: '주의 신호 가이드에서는 항상 null',
   })
   patternReason!: null;
-
-  @ApiProperty({
-    type: WarningGuideAnalysisDto,
-    description: '현재 조회 월의 주의 신호 감지 결과',
-  })
-  warningAnalysis!: WarningGuideAnalysisDto;
 }
 
 export type GuideDetailResponseDto =

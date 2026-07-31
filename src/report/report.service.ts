@@ -64,6 +64,7 @@ import {
   calculateMonthlyScores,
   calculateReportScores,
 } from './score/report-score.calculator';
+import { hasBowelMovementAt } from './util/bowel-record.util';
 
 const TOTAL_WEEK_DAYS = 7;
 const REQUIRED_RECORDED_DAYS = 3;
@@ -414,10 +415,7 @@ export class ReportService {
         summary,
         recordStats,
         previousSummary,
-        changeSummary:
-          previousSummary === null
-            ? null
-            : this.buildMonthlyChangeSummary(summary, previousSummary),
+        changeSummary: this.buildMonthlyChangeSummary(summary, previousSummary),
         stoolDistribution,
         weeklyTrend: this.buildWeeklyTrend(
           weeklyRecords,
@@ -593,6 +591,7 @@ export class ReportService {
       select: {
         id: true,
         regDate: true,
+        bowelMovementAt: true,
         hasBowel: true,
         stoolBristol: true,
         stoolSimple: true,
@@ -604,9 +603,7 @@ export class ReportService {
         takenTime: true,
         amount: true,
       },
-      orderBy: {
-        regDate: 'asc',
-      },
+      orderBy: [{ regDate: 'asc' }, { bowelMovementAt: 'asc' }, { id: 'asc' }],
     });
   }
   // 생활기록 조회
@@ -1110,10 +1107,10 @@ export class ReportService {
       NIGHT: { label: '밤', count: 0 },
     };
 
-    for (const record of boogleRecords) {
-      if (!record.hasBowel) continue;
+    const timedBowelRecords = boogleRecords.filter(hasBowelMovementAt);
 
-      const slot = this.resolveTimeSlot(record.regDate);
+    for (const record of timedBowelRecords) {
+      const slot = this.resolveTimeSlot(record.bowelMovementAt);
       slotMap[slot].count += 1;
     }
 
@@ -1124,7 +1121,7 @@ export class ReportService {
         count: slotMap[timeSlot].count,
       }))
       .filter((item) => item.count > 0)
-      .sort((a, b) => b.count - a.count);
+      .sort((left, right) => right.count - left.count);
   }
 
   private resolveTimeSlot(date: Date): FrequentTimeSlotDto['timeSlot'] {

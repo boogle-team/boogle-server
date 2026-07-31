@@ -172,6 +172,21 @@ export class ReportController {
           example: 58231,
         },
       },
+      'Cache-Control': {
+        description: '개인 PDF 응답의 브라우저 및 중간 캐시 방지 정책',
+        schema: {
+          type: 'string',
+          example: 'private, no-store',
+        },
+      },
+      'Access-Control-Expose-Headers': {
+        description:
+          '브라우저 프론트엔드에서 Content-Disposition 헤더를 읽을 수 있도록 노출',
+        schema: {
+          type: 'string',
+          example: 'Content-Disposition',
+        },
+      },
     },
     content: {
       'application/pdf': {

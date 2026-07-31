@@ -31,10 +31,18 @@ function createBoogleRecord(
   const id = nextBoogleId;
   nextBoogleId += 1n;
 
+  const regDate = new Date(dateTime);
+  const {
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
   return {
     id,
-    regDate: new Date(dateTime),
-    hasBowel: true,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
     stoolBristol: 4,
     stoolSimple: 'M',
     bowelFeeling: null,
@@ -44,7 +52,7 @@ function createBoogleRecord(
     urgency: null,
     takenTime: null,
     amount: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -271,17 +279,23 @@ describe('weekly-pattern.detector', () => {
     expect(requireEvidence(rule20, 'recordedBowelDays').value).toBe(3);
   });
 
-  it('룰 19 시간대를 UTC가 아니라 KST로 판정한다', () => {
+  it('룰 19는 bowelMovementAt의 KST 시간대를 사용한다', () => {
     const result = detect({
-      boogleRecords: [createBoogleRecord('2026-07-19T23:30:00.000Z')],
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T00:00:00.000Z', {
+          bowelMovementAt: new Date('2026-07-20T11:30:00.000Z'),
+        }),
+      ],
     });
+
     const rule19 = requireRule(
       result,
       WEEKLY_RULE_CODE.BOWEL_TIME_SLOT_PATTERN,
     );
 
+    // 실제 배변 시각 11:30Z = 20:30 KST
     expect(rule19.card.description).toBe(
-      '평소 05시~12시에 배변이 가장 많았어요.',
+      '평소 18시~23시에 배변이 가장 많았어요.',
     );
     expect(requireEvidence(rule19, 'frequentTimeSlotRatio').value).toBe(100);
   });
@@ -463,7 +477,7 @@ describe('weekly-pattern.detector', () => {
         hasBowel: false,
         stoolBristol: null,
         stoolSimple: null,
-        stomach: index === 0 ? 'M' : null,
+        stomach: index === 0 ? 1 : null,
       }),
     );
 
@@ -524,6 +538,103 @@ describe('weekly-pattern.detector', () => {
 
     expect(getRuleCodes(result)).toContain(
       WEEKLY_RULE_CODE.LOW_BOWEL_FREQUENCY_30D,
+    );
+  });
+
+  it('룰 5는 연속 무배변 중 stomach가 0이면 감지하지 않는다', () => {
+    const dates = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23'];
+    const result = detect({
+      boogleRecords: dates.map((date, index) =>
+        createBoogleRecord(`${date}T08:00:00+09:00`, {
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+          stomach: index === 0 ? 0 : null,
+        }),
+      ),
+    });
+    const ruleCodes = getRuleCodes(result);
+
+    expect(ruleCodes).not.toContain(WEEKLY_RULE_CODE.NO_BOWEL_WITH_PAIN);
+    expect(ruleCodes).toContain(WEEKLY_RULE_CODE.LONG_NO_BOWEL_INTERVAL);
+  });
+
+  it('룰 9는 stomach 2가 두 번이어도 감지하지 않는다', () => {
+    const result = detect({
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T08:00:00+09:00', {
+          stomach: 2,
+        }),
+        createBoogleRecord('2026-07-21T08:00:00+09:00', {
+          stomach: 2,
+        }),
+      ],
+    });
+
+    expect(getRuleCodes(result)).not.toContain(
+      WEEKLY_RULE_CODE.REPEATED_SEVERE_PAIN,
+    );
+  });
+
+  it('룰 9는 stomach 3 이상이 두 번이면 감지한다', () => {
+    const result = detect({
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T08:00:00+09:00', {
+          stomach: 3,
+        }),
+        createBoogleRecord('2026-07-21T08:00:00+09:00', {
+          stomach: 4,
+        }),
+      ],
+    });
+
+    expect(getRuleCodes(result)).toContain(
+      WEEKLY_RULE_CODE.REPEATED_SEVERE_PAIN,
+    );
+  });
+
+  it('룰 15는 같은 KST 날짜의 높은 스트레스와 stomach 1부터 감지한다', () => {
+    const dates = ['2026-07-20', '2026-07-21'];
+    const lifeRecords = dates.map((date) =>
+      createLifeRecord(`${date}T09:00:00+09:00`, {
+        stress: 'H',
+      }),
+    );
+
+    const withPain = detect({
+      boogleRecords: dates.map((date) =>
+        createBoogleRecord(`${date}T08:00:00+09:00`, {
+          stomach: 1,
+        }),
+      ),
+      lifeRecords,
+    });
+    const withoutPain = detect({
+      boogleRecords: dates.map((date) =>
+        createBoogleRecord(`${date}T08:00:00+09:00`, {
+          stomach: 0,
+        }),
+      ),
+      lifeRecords,
+    });
+
+    expect(getRuleCodes(withPain)).toContain(WEEKLY_RULE_CODE.STRESS_WITH_PAIN);
+    expect(getRuleCodes(withoutPain)).not.toContain(
+      WEEKLY_RULE_CODE.STRESS_WITH_PAIN,
+    );
+  });
+
+  it('룰 19는 bowelMovementAt이 없는 배변 기록을 시간대 계산에서 제외한다', () => {
+    const result = detect({
+      boogleRecords: [
+        createBoogleRecord('2026-07-20T08:00:00+09:00', {
+          bowelMovementAt: null,
+        }),
+      ],
+    });
+
+    expect(getRuleCodes(result)).not.toContain(
+      WEEKLY_RULE_CODE.BOWEL_TIME_SLOT_PATTERN,
     );
   });
 });

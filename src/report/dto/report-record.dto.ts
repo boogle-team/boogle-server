@@ -4,11 +4,12 @@ import type { WeeklyRuleCode } from '../pattern/weekly-pattern.constants';
 export interface BoogleRecordForReport {
   id: bigint;
   regDate: Date;
+  bowelMovementAt: Date | null;
   hasBowel: boolean;
   stoolBristol: number | null;
   stoolSimple: string | null;
   bowelFeeling: string | null;
-  stomach: string | null;
+  stomach: number | null;
   distension: string | null;
   remainingFeeling: string | null;
   urgency: string | null;

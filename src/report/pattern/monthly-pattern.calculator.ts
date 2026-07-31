@@ -7,6 +7,7 @@ import type {
   MonthlyPatternCardDto,
 } from '../dto/monthly-report-response.dto';
 import { toDateKey } from './pattern-date.util';
+import { isStomachPainAtLeastMild } from '@/common/utils/stomach-pain.util';
 
 export const MONTHLY_PATTERN_CODE = {
   LOW_WATER_WITH_HARD_STOOL: 'MONTHLY_LOW_WATER_WITH_HARD_STOOL',
@@ -101,8 +102,8 @@ export function calculateMonthlyPatternMetrics(
         const dailyBoogleRecords =
           boogleByDate.get(toDateKey(lifeRecord.regDate)) ?? [];
 
-        return dailyBoogleRecords.some(
-          (record) => record.stomach === 'M' || record.stomach === 'L',
+        return dailyBoogleRecords.some((record) =>
+          isStomachPainAtLeastMild(record.stomach),
         );
       }).length
     : null;

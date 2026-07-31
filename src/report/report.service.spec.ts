@@ -4,7 +4,11 @@ import { ReportService } from './report.service';
 import { ReportErrorCode } from './report-error-code.enum';
 import { BoogleRecordForReport } from './dto/report-record.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
-import type { WeeklyGuideDto } from './dto/weekly-report-response.dto';
+import type {
+  ChangeTrend,
+  FrequentTimeSlotDto,
+  WeeklyGuideDto,
+} from './dto/weekly-report-response.dto';
 import {
   WEEKLY_RULE_CODE,
   type WeeklyRuleCode,
@@ -22,14 +26,41 @@ interface GuideRuleBindingTestAccessor {
   ): Promise<WeeklyGuideDto[]>;
 }
 
+interface WeeklyTrendTestAccessor {
+  resolveTrend(bowelCountDiff: number): ChangeTrend;
+}
+
+interface FrequentTimeSlotsTestAccessor {
+  buildFrequentTimeSlots(
+    records: BoogleRecordForReport[],
+  ): FrequentTimeSlotDto[];
+}
+
+interface BoogleRecordQueryTestAccessor {
+  findBoogleRecords(
+    userId: bigint,
+    startDate: Date,
+    endDateExclusive: Date,
+  ): Promise<BoogleRecordForReport[]>;
+}
+
 function createBoogleRecord(
   dateKey: string,
   overrides: Partial<BoogleRecordForReport> = {},
 ): BoogleRecordForReport {
+  const {
+    id = BigInt(dateKey.slice(-2)),
+    regDate = kstDate(dateKey),
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
   return {
-    id: BigInt(dateKey.slice(-2)),
-    regDate: kstDate(dateKey),
-    hasBowel: true,
+    id,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
     stoolBristol: 4,
     stoolSimple: 'M',
     bowelFeeling: null,
@@ -39,7 +70,7 @@ function createBoogleRecord(
     urgency: null,
     takenTime: null,
     amount: null,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -92,6 +123,19 @@ describe('ReportService', () => {
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
+
+  it.each([
+    { bowelCountDiff: 1, expected: 'INCREASE' },
+    { bowelCountDiff: -1, expected: 'DECREASE' },
+    { bowelCountDiff: 0, expected: 'SAME' },
+  ] as const)(
+    '주간 배변 횟수 차이 $bowelCountDiff이면 trend는 $expected이다',
+    ({ bowelCountDiff, expected }) => {
+      const accessor = service as unknown as WeeklyTrendTestAccessor;
+
+      expect(accessor.resolveTrend(bowelCountDiff)).toBe(expected);
+    },
+  );
 
   it('패턴 가이드를 제목이 아닌 고정 ID로 조회하고 바인딩한다', async () => {
     prismaMock.guide.findMany.mockResolvedValue([
@@ -154,6 +198,71 @@ describe('ReportService', () => {
     ).rejects.toMatchObject({
       errorCode: ReportErrorCode.REPORT_INVALID_DATE_RANGE,
     });
+  });
+
+  it('Boogle 조회에 bowelMovementAt과 결정적인 정렬 순서를 포함한다', async () => {
+    prismaMock.boogleRecord.findMany.mockResolvedValueOnce([]);
+    const accessor = service as unknown as BoogleRecordQueryTestAccessor;
+
+    await accessor.findBoogleRecords(
+      1n,
+      new Date('2026-07-20T00:00:00.000Z'),
+      new Date('2026-07-27T00:00:00.000Z'),
+    );
+
+    expect(prismaMock.boogleRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          regDate: true,
+          bowelMovementAt: true,
+          hasBowel: true,
+          stoolBristol: true,
+          stoolSimple: true,
+          bowelFeeling: true,
+          stomach: true,
+          distension: true,
+          remainingFeeling: true,
+          urgency: true,
+          takenTime: true,
+          amount: true,
+        },
+        orderBy: [
+          { regDate: 'asc' },
+          { bowelMovementAt: 'asc' },
+          { id: 'asc' },
+        ],
+      }),
+    );
+  });
+
+  it('주간 시간대 통계는 유효한 bowelMovementAt만 사용한다', () => {
+    const accessor = service as unknown as FrequentTimeSlotsTestAccessor;
+    const records = [
+      createBoogleRecord('2026-07-20', {
+        regDate: kstDate('2026-07-20', '09:00'),
+        bowelMovementAt: kstDate('2026-07-20', '20:30'),
+      }),
+      createBoogleRecord('2026-07-21', {
+        regDate: kstDate('2026-07-21', '09:00'),
+        bowelMovementAt: kstDate('2026-07-21', '21:15'),
+      }),
+      createBoogleRecord('2026-07-22', {
+        bowelMovementAt: null,
+      }),
+      createBoogleRecord('2026-07-23', {
+        hasBowel: false,
+        bowelMovementAt: kstDate('2026-07-23', '08:00'),
+      }),
+    ];
+
+    expect(accessor.buildFrequentTimeSlots(records)).toEqual([
+      {
+        timeSlot: 'EVENING',
+        label: '저녁',
+        count: 2,
+      },
+    ]);
   });
 
   describe('createPdfReport', () => {
@@ -294,6 +403,74 @@ describe('ReportService', () => {
       ).rejects.toMatchObject({
         errorCode: ReportErrorCode.REPORT_PDF_GENERATION_FAILED,
       });
+    });
+  });
+
+  describe('getMonthlyReport changeSummary', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-15T03:00:00.000Z'));
+
+      prismaMock.weeklyRecord.findMany.mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('현재 월은 충분하고 지난달 기록이 부족하면 비교 불가 사유를 반환한다', async () => {
+      const currentRecords = Array.from({ length: 7 }, (_, index) =>
+        createBoogleRecord(`2026-07-${String(index + 1).padStart(2, '0')}`),
+      );
+
+      prismaMock.boogleRecord.findMany
+        .mockResolvedValueOnce(currentRecords)
+        .mockResolvedValueOnce([]);
+      prismaMock.lifeRecord.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.getMonthlyReport(1n, {
+        monthStartDate: '2026-07-01',
+        includePattern: false,
+      });
+
+      expect(result.dataStatus).toBe('ENOUGH');
+      expect(result.previousSummary).toBeNull();
+      expect(result.changeSummary).toEqual({
+        compareType: 'PREVIOUS_MONTH',
+        compareAvailable: false,
+        reasonCode: 'PREVIOUS_MONTH_NOT_FOUND',
+        bowelCountDiff: null,
+        bowelCountChangeRate: null,
+        intervalAvgDiff: null,
+        completionScoreDiff: null,
+        conditionScoreDiff: null,
+        trend: 'NO_PREVIOUS_DATA',
+        description: '비교할 지난달 기록이 아직 없어요.',
+      });
+    });
+
+    it('현재 월 기록이 부족하면 changeSummary는 null이다', async () => {
+      const currentRecords = Array.from({ length: 6 }, (_, index) =>
+        createBoogleRecord(`2026-07-${String(index + 1).padStart(2, '0')}`),
+      );
+
+      prismaMock.boogleRecord.findMany
+        .mockResolvedValueOnce(currentRecords)
+        .mockResolvedValueOnce([]);
+      prismaMock.lifeRecord.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.getMonthlyReport(1n, {
+        monthStartDate: '2026-07-01',
+        includePattern: false,
+      });
+
+      expect(result.dataStatus).toBe('INSUFFICIENT');
+      expect(result.previousSummary).toBeNull();
+      expect(result.changeSummary).toBeNull();
     });
   });
 });

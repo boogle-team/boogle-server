@@ -18,8 +18,16 @@ import {
   toDateKey,
   uniqueDateKeys,
 } from './pattern-date.util';
+import {
+  isSevereStomachPain,
+  isStomachPainAtLeastMild,
+} from '@/common/utils/stomach-pain.util';
 import type { PatternCardDto } from '../dto/weekly-report-response.dto';
 import { getKstHour } from '@/common/utils/kst-date.util';
+import {
+  hasBowelMovementAt,
+  type TimedBowelRecord,
+} from '../util/bowel-record.util';
 
 const RULE_20_MAX_INTERVAL_STANDARD_DEVIATION = 0.5;
 const LOW_BOWEL_30D_MIN_OBSERVED_DAYS = 3;
@@ -94,6 +102,7 @@ export function detectWeeklyPatterns(
         ruleCode,
         title: definition.title,
         description: options?.descriptionOverride ?? definition.description,
+        guideId: null,
         evidence: options?.evidence ?? [],
       },
     });
@@ -163,7 +172,7 @@ export function detectWeeklyPatterns(
       (record) =>
         !record.hasBowel &&
         groupDateSet.has(toDateKey(record.regDate)) &&
-        isPainAtLeastMild(record.stomach),
+        isStomachPainAtLeastMild(record.stomach),
     );
   });
 
@@ -228,8 +237,8 @@ export function detectWeeklyPatterns(
   }
 
   // 룰 9
-  const severePainCount = weekBoogleRecords.filter(
-    (record) => record.stomach === 'L',
+  const severePainCount = weekBoogleRecords.filter((record) =>
+    isSevereStomachPain(record.stomach),
   ).length;
   if (severePainCount >= 2) {
     addRule(WEEKLY_RULE_CODE.REPEATED_SEVERE_PAIN);
@@ -338,7 +347,7 @@ export function detectWeeklyPatterns(
     }
 
     return (weekBoogleByDate.get(toDateKey(lifeRecord.regDate)) ?? []).some(
-      (boogleRecord) => isPainAtLeastMild(boogleRecord.stomach),
+      (boogleRecord) => isStomachPainAtLeastMild(boogleRecord.stomach),
     );
   }).length;
 
@@ -427,8 +436,8 @@ export function detectWeeklyPatterns(
   }
 
   // 룰 19
-  const bowelRecords14 = boogleRecords14.filter((record) => record.hasBowel);
-  const frequentTimeSlot = findFrequentTimeSlot(bowelRecords14);
+  const timedBowelRecords14 = boogleRecords14.filter(hasBowelMovementAt);
+  const frequentTimeSlot = findFrequentTimeSlot(timedBowelRecords14);
 
   if (frequentTimeSlot !== null && frequentTimeSlot.ratio >= 60) {
     addRule(WEEKLY_RULE_CODE.BOWEL_TIME_SLOT_PATTERN, {
@@ -639,10 +648,6 @@ function groupBoogleRecordsByDate(
   return grouped;
 }
 
-function isPainAtLeastMild(value: string | null): boolean {
-  return value === 'M' || value === 'L';
-}
-
 function isSymptomPresent(value: string | null): boolean {
   return value === 'M' || value === 'L';
 }
@@ -665,7 +670,7 @@ function isLowWaterRecord(record: LifeRecordForReport): boolean {
 }
 
 function findFrequentTimeSlot(
-  records: BoogleRecordForReport[],
+  records: TimedBowelRecord[],
 ): TimeSlotResult | null {
   if (records.length === 0) {
     return null;
@@ -682,7 +687,7 @@ function findFrequentTimeSlot(
   };
 
   for (const record of records) {
-    const hour = getKstHour(record.regDate);
+    const hour = getKstHour(record.bowelMovementAt);
     const slot =
       hour >= 5 && hour < 12
         ? 'MORNING'
