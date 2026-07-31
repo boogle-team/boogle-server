@@ -20,7 +20,8 @@ export interface BoogleRecordDetailDto {
   stoolBristol: number | null;
   stoolSimple: string | null;
   bowelFeeling: string | null;
-  stomach: string | null;
+  // 복통 강도(숫자). boogle_record.stomach가 문자 코드→숫자로 변경됨.
+  stomach: number | null;
   distension: string | null;
   remainingFeeling: string | null;
   urgency: string | null;
@@ -41,6 +42,7 @@ export interface LifeRecordDetailDto {
   sleep: string | null;
   stress: string | null;
   water: string | null;
+  waterIntake: number | null;
   mealRegular: string | null;
   sleepTime: number | null;
   exercise: string | null;

@@ -10,6 +10,10 @@ import { UserService } from './user.service';
 describe('UserController', () => {
   const user: AuthenticatedUser = { id: '1' };
   const userService = {
+    saveOnboarding: jest.fn(),
+    updateMe: jest.fn(),
+    updateProfileImage: jest.fn(),
+    deleteProfileImage: jest.fn(),
     getSensitiveInfoConsent: jest.fn(),
     updateSensitiveInfoConsent: jest.fn(),
   };
@@ -48,6 +52,63 @@ describe('UserController', () => {
         request,
       );
     });
+  });
+
+  it('passes an uploaded onboarding profile image to the service', async () => {
+    const dto = {
+      nickname: '부글이',
+      gender: 'M' as const,
+      ageGroup: 20 as const,
+      baselineType: 'R' as const,
+    };
+    const file = {
+      originalname: 'profile.png',
+      mimetype: 'image/png',
+      size: 3,
+      buffer: Buffer.from('png'),
+    };
+    userService.saveOnboarding.mockResolvedValue({});
+
+    await controller.saveOnboarding(user, dto, file);
+
+    expect(userService.saveOnboarding).toHaveBeenCalledWith('1', dto, file);
+  });
+
+  it('passes an uploaded profile image to updateMe', async () => {
+    const dto = { nickname: '새닉네임' };
+    const file = {
+      originalname: 'profile.webp',
+      mimetype: 'image/webp',
+      size: 4,
+      buffer: Buffer.from('webp'),
+    };
+    userService.updateMe.mockResolvedValue({});
+
+    await controller.updateMe(user, dto, file);
+
+    expect(userService.updateMe).toHaveBeenCalledWith('1', dto, file);
+  });
+
+  it('passes an uploaded image to the dedicated profile image API', async () => {
+    const file = {
+      originalname: 'profile.png',
+      mimetype: 'image/png',
+      size: 3,
+      buffer: Buffer.from('png'),
+    };
+    userService.updateProfileImage.mockResolvedValue({});
+
+    await controller.updateProfileImage(user, file);
+
+    expect(userService.updateProfileImage).toHaveBeenCalledWith('1', file);
+  });
+
+  it('passes the authenticated user to the profile image delete API', async () => {
+    userService.deleteProfileImage.mockResolvedValue({});
+
+    await controller.deleteProfileImage(user);
+
+    expect(userService.deleteProfileImage).toHaveBeenCalledWith('1');
   });
 
   it('should be defined', () => {

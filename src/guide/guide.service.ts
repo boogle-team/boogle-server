@@ -2,26 +2,24 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ReportService } from '@/report/report.service';
-import type { WeeklyReportResponseDto } from '@/report/dto/weekly-report-response.dto';
-import type { GetGuideScreenQueryDto } from './dto/get-guide-screen-query.dto';
+import {
+  PATTERN_GUIDE_BINDINGS,
+  type WeeklyRuleCode,
+} from '@/report/pattern/weekly-pattern.constants';
+import { getTodayKstDateKey } from '@/common/utils/kst-date.util';
 import type {
-  GuideCardDto,
-  GuideCategory,
   GuideFeedbackStatus,
   GuideScreenResponseDto,
-  MatchedEvidenceDto,
-  PatternGuideDto,
-  WarningFlagDto,
 } from './dto/guide-screen-response.dto';
 import { GuideErrorCode } from './guide-error-code.enum';
-import type { GetGuideDetailQueryDto } from './dto/get-guide-detail-query.dto';
 import type {
+  GuideAdviceItemDto,
+  GuideContentItemDto,
   GuideDetailResponseDto,
-  GuideDetailRuleDto,
+  HealthGuideDetailResponseDto,
   PatternGuideDetailResponseDto,
-  PatternGuideEvidenceDto,
-  PatternRelatedRecordsDto,
-  WarningDetailFlagDto,
+  PatternGuideReasonDto,
+  RecommendedGuideDto,
   WarningGuideDetailResponseDto,
 } from './dto/guide-detail-response.dto';
 import type { GuideFeedbackRequestDto } from './dto/guide-feedback-request.dto';
@@ -30,19 +28,7 @@ import type {
   DeleteGuideFeedbackResponseDto,
   UpdateGuideFeedbackResponseDto,
 } from './dto/guide-feedback-response.dto';
-import type {
-  GuideContentRow,
-  PatternGuideRuleRow,
-  WarningRecordRow,
-  GuideContentDetailRow,
-  WarningDetailRecordRow,
-} from './dto/guide-record.dto';
-
-const GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES: ReadonlySet<string> =
-  new Set<string>([
-    GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-    GuideErrorCode.GUIDE_INVALID_MONTH_FORMAT,
-  ]);
+import type { GuideDetailRow } from './dto/guide-record.dto';
 
 const INTERNAL_SERVER_ERROR_STATUS: number = HttpStatus.INTERNAL_SERVER_ERROR;
 
@@ -53,90 +39,65 @@ export class GuideService {
     private readonly reportService: ReportService,
   ) {}
 
-  async getGuideScreen(
-    userId: bigint,
-    query: GetGuideScreenQueryDto,
-  ): Promise<GuideScreenResponseDto> {
+  async getGuideScreen(userId: bigint): Promise<GuideScreenResponseDto> {
     try {
-      const includeFeedback = query.includeFeedback ?? true;
+      const weekStartDate = this.getCurrentMonday();
 
-      const weekStartDate = this.resolveWeekStartDate(query.weekStartDate);
-      const normalizedWeekStartDate = this.toDateString(weekStartDate);
-
-      const monthStartDate = this.resolveMonthStartDate(query.monthStartDate);
-      const nextMonthStartDate = this.addMonths(monthStartDate, 1);
-      const monthEndDate = this.addDays(nextMonthStartDate, -1);
-
-      const weeklyReport = await this.reportService.getWeeklyReport(userId, {
-        weekStartDate: normalizedWeekStartDate,
-        includeGuide: false,
-      });
-
-      const ruleCodes = weeklyReport.patternCards.map(
-        (pattern) => pattern.ruleCode,
-      );
-
-      const [
-        patternGuideRules,
-        healthGuideContents,
-        warningGuideContents,
-        warningRecords,
-      ] = await Promise.all([
-        this.findPatternGuideRules(ruleCodes),
-        this.findGuideContentsByCategory('H'),
-        this.findGuideContentsByCategory('W'),
-        this.findMonthlyWarningRecords(
-          userId,
-          monthStartDate,
-          nextMonthStartDate,
-        ),
+      const [weeklyReport, staticGuides] = await Promise.all([
+        this.reportService.getWeeklyReport(userId, {
+          weekStartDate: this.toDateString(weekStartDate),
+          includeGuide: true,
+        }),
+        this.prisma.guide.findMany({
+          where: {
+            status: 'A',
+            category: {
+              in: ['H', 'W'],
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+            summary: true,
+            category: true,
+          },
+          orderBy: {
+            id: 'asc',
+          },
+        }),
       ]);
 
-      const guideContentIds = [
-        ...patternGuideRules.map((item) => item.guideContent.id),
-        ...healthGuideContents.map((item) => item.id),
-        ...warningGuideContents.map((item) => item.id),
-      ];
-
-      const feedbackMap = await this.findFeedbackMap(
-        userId,
-        guideContentIds,
-        includeFeedback,
+      const healthGuideRows = staticGuides.filter(
+        (guide) => guide.category === 'H',
+      );
+      const warningGuideRows = staticGuides.filter(
+        (guide) => guide.category === 'W',
       );
 
-      const patternGuides = this.buildPatternGuides(
-        patternGuideRules,
-        weeklyReport,
-        feedbackMap,
-      );
-
-      const healthGuides = healthGuideContents.map((guideContent) =>
-        this.mapGuideCard(guideContent, 'H', feedbackMap),
-      );
-
-      const warningGuides = warningGuideContents.map((guideContent) =>
-        this.mapGuideCard(guideContent, 'W', feedbackMap),
-      );
-
-      const detectedFlags = this.detectWarningFlags(warningRecords);
-      const warningDetected = detectedFlags.length > 0;
+      const patternGuides =
+        weeklyReport.dataStatus === 'ENOUGH'
+          ? weeklyReport.guides.map((guide) => ({
+              guideId: guide.guideId,
+              category: 'P' as const,
+              title: guide.title,
+              summary: guide.summary,
+              matchedRuleCodes: guide.matchedRuleCodes,
+            }))
+          : [];
 
       return {
-        sectionOrder: warningDetected
-          ? ['WARNING', 'PATTERN', 'HEALTH']
-          : ['PATTERN', 'HEALTH', 'WARNING'],
-
+        sectionOrder: ['PATTERN', 'HEALTH', 'WARNING'],
         patternGuideSection: {
           category: 'P',
           categoryLabel: '패턴 기반',
-          sectionTitle: '내 패턴 기반 가이드',
+          sectionTitle: '내 패턴 기반',
           sectionDescription:
             '이번 주 기록을 바탕으로 맞춤 가이드를 보여드려요.',
           period: weeklyReport.period,
           dataStatus:
             weeklyReport.dataStatus === 'ENOUGH' ? 'AVAILABLE' : 'INSUFFICIENT',
           recordedDays: weeklyReport.recordStats.recordedDays,
-          requiredDays: weeklyReport.recordStats.requiredDays,
+          requiredDays: 3,
           notice:
             weeklyReport.dataStatus === 'ENOUGH'
               ? null
@@ -145,406 +106,41 @@ export class GuideService {
                   message:
                     '3일 이상 기록하면 내 패턴 기반 가이드를 볼 수 있어요.',
                 },
-          guides: weeklyReport.dataStatus === 'ENOUGH' ? patternGuides : [],
+          guides: patternGuides,
         },
-
         healthGuideSection: {
           category: 'H',
           categoryLabel: '장 건강',
           sectionTitle: '장 건강 기본 정보',
           sectionDescription:
             '장 건강과 배변 습관에 대한 기본 정보를 확인해보세요.',
-          guides: healthGuides,
+          guides: healthGuideRows.map((guide) => ({
+            guideId: guide.id,
+            category: 'H' as const,
+            title: guide.title,
+            summary: guide.summary,
+          })),
         },
-
         warningGuideSection: {
           category: 'W',
           categoryLabel: '주의 신호',
-          sectionTitle: '주의 신호 안내',
-          sectionDescription: '다음 증상이 나타난다면 전문가 상담을 권장해요.',
-          period: {
-            type: 'MONTHLY',
-            startDate: this.toDateString(monthStartDate),
-            endDate: this.toDateString(monthEndDate),
-          },
-          highlighted: warningDetected,
-          detectedFlags,
-          guides: warningGuides,
+          sectionTitle: '주의 신호',
+          sectionDescription: '다음 증상이 반복된다면 전문가 상담을 권장해요.',
+          guides: warningGuideRows.map((guide) => ({
+            guideId: guide.id,
+            category: 'W' as const,
+            title: guide.title,
+            summary: guide.summary,
+          })),
         },
       };
-    } catch (error) {
-      if (
-        error instanceof BusinessException &&
-        GUIDE_SCREEN_PASSTHROUGH_ERROR_CODES.has(error.errorCode)
-      ) {
-        throw error;
-      }
-
+    } catch {
       throw new BusinessException(
         GuideErrorCode.GUIDE_FETCH_FAILED,
         '가이드 화면 조회 중 오류가 발생했습니다.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  // 주간 리포트에서 감지된 ruleCode에 연결된 활성 패턴 가이드만 조회
-  private async findPatternGuideRules(
-    ruleCodes: string[],
-  ): Promise<PatternGuideRuleRow[]> {
-    if (ruleCodes.length === 0) {
-      return [];
-    }
-
-    return this.prisma.guideRule.findMany({
-      where: {
-        ruleCode: {
-          in: ruleCodes,
-        },
-        guideContent: {
-          category: 'P',
-          status: 'A',
-        },
-      },
-      select: {
-        ruleCode: true,
-        guideContent: {
-          select: {
-            id: true,
-            category: true,
-            title: true,
-            content: true,
-          },
-        },
-      },
-      orderBy: {
-        id: 'asc',
-      },
-    });
-  }
-
-  // H는 모든 활성 콘텐츠를 조회
-  // W도 고정 안내 카드이므로 활성 콘텐츠를 항상 조회
-  private async findGuideContentsByCategory(
-    category: 'H' | 'W',
-  ): Promise<GuideContentRow[]> {
-    return this.prisma.guideContent.findMany({
-      where: {
-        category,
-        status: 'A',
-      },
-      select: {
-        id: true,
-        category: true,
-        title: true,
-        content: true,
-      },
-      orderBy: {
-        id: 'asc',
-      },
-    });
-  }
-
-  // 월간 위험 신호 판정에 필요한 컬럼만 조회
-
-  private async findMonthlyWarningRecords(
-    userId: bigint,
-    monthStartDate: Date,
-    nextMonthStartDate: Date,
-  ): Promise<WarningRecordRow[]> {
-    return this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        hasBowel: true,
-        regDate: {
-          gte: monthStartDate,
-          lt: nextMonthStartDate,
-        },
-      },
-      select: {
-        regDate: true,
-        hasBowel: true,
-        color: true,
-        stomach: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  private async findFeedbackMap(
-    userId: bigint,
-    guideContentIds: number[],
-    includeFeedback: boolean,
-  ): Promise<Map<number, GuideFeedbackStatus>> {
-    if (!includeFeedback || guideContentIds.length === 0) {
-      return new Map();
-    }
-
-    const uniqueGuideContentIds = [...new Set(guideContentIds)];
-
-    const feedbacks = await this.prisma.guideFeedback.findMany({
-      where: {
-        userId,
-        guideContentId: {
-          in: uniqueGuideContentIds,
-        },
-      },
-      select: {
-        guideContentId: true,
-        feedback: true,
-      },
-    });
-
-    const feedbackMap = new Map<number, GuideFeedbackStatus>();
-
-    for (const feedback of feedbacks) {
-      if (this.isGuideFeedbackStatus(feedback.feedback)) {
-        feedbackMap.set(feedback.guideContentId, feedback.feedback);
-      }
-    }
-
-    return feedbackMap;
-  }
-
-  private buildPatternGuides(
-    guideRules: PatternGuideRuleRow[],
-    weeklyReport: WeeklyReportResponseDto,
-    feedbackMap: Map<number, GuideFeedbackStatus>,
-  ): PatternGuideDto[] {
-    const patternCardMap = new Map(
-      weeklyReport.patternCards.map((patternCard) => [
-        patternCard.ruleCode,
-        patternCard,
-      ]),
-    );
-
-    const usedGuideContentIds = new Set<number>();
-    const guides: PatternGuideDto[] = [];
-
-    for (const guideRule of guideRules) {
-      if (guideRule.ruleCode === null) {
-        continue;
-      }
-
-      const patternCard = patternCardMap.get(guideRule.ruleCode);
-
-      if (patternCard === undefined) {
-        continue;
-      }
-
-      // 하나의 가이드가 여러 룰에 연결된 경우
-      // 화면에는 같은 카드 중복 방지
-
-      if (usedGuideContentIds.has(guideRule.guideContent.id)) {
-        continue;
-      }
-
-      usedGuideContentIds.add(guideRule.guideContent.id);
-
-      guides.push({
-        guideContentId: guideRule.guideContent.id,
-        category: 'P',
-        title: guideRule.guideContent.title,
-        summary: guideRule.guideContent.content,
-        ruleCode: guideRule.ruleCode,
-        matchedReason: patternCard.description,
-        matchedEvidence: this.buildMatchedEvidence(
-          guideRule.ruleCode,
-          weeklyReport,
-        ),
-        feedbackStatus: feedbackMap.get(guideRule.guideContent.id) ?? null,
-      });
-    }
-
-    return guides;
-  }
-
-  private buildMatchedEvidence(
-    ruleCode: string,
-    weeklyReport: WeeklyReportResponseDto,
-  ): MatchedEvidenceDto | null {
-    if (ruleCode === 'LOW_BOWEL_COUNT' || ruleCode === 'HIGH_BOWEL_COUNT') {
-      return {
-        sourceTable: 'weekly_record',
-        sourceField: 'bowelCount',
-        condition:
-          ruleCode === 'LOW_BOWEL_COUNT'
-            ? 'bowelCount <= 2'
-            : 'bowelCount >= 10',
-        count: weeklyReport.summary?.bowelCount ?? 0,
-      };
-    }
-
-    if (ruleCode === 'CONSTIPATION_PATTERN') {
-      return {
-        sourceTable: 'boogle_record',
-        sourceField: 'stoolSimple',
-        condition: 'stoolSimple = H',
-        count:
-          weeklyReport.stoolDistribution.find(
-            (item) => item.stoolSimple === 'H',
-          )?.count ?? 0,
-      };
-    }
-
-    if (ruleCode === 'LOOSE_STOOL_PATTERN') {
-      return {
-        sourceTable: 'boogle_record',
-        sourceField: 'stoolSimple',
-        condition: 'stoolSimple = T',
-        count:
-          weeklyReport.stoolDistribution.find(
-            (item) => item.stoolSimple === 'T',
-          )?.count ?? 0,
-      };
-    }
-
-    const lifeFactorStats = weeklyReport.lifeFactorStats;
-
-    if (lifeFactorStats === null) {
-      return null;
-    }
-
-    if (ruleCode === 'LOW_WATER') {
-      return {
-        sourceTable: 'life_record',
-        sourceField: 'water',
-        condition: 'water = L',
-        count: lifeFactorStats.lowWater.count,
-      };
-    }
-
-    if (ruleCode === 'HIGH_STRESS') {
-      return {
-        sourceTable: 'life_record',
-        sourceField: 'stress',
-        condition: 'stress = H',
-        count: lifeFactorStats.highStress.count,
-      };
-    }
-
-    if (ruleCode === 'LOW_SLEEP') {
-      return {
-        sourceTable: 'life_record',
-        sourceField: 'sleepTime',
-        condition: 'sleepTime = 1',
-        count: lifeFactorStats.lowSleep.count,
-      };
-    }
-
-    if (ruleCode === 'HIGH_CAFFEINE') {
-      return {
-        sourceTable: 'life_record',
-        sourceField: 'caffeine',
-        condition: 'caffeine = M',
-        count: lifeFactorStats.highCaffeine.count,
-      };
-    }
-
-    return null;
-  }
-
-  private detectWarningFlags(records: WarningRecordRow[]): WarningFlagDto[] {
-    const flagMap = new Map<WarningFlagDto['flagCode'], WarningFlagDto>();
-
-    // 오름차순으로 조회한 뒤 같은 신호가 반복되면 덮어쓰기
-    // 최종적으로 가장 최근 감지일이 저장
-
-    for (const record of records) {
-      if (record.color === 'R') {
-        flagMap.set('FLAG_BLOOD_RED', {
-          flagCode: 'FLAG_BLOOD_RED',
-          label: '붉은색 변이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
-        });
-      }
-
-      if (record.color === 'N') {
-        flagMap.set('FLAG_BLOOD_BLACK', {
-          flagCode: 'FLAG_BLOOD_BLACK',
-          label: '검은색 변이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
-        });
-      }
-
-      if (record.stomach === 'L') {
-        flagMap.set('FLAG_PAIN_SEVERE', {
-          flagCode: 'FLAG_PAIN_SEVERE',
-          label: '심한 복통이 기록되었어요.',
-          detectedDate: this.toDateString(record.regDate),
-        });
-      }
-    }
-
-    const flagOrder: WarningFlagDto['flagCode'][] = [
-      'FLAG_BLOOD_RED',
-      'FLAG_BLOOD_BLACK',
-      'FLAG_PAIN_SEVERE',
-    ];
-
-    return flagOrder.flatMap((flagCode) => {
-      const flag = flagMap.get(flagCode);
-      return flag === undefined ? [] : [flag];
-    });
-  }
-
-  private mapGuideCard(
-    guideContent: GuideContentRow,
-    category: GuideCategory,
-    feedbackMap: Map<number, GuideFeedbackStatus>,
-  ): GuideCardDto {
-    return {
-      guideContentId: guideContent.id,
-      category,
-      title: guideContent.title,
-      summary: guideContent.content,
-      feedbackStatus: feedbackMap.get(guideContent.id) ?? null,
-    };
-  }
-
-  private isGuideFeedbackStatus(value: string): value is GuideFeedbackStatus {
-    return value === 'G' || value === 'A' || value === 'N';
-  }
-
-  private resolveWeekStartDate(value?: string): Date {
-    if (value === undefined || value.trim() === '') {
-      return this.getCurrentMonday();
-    }
-
-    const parsedDate = this.parseDateString(value);
-
-    if (parsedDate === null) {
-      throw new BusinessException(
-        GuideErrorCode.GUIDE_INVALID_WEEK_FORMAT,
-        'weekStartDate는 YYYY-MM-DD 형식이어야 합니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return parsedDate;
-  }
-
-  private resolveMonthStartDate(value?: string): Date {
-    if (value === undefined || value.trim() === '') {
-      const now = new Date();
-
-      return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
-    }
-
-    const parsedDate = this.parseDateString(value);
-
-    if (parsedDate === null || parsedDate.getUTCDate() !== 1) {
-      throw new BusinessException(
-        GuideErrorCode.GUIDE_INVALID_MONTH_FORMAT,
-        'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    return parsedDate;
   }
 
   private parseDateString(value: string): Date | null {
@@ -568,13 +164,12 @@ export class GuideService {
     return valid ? date : null;
   }
 
+  private getTodayCalendarDate(): Date {
+    return this.parseDateString(getTodayKstDateKey())!;
+  }
+
   private getCurrentMonday(): Date {
-    const now = new Date();
-
-    const today = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()),
-    );
-
+    const today = this.getTodayCalendarDate();
     const dayOfWeek = today.getUTCDay();
     const difference = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
@@ -587,12 +182,6 @@ export class GuideService {
     return copiedDate;
   }
 
-  private addMonths(date: Date, months: number): Date {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
-    );
-  }
-
   private toDateString(date: Date): string {
     return date.toISOString().slice(0, 10);
   }
@@ -600,77 +189,84 @@ export class GuideService {
   // 가이드 상세조회 메인
   async getGuideDetail(
     userId: bigint,
-    rawGuideContentId: string,
-    query: GetGuideDetailQueryDto,
+    rawGuideId: string,
   ): Promise<GuideDetailResponseDto> {
     try {
-      const guideContentId = this.parseGuideContentId(rawGuideContentId);
+      const guideId = this.parseGuideId(rawGuideId);
+      const guide = await this.findGuideDetail(guideId);
 
-      // status 조건을 여기서 A로 제한하지 않는다
-      // 조회 후 없는 콘텐츠와 비활성 콘텐츠를 구분하기 위함
-
-      const guideContent = await this.findGuideContentDetail(guideContentId);
-
-      if (guideContent === null) {
+      if (guide === null) {
         throw new BusinessException(
           GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
-          '요청한 가이드 콘텐츠를 찾을 수 없습니다.',
+          '요청한 가이드를 찾을 수 없습니다.',
           HttpStatus.NOT_FOUND,
         );
       }
 
-      if (guideContent.status !== 'A') {
+      if (guide.status !== 'A') {
         throw new BusinessException(
           GuideErrorCode.GUIDE_CONTENT_INACTIVE,
-          '현재 제공되지 않는 가이드 콘텐츠입니다.',
+          '현재 제공되지 않는 가이드입니다.',
           HttpStatus.NOT_FOUND,
         );
       }
 
-      const feedbackStatus = await this.findGuideFeedback(
-        userId,
-        guideContentId,
-      );
+      const common = {
+        guideId: guide.id,
+        title: guide.title,
+        summary: guide.summary,
+        source: guide.source,
+        contents: this.mapGuideContents(guide.guideContents),
+        advices: this.mapGuideAdvices(guide.guideAdvices),
+      };
 
-      if (guideContent.category === 'H') {
-        return {
-          guideContentId: guideContent.id,
+      if (guide.category === 'H') {
+        const recommendedGuides = await this.findRecommendedHealthGuides(
+          guide.id,
+        );
+
+        const response: HealthGuideDetailResponseDto = {
+          ...common,
           category: 'H',
           categoryLabel: '장 건강',
-          title: guideContent.title,
-          content: guideContent.content,
-          period: null,
-          rule: null,
-          matchedEvidence: null,
-          relatedRecords: null,
-          feedbackStatus,
+          recommendedGuides,
+          patternReason: null,
         };
+
+        return response;
       }
 
-      if (guideContent.category === 'P') {
-        return this.buildPatternGuideDetail(
+      if (guide.category === 'P') {
+        const patternReason = await this.buildPatternGuideReason(
           userId,
-          guideContent,
-          feedbackStatus,
-          query,
+          guide.id,
         );
+
+        const response: PatternGuideDetailResponseDto = {
+          ...common,
+          category: 'P',
+          categoryLabel: '패턴 기반',
+          recommendedGuides: [],
+          patternReason,
+        };
+
+        return response;
       }
 
-      if (guideContent.category === 'W') {
-        return this.buildWarningGuideDetail(
-          userId,
-          guideContent,
-          feedbackStatus,
-          query,
-        );
-      }
-      // 활성 콘텐츠인데 P/H/W가 아니라면 DB 데이터 무결성 오류
+      if (guide.category === 'W') {
+        const response: WarningGuideDetailResponseDto = {
+          ...common,
+          category: 'W',
+          categoryLabel: '주의 신호',
+          recommendedGuides: [],
+          patternReason: null,
+        };
 
-      throw new Error(`Unsupported guide category: ${guideContent.category}`);
+        return response;
+      }
+
+      throw new Error(`Unsupported guide category: ${guide.category}`);
     } catch (error) {
-      // 사용자의 잘못된 요청이나 콘텐츠 상태 오류는 그대로 전달
-      // ReportService 내부 500 오류 등은 G102 전용 오류로 변환
-
       if (
         error instanceof BusinessException &&
         error.getStatus() < INTERNAL_SERVER_ERROR_STATUS
@@ -686,23 +282,32 @@ export class GuideService {
     }
   }
   // 공통 DB조회
-  private async findGuideContentDetail(
-    guideContentId: number,
-  ): Promise<GuideContentDetailRow | null> {
-    return this.prisma.guideContent.findUnique({
+  private findGuideDetail(guideId: number): Promise<GuideDetailRow | null> {
+    return this.prisma.guide.findUnique({
       where: {
-        id: guideContentId,
+        id: guideId,
       },
       select: {
         id: true,
-        category: true,
         title: true,
-        content: true,
+        summary: true,
+        source: true,
+        category: true,
         status: true,
-        guideRules: {
+        guideContents: {
           select: {
-            ruleCode: true,
-            condition: true,
+            id: true,
+            subtitle: true,
+            content: true,
+          },
+          orderBy: {
+            id: 'asc',
+          },
+        },
+        guideAdvices: {
+          select: {
+            id: true,
+            content: true,
           },
           orderBy: {
             id: 'asc',
@@ -711,408 +316,139 @@ export class GuideService {
       },
     });
   }
+  // 본문, 조언(강조표시) 반환
+  private mapGuideContents(
+    rows: GuideDetailRow['guideContents'],
+  ): GuideContentItemDto[] {
+    return rows.map((row, index) => ({
+      contentId: row.id,
+      order: index + 1,
+      subtitle: row.subtitle,
+      content: row.content,
+    }));
+  }
 
-  private async findGuideFeedback(
-    userId: bigint,
-    guideContentId: number,
-  ): Promise<'G' | 'A' | 'N' | null> {
-    const feedback = await this.prisma.guideFeedback.findFirst({
+  private mapGuideAdvices(
+    rows: GuideDetailRow['guideAdvices'],
+  ): GuideAdviceItemDto[] {
+    return rows.map((row, index) => ({
+      adviceId: row.id,
+      order: index + 1,
+      content: row.content,
+    }));
+  }
+
+  // 현재 가이드 제외 활성 장건강 추천
+  private async findRecommendedHealthGuides(
+    currentGuideId: number,
+  ): Promise<RecommendedGuideDto[]> {
+    const guides = await this.prisma.guide.findMany({
       where: {
-        userId,
-        guideContentId,
+        id: {
+          not: currentGuideId,
+        },
+        category: 'H',
+        status: 'A',
       },
       select: {
-        feedback: true,
+        id: true,
+        title: true,
+        summary: true,
       },
       orderBy: {
-        regDate: 'desc',
+        id: 'asc',
       },
     });
 
-    if (
-      feedback?.feedback === 'G' ||
-      feedback?.feedback === 'A' ||
-      feedback?.feedback === 'N'
-    ) {
-      return feedback.feedback;
-    }
-
-    return null;
+    return guides.map((guide) => ({
+      guideId: guide.id,
+      title: guide.title,
+      summary: guide.summary,
+    }));
   }
 
-  private parseGuideContentId(value: string): number {
+  private parseGuideId(value: string): number {
     if (!/^\d+$/.test(value)) {
       throw new BusinessException(
         GuideErrorCode.GUIDE_INVALID_ID,
-        'guideContentId는 1 이상의 숫자여야 합니다.',
+        'guideId는 1 이상의 숫자여야 합니다.',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    const guideContentId = Number(value);
+    const guideId = Number(value);
 
-    if (!Number.isSafeInteger(guideContentId) || guideContentId < 1) {
+    if (!Number.isSafeInteger(guideId) || guideId < 1) {
       throw new BusinessException(
         GuideErrorCode.GUIDE_INVALID_ID,
-        'guideContentId는 1 이상의 숫자여야 합니다.',
+        'guideId는 1 이상의 숫자여야 합니다.',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    return guideContentId;
+    return guideId;
   }
-  // 패턴 가이드 상세
-  private async buildPatternGuideDetail(
+  // 패턴 가이드 이유
+  private async buildPatternGuideReason(
     userId: bigint,
-    guideContent: GuideContentDetailRow,
-    feedbackStatus: 'G' | 'A' | 'N' | null,
-    query: GetGuideDetailQueryDto,
-  ): Promise<PatternGuideDetailResponseDto> {
-    const weekStartDate = this.resolveWeekStartDate(query.weekStartDate);
+    guideId: number,
+  ): Promise<PatternGuideReasonDto> {
+    const binding = PATTERN_GUIDE_BINDINGS.find(
+      (item) => item.guideId === guideId,
+    );
 
+    if (binding === undefined) {
+      throw new Error(`Pattern guide binding not found: ${guideId}`);
+    }
+    const weekStartDate = this.getCurrentMonday();
     const weeklyReport = await this.reportService.getWeeklyReport(userId, {
       weekStartDate: this.toDateString(weekStartDate),
       includeGuide: false,
     });
 
-    const matchedRuleCodeSet = new Set(
-      weeklyReport.patternCards.map((card) => card.ruleCode),
-    );
-
-    const selectedRule = this.selectPatternRule(
-      guideContent.guideRules,
-      query.ruleCode,
-      matchedRuleCodeSet,
-    );
-
-    const matchedCard =
-      selectedRule === null
-        ? undefined
-        : weeklyReport.patternCards.find(
-            (card) => card.ruleCode === selectedRule.ruleCode,
-          );
-
-    const matchedEvidence =
-      selectedRule === null
-        ? null
-        : this.buildPatternDetailEvidence(
-            selectedRule,
-            weeklyReport,
-            matchedCard?.description,
-          );
-
-    return {
-      guideContentId: guideContent.id,
-      category: 'P',
-      categoryLabel: '패턴 기반',
-      title: guideContent.title,
-      content: guideContent.content,
-      period: weeklyReport.period,
-      rule: selectedRule,
-      matchedEvidence,
-      relatedRecords: this.buildPatternRelatedRecords(weeklyReport),
-      feedbackStatus,
-    };
-  }
-  // 패턴 규칙 선택
-  private selectPatternRule(
-    rules: GuideContentDetailRow['guideRules'],
-    requestedRuleCode: string | undefined,
-    matchedRuleCodeSet: Set<string>,
-  ): GuideDetailRuleDto | null {
-    const validRules = rules
-      .filter(
-        (
-          rule,
-        ): rule is {
-          ruleCode: string;
-          condition: string | null;
-        } => rule.ruleCode !== null,
-      )
-      .map((rule) => ({
-        ruleCode: rule.ruleCode,
-        condition: rule.condition,
+    const boundRuleCodeSet = new Set<WeeklyRuleCode>(binding.ruleCodes);
+    const matchedPatterns = weeklyReport.patternCards
+      .filter((card) => boundRuleCodeSet.has(card.ruleCode))
+      .map((card) => ({
+        ruleCode: card.ruleCode,
+        level: card.level,
+        title: card.title,
+        description: card.description,
+        evidence: card.evidence ?? [],
       }));
 
-    if (requestedRuleCode !== undefined) {
-      const requestedRule = validRules.find(
-        (rule) => rule.ruleCode === requestedRuleCode,
-      );
-
-      if (requestedRule === undefined) {
-        throw new BusinessException(
-          GuideErrorCode.GUIDE_RULE_NOT_FOUND,
-          '해당 가이드에 연결된 규칙을 찾을 수 없습니다.',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      return requestedRule;
-    }
-
-    // 현재 주간 기록에서 실제로 감지된 규칙을 우선 선택
-
-    const matchedRule = validRules.find((rule) =>
-      matchedRuleCodeSet.has(rule.ruleCode),
-    );
-
-    return matchedRule ?? validRules[0] ?? null;
-  }
-  // 관련 기록 요약
-  private buildPatternRelatedRecords(
-    report: WeeklyReportResponseDto,
-  ): PatternRelatedRecordsDto {
-    const hardStoolCount =
-      report.stoolDistribution.find((item) => item.stoolSimple === 'H')
-        ?.count ?? 0;
-
-    const looseStoolCount =
-      report.stoolDistribution.find((item) => item.stoolSimple === 'T')
-        ?.count ?? 0;
-
     return {
-      totalRecordedDays: report.recordStats.recordedDays,
-      bowelCount: report.summary?.bowelCount ?? 0,
-      hardStoolCount,
-      looseStoolCount,
-      lowSleepDays: report.lifeFactorStats?.lowSleep.count ?? 0,
-      highStressDays: report.lifeFactorStats?.highStress.count ?? 0,
-      lowWaterDays: report.lifeFactorStats?.lowWater.count ?? 0,
-      highCaffeineDays: report.lifeFactorStats?.highCaffeine.count ?? 0,
+      period: weeklyReport.period,
+      recordStatus: {
+        dataStatus: weeklyReport.dataStatus,
+        recordedDays: weeklyReport.recordStats.recordedDays,
+        requiredDays: weeklyReport.recordStats.requiredDays,
+        completionScore: weeklyReport.recordStats.completionScore,
+      },
+      matched: matchedPatterns.length > 0,
+      matchedRuleCodes: matchedPatterns.map((pattern) => pattern.ruleCode),
+      matchedPatterns,
     };
-  }
-
-  // 패턴 근거 생성
-  private buildPatternDetailEvidence(
-    rule: GuideDetailRuleDto,
-    report: WeeklyReportResponseDto,
-    matchedDescription?: string,
-  ): PatternGuideEvidenceDto | null {
-    const matched = report.patternCards.some(
-      (card) => card.ruleCode === rule.ruleCode,
-    );
-
-    const description =
-      matchedDescription ??
-      '현재 조회한 주간 기록에서는 해당 패턴이 감지되지 않았어요.';
-
-    if (
-      rule.ruleCode === 'LOW_BOWEL_COUNT' ||
-      rule.ruleCode === 'HIGH_BOWEL_COUNT'
-    ) {
-      return {
-        matched,
-        sourceTable: 'weekly_record',
-        sourceField: 'bowelCount',
-        condition:
-          rule.condition ??
-          (rule.ruleCode === 'LOW_BOWEL_COUNT'
-            ? 'bowelCount <= 2'
-            : 'bowelCount >= 10'),
-        count: report.summary?.bowelCount ?? 0,
-        description,
-      };
-    }
-
-    if (rule.ruleCode === 'CONSTIPATION_PATTERN') {
-      return {
-        matched,
-        sourceTable: 'boogle_record',
-        sourceField: 'stoolSimple',
-        condition: rule.condition ?? 'stoolSimple = H',
-        count:
-          report.stoolDistribution.find((item) => item.stoolSimple === 'H')
-            ?.count ?? 0,
-        description,
-      };
-    }
-
-    if (rule.ruleCode === 'LOOSE_STOOL_PATTERN') {
-      return {
-        matched,
-        sourceTable: 'boogle_record',
-        sourceField: 'stoolSimple',
-        condition: rule.condition ?? 'stoolSimple = T',
-        count:
-          report.stoolDistribution.find((item) => item.stoolSimple === 'T')
-            ?.count ?? 0,
-        description,
-      };
-    }
-
-    const lifeFactorStats = report.lifeFactorStats;
-
-    if (lifeFactorStats === null) {
-      return null;
-    }
-
-    const lifeRuleMap = {
-      LOW_SLEEP: {
-        sourceField: 'sleepTime',
-        condition: 'sleepTime = 1',
-        count: lifeFactorStats.lowSleep.count,
-      },
-      HIGH_STRESS: {
-        sourceField: 'stress',
-        condition: 'stress = H',
-        count: lifeFactorStats.highStress.count,
-      },
-      LOW_WATER: {
-        sourceField: 'water',
-        condition: 'water = L',
-        count: lifeFactorStats.lowWater.count,
-      },
-      HIGH_CAFFEINE: {
-        sourceField: 'caffeine',
-        condition: 'caffeine = M',
-        count: lifeFactorStats.highCaffeine.count,
-      },
-    } as const;
-
-    const evidence = lifeRuleMap[rule.ruleCode as keyof typeof lifeRuleMap];
-
-    if (evidence === undefined) {
-      return null;
-    }
-
-    return {
-      matched,
-      sourceTable: 'life_record',
-      sourceField: evidence.sourceField,
-      condition: rule.condition ?? evidence.condition,
-      count: evidence.count,
-      description,
-    };
-  }
-  // 주의신호 상세
-  private async buildWarningGuideDetail(
-    userId: bigint,
-    guideContent: GuideContentDetailRow,
-    feedbackStatus: 'G' | 'A' | 'N' | null,
-    query: GetGuideDetailQueryDto,
-  ): Promise<WarningGuideDetailResponseDto> {
-    const monthStartDate = this.resolveMonthStartDate(query.monthStartDate);
-
-    const nextMonthStartDate = this.addMonths(monthStartDate, 1);
-
-    const monthEndDate = this.addDays(nextMonthStartDate, -1);
-
-    const records = await this.findWarningDetailRecords(
-      userId,
-      monthStartDate,
-      nextMonthStartDate,
-    );
-
-    const detectedFlags = this.detectWarningDetailFlags(records);
-
-    return {
-      guideContentId: guideContent.id,
-      category: 'W',
-      categoryLabel: '주의 신호',
-      title: guideContent.title,
-      content: guideContent.content,
-      period: {
-        type: 'MONTHLY',
-        startDate: this.toDateString(monthStartDate),
-        endDate: this.toDateString(monthEndDate),
-      },
-      rule: null,
-      matchedEvidence: {
-        matched: detectedFlags.length > 0,
-        detectedFlags,
-      },
-      relatedRecords: null,
-      feedbackStatus,
-    };
-  }
-
-  //월간 기록 조회
-  private async findWarningDetailRecords(
-    userId: bigint,
-    monthStartDate: Date,
-    nextMonthStartDate: Date,
-  ): Promise<WarningDetailRecordRow[]> {
-    return this.prisma.boogleRecord.findMany({
-      where: {
-        userId,
-        status: 'A',
-        hasBowel: true,
-        regDate: {
-          gte: monthStartDate,
-          lt: nextMonthStartDate,
-        },
-      },
-      select: {
-        id: true,
-        regDate: true,
-        color: true,
-        stomach: true,
-      },
-      orderBy: {
-        regDate: 'asc',
-      },
-    });
-  }
-
-  // 주의 신호 생성
-  private detectWarningDetailFlags(
-    records: WarningDetailRecordRow[],
-  ): WarningDetailFlagDto[] {
-    const flagMap = new Map<
-      WarningDetailFlagDto['flagCode'],
-      WarningDetailFlagDto
-    >();
-
-    for (const record of records) {
-      if (record.color === 'R') {
-        flagMap.set('FLAG_BLOOD_RED', {
-          flagCode: 'FLAG_BLOOD_RED',
-          label: '붉은색 변 기록',
-          detectedDate: this.toDateString(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-
-      if (record.color === 'N') {
-        flagMap.set('FLAG_BLOOD_BLACK', {
-          flagCode: 'FLAG_BLOOD_BLACK',
-          label: '검은색 변 기록',
-          detectedDate: this.toDateString(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-
-      if (record.stomach === 'L') {
-        flagMap.set('FLAG_PAIN_SEVERE', {
-          flagCode: 'FLAG_PAIN_SEVERE',
-          label: '심한 복통 기록',
-          detectedDate: this.toDateString(record.regDate),
-          sourceRecordId: record.id.toString(),
-        });
-      }
-    }
-
-    return [...flagMap.values()];
   }
 
   // 피드백 등록
   async createGuideFeedback(
     userId: bigint,
-    rawGuideContentId: string,
+    rawGuideId: string,
     body: GuideFeedbackRequestDto,
   ): Promise<CreateGuideFeedbackResponseDto> {
     try {
-      const guideContentId = this.parseGuideContentId(rawGuideContentId);
+      const guideId = this.parseGuideId(rawGuideId);
 
       const feedback = this.parseGuideFeedback(body.feedback);
 
-      await this.assertActiveGuideContent(guideContentId);
+      await this.assertActiveGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideContentId: {
+          userId_guideId: {
             userId,
-            guideContentId,
+            guideId,
           },
         },
         select: {
@@ -1131,12 +467,12 @@ export class GuideService {
       const createdFeedback = await this.prisma.guideFeedback.create({
         data: {
           userId,
-          guideContentId,
+          guideId,
           feedback,
         },
         select: {
           id: true,
-          guideContentId: true,
+          guideId: true,
           feedback: true,
           regDate: true,
         },
@@ -1144,8 +480,8 @@ export class GuideService {
 
       return {
         guideFeedbackId: createdFeedback.id.toString(),
-        guideContentId: createdFeedback.guideContentId,
-        feedback,
+        guideId: createdFeedback.guideId,
+        feedback: this.parseGuideFeedback(createdFeedback.feedback),
         regDate: createdFeedback.regDate.toISOString(),
       };
     } catch (error) {
@@ -1174,21 +510,21 @@ export class GuideService {
   // 피드백 수정
   async updateGuideFeedback(
     userId: bigint,
-    rawGuideContentId: string,
+    rawGuideId: string,
     body: GuideFeedbackRequestDto,
   ): Promise<UpdateGuideFeedbackResponseDto> {
     try {
-      const guideContentId = this.parseGuideContentId(rawGuideContentId);
+      const guideId = this.parseGuideId(rawGuideId);
 
       const feedback = this.parseGuideFeedback(body.feedback);
 
-      await this.assertActiveGuideContent(guideContentId);
+      await this.assertActiveGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideContentId: {
+          userId_guideId: {
             userId,
-            guideContentId,
+            guideId,
           },
         },
         select: {
@@ -1216,7 +552,7 @@ export class GuideService {
         },
         select: {
           id: true,
-          guideContentId: true,
+          guideId: true,
           feedback: true,
           regDate: true,
           updateDate: true,
@@ -1229,7 +565,7 @@ export class GuideService {
 
       return {
         guideFeedbackId: updatedFeedback.id.toString(),
-        guideContentId: updatedFeedback.guideContentId,
+        guideId: updatedFeedback.guideId,
         feedback: this.parseGuideFeedback(updatedFeedback.feedback),
         regDate: updatedFeedback.regDate.toISOString(),
         updatedAt: updatedFeedback.updateDate.toISOString(),
@@ -1250,18 +586,18 @@ export class GuideService {
   // 피드백 삭제
   async deleteGuideFeedback(
     userId: bigint,
-    rawGuideContentId: string,
+    rawGuideId: string,
   ): Promise<DeleteGuideFeedbackResponseDto> {
     try {
-      const guideContentId = this.parseGuideContentId(rawGuideContentId);
+      const guideId = this.parseGuideId(rawGuideId);
 
-      await this.assertActiveGuideContent(guideContentId);
+      await this.assertActiveGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideContentId: {
+          userId_guideId: {
             userId,
-            guideContentId,
+            guideId,
           },
         },
         select: {
@@ -1283,13 +619,13 @@ export class GuideService {
         },
         select: {
           id: true,
-          guideContentId: true,
+          guideId: true,
         },
       });
 
       return {
         guideFeedbackId: deletedFeedback.id.toString(),
-        guideContentId: deletedFeedback.guideContentId,
+        guideId: deletedFeedback.guideId,
         deleted: true,
       };
     } catch (error) {
@@ -1318,30 +654,28 @@ export class GuideService {
     );
   }
 
-  private async assertActiveGuideContent(
-    guideContentId: number,
-  ): Promise<void> {
-    const guideContent = await this.prisma.guideContent.findUnique({
+  private async assertActiveGuide(guideId: number): Promise<void> {
+    const guide = await this.prisma.guide.findUnique({
       where: {
-        id: guideContentId,
+        id: guideId,
       },
       select: {
         status: true,
       },
     });
 
-    if (guideContent === null) {
+    if (guide === null) {
       throw new BusinessException(
         GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
-        '요청한 가이드 콘텐츠를 찾을 수 없습니다.',
+        '요청한 가이드를 찾을 수 없습니다.',
         HttpStatus.NOT_FOUND,
       );
     }
 
-    if (guideContent.status !== 'A') {
+    if (guide.status !== 'A') {
       throw new BusinessException(
         GuideErrorCode.GUIDE_CONTENT_INACTIVE,
-        '현재 제공되지 않는 가이드 콘텐츠입니다.',
+        '현재 제공되지 않는 가이드입니다.',
         HttpStatus.NOT_FOUND,
       );
     }

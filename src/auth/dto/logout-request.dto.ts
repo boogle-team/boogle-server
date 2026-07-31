@@ -1,13 +1,12 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class LogoutRequestDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'refresh-token-value',
-    description:
-      '무효화할 refreshToken. 없으면 현재 사용자의 활성 refreshToken을 모두 무효화합니다.',
+    description: '무효화할 현재 로그인 세션의 refreshToken',
   })
-  @IsOptional()
-  @IsString()
-  refreshToken?: string;
+  @IsString({ message: 'REFRESH_TOKEN_REQUIRED' })
+  @IsNotEmpty({ message: 'REFRESH_TOKEN_REQUIRED' })
+  refreshToken!: string;
 }

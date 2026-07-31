@@ -1,79 +1,83 @@
+import type { MonthlyPatternCardDto } from './monthly-report-response.dto';
+import type {
+  BoogleRecordForReport,
+  LifeRecordForReport,
+} from './report-record.dto';
+
 export interface PdfReportResult {
   buffer: Buffer;
   filename: string;
 }
 
-export interface MemberForPdf {
-  name: string | null;
-  nickname: string | null;
-  subscription: string;
-  subscriptionDate: Date | null;
+export interface MonthlyPdfSourceData {
+  startDate: string;
+  endDate: string;
+  generatedDate: string;
+  bowelCount: number;
+  intervalAvg: number;
+  completionScore: number;
+  boogleRecords: BoogleRecordForReport[];
+  lifeRecords: LifeRecordForReport[];
+  patternCards: MonthlyPatternCardDto[];
 }
 
-export interface BoogleRecordForPdf {
-  id: bigint;
-  regDate: Date;
-  hasBowel: boolean;
-  stoolBristol: number | null;
-  stoolSimple: string | null;
-  bowelFeeling: string | null;
-  stomach: string | null;
-  distension: string | null;
-  remainingFeeling: string | null;
-  urgency: string | null;
-  takenTime: number | null;
-  amount: string | null;
-  color: string | null;
+export interface MonthlyPdfPeriod {
+  startDate: string;
+  endDate: string;
+  generatedDate: string;
+  displayRange: string;
+  displayGeneratedDate: string;
+  inclusiveDays: number;
 }
 
-export interface LifeRecordForPdf {
-  id: bigint;
-  regDate: Date;
-  sleep: string | null;
-  sleepTime: number | null;
-  stress: string | null;
-  water: string | null;
-  mealRegular: string | null;
-  exercise: string | null;
-  caffeine: string | null;
-  outing: string | null;
-  hormone: string | null;
-  memo: string | null;
-  autoTags: string | null;
+export interface MonthlyPdfSummary {
+  bowelCount: number;
+  intervalAvg: number;
+  completionScore: number;
 }
 
-export interface WeeklyRecordForPdf {
-  weekStartDate: Date;
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  completionScore: number | null;
+export type PdfStoolCode = 'M' | 'H' | 'T';
+
+export interface MonthlyPdfStoolDistribution {
+  code: PdfStoolCode;
+  label: string;
+  count: number;
+  ratio: number;
 }
 
-export interface MonthlyRecordForPdf {
-  monthStartDate: Date;
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  state: number | null;
-  completionScore: number | null;
-  conditionScore: number | null;
-  userType: string | null;
+export interface MonthlyPdfDiscomfortRow {
+  label: string;
+  count: number;
+  dominantStool: string;
 }
 
-export interface GuideContentForPdf {
-  ruleCode: string | null;
-  title: string;
-  category: string | null;
-  content: string;
+export interface MonthlyPdfLifeFactorRow {
+  label: '수면' | '수분' | '스트레스';
+  lowCount: number;
+  normalCount: number;
+  highCount: number;
 }
 
-export interface PdfReportBuildData {
-  member: MemberForPdf;
-  startDate: Date;
-  endDate: Date;
-  includeDailyRecords: boolean;
-  boogleRecords: BoogleRecordForPdf[];
-  lifeRecords: LifeRecordForPdf[];
-  weeklyRecords: WeeklyRecordForPdf[];
-  monthlyRecords: MonthlyRecordForPdf[];
-  guides: GuideContentForPdf[];
+export interface MonthlyPdfFoodTag {
+  name: string;
+  count: number;
+}
+
+export interface MonthlyPdfDailyRow {
+  date: string;
+  bowel: string;
+  stoolState: string;
+  discomfort: string;
+  mainLife: string;
+}
+
+export interface MonthlyPdfReportData {
+  period: MonthlyPdfPeriod;
+  summary: MonthlyPdfSummary;
+  stoolDistribution: MonthlyPdfStoolDistribution[];
+  discomfortRows: MonthlyPdfDiscomfortRow[];
+  lifeFactorRows: MonthlyPdfLifeFactorRow[];
+  topFoodTags: MonthlyPdfFoodTag[];
+  patternCards: MonthlyPatternCardDto[];
+  dailyRows: MonthlyPdfDailyRow[];
 }

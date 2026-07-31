@@ -1,6 +1,7 @@
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
 import { UserErrorCode } from './user-error-code.enum';
+import { ProfileImageService } from './profile-image.service';
 import { UserService } from './user.service';
 
 describe('UserService', () => {
@@ -9,6 +10,7 @@ describe('UserService', () => {
     email: 'member@example.com',
     nickname: '부글이',
     profileImg: null,
+    profileImageKey: null,
     gender: 'N',
     ageGroup: 20,
     baselineType: 'R',
@@ -19,6 +21,7 @@ describe('UserService', () => {
   const prisma = {
     member: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
     },
     memberConsent: {
@@ -31,12 +34,41 @@ describe('UserService', () => {
           },
         ]
       >(),
-      update: jest.fn(),
+      update: jest.fn<
+        Promise<{
+          id: bigint;
+          userId: bigint;
+          consentType: string;
+          agreed: boolean;
+          policyVersion: string;
+          agreedAt: Date | null;
+          withdrawnAt: Date | null;
+          regDate: Date;
+        }>,
+        [
+          args: {
+            where: { id: bigint };
+            data: {
+              agreed?: boolean;
+              policyVersion?: string;
+              withdrawnAt?: Date;
+            };
+          },
+        ]
+      >(),
     },
     lifeRecord: {
       updateMany: jest.fn(),
     },
     $transaction: jest.fn(),
+  };
+  const profileImages = {
+    save: jest.fn(),
+    getUrl: jest.fn(),
+    deleteBestEffort: jest.fn(),
+    assertRequired: jest.fn((file) => {
+      if (!file) throw new Error('required');
+    }),
   };
   let service: UserService;
 
@@ -45,7 +77,59 @@ describe('UserService', () => {
     prisma.$transaction.mockImplementation(
       (callback: (tx: typeof prisma) => unknown) => callback(prisma),
     );
-    service = new UserService(prisma as unknown as PrismaService);
+    service = new UserService(
+      prisma as unknown as PrismaService,
+      profileImages as unknown as ProfileImageService,
+    );
+  });
+
+  describe('saveOnboarding', () => {
+    it('returns the completion flag and user profile in the documented structure', async () => {
+      const incompleteMember = {
+        ...member,
+        nickname: null,
+        gender: null,
+        ageGroup: null,
+        baselineType: null,
+        sensInfo: 'F',
+      };
+      const updatedMember = {
+        ...incompleteMember,
+        nickname: '새부글',
+        gender: 'F',
+        ageGroup: 20,
+        baselineType: 'R',
+        sensInfo: 'Y',
+      };
+      prisma.member.findUnique.mockResolvedValue(incompleteMember);
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.member.update.mockResolvedValue(updatedMember);
+      prisma.memberConsent.create.mockResolvedValue({});
+
+      await expect(
+        service.saveOnboarding('1', {
+          nickname: '새부글',
+          gender: 'F',
+          ageGroup: 20,
+          baselineType: 'R',
+          sensitiveInfoAgreed: true,
+          sensitiveInfoPolicyVersion: '2026-07-01',
+        }),
+      ).resolves.toEqual({
+        onboardingCompleted: true,
+        user: {
+          id: 1,
+          email: 'member@example.com',
+          nickname: '새부글',
+          profileImage: null,
+          profileImageSource: null,
+          gender: 'F',
+          ageGroup: 20,
+          baselineType: 'R',
+          sensitiveInfoAgreed: true,
+        },
+      });
+    });
   });
 
   describe('updateSensitiveInfoConsent', () => {
@@ -238,6 +322,151 @@ describe('UserService', () => {
           },
         },
       });
+    });
+  });
+
+  describe('updateMe', () => {
+    it('withdraws sensitive consent and clears hormone data when gender becomes M', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.memberConsent.findFirst.mockResolvedValue({
+        id: 2n,
+        agreed: true,
+      });
+      prisma.member.update.mockResolvedValue({
+        ...member,
+        gender: 'M',
+        sensInfo: 'F',
+      });
+      prisma.lifeRecord.updateMany.mockResolvedValue({ count: 2 });
+
+      await expect(
+        service.updateMe('1', { gender: 'M' }),
+      ).resolves.toMatchObject({
+        gender: 'M',
+        sensitiveInfoAgreed: false,
+      });
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: 1n },
+        data: { gender: 'M', sensInfo: 'F' },
+      });
+      expect(prisma.memberConsent.update).toHaveBeenCalledTimes(1);
+      expect(prisma.memberConsent.update.mock.calls[0][0]).toMatchObject({
+        where: { id: 2n },
+        data: { agreed: false },
+      });
+      expect(
+        prisma.memberConsent.update.mock.calls[0][0].data.withdrawnAt,
+      ).toBeInstanceOf(Date);
+      expect(prisma.lifeRecord.updateMany).toHaveBeenCalledWith({
+        where: { userId: 1n },
+        data: { hormone: null },
+      });
+    });
+
+    it('rejects an already-used nickname', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.member.findFirst.mockResolvedValue({ id: 2n });
+
+      await expect(
+        service.updateMe('1', { nickname: '중복닉네임' }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.NICKNAME_ALREADY_EXISTS,
+        status: 409,
+      });
+    });
+
+    it('maps a concurrent nickname unique-constraint failure to a conflict', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+
+      await expect(
+        service.updateMe('1', { nickname: '동시변경' }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.NICKNAME_ALREADY_EXISTS,
+        status: 409,
+      });
+    });
+  });
+
+  describe('deleteMe', () => {
+    it('requires a detail when the withdrawal reason is OTHER', async () => {
+      await expect(
+        service.deleteMe('1', {
+          reason: 'OTHER',
+          confirmation: '탈퇴합니다',
+        }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
+        status: 400,
+      });
+      expect(prisma.member.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('profile image storage', () => {
+    it('stores the new object key before deleting the previous object', async () => {
+      const currentMember = { ...member, profileImageKey: 'old-key' };
+      const updatedMember = { ...currentMember, profileImageKey: 'new-key' };
+      prisma.member.findUnique.mockResolvedValue(currentMember);
+      prisma.member.update.mockResolvedValue(updatedMember);
+      profileImages.save.mockResolvedValue('new-key');
+      profileImages.getUrl.mockResolvedValue('https://cdn.example.com/new.jpg');
+
+      await expect(
+        service.updateProfileImage('1', {
+          originalname: 'new.jpg',
+          mimetype: 'image/jpeg',
+          size: 3,
+          buffer: Buffer.from('jpg'),
+        }),
+      ).resolves.toEqual({
+        profileImage: 'https://cdn.example.com/new.jpg',
+        profileImageSource: 'CUSTOM',
+      });
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: 1n },
+        data: { profileImageKey: 'new-key' },
+      });
+      expect(profileImages.deleteBestEffort).toHaveBeenCalledWith('old-key');
+    });
+
+    it('cleans up the new S3 object if the DB update fails', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.member.update.mockRejectedValue(new Error('db error'));
+      profileImages.save.mockResolvedValue('new-key');
+
+      await expect(
+        service.updateProfileImage('1', {
+          originalname: 'new.webp',
+          mimetype: 'image/webp',
+          size: 4,
+          buffer: Buffer.from('webp'),
+        }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.PROFILE_IMAGE_UPDATE_FAILED,
+        status: 500,
+      });
+      expect(profileImages.deleteBestEffort).toHaveBeenCalledWith('new-key');
+    });
+
+    it('deletes custom image data and falls back to the social image', async () => {
+      const currentMember = {
+        ...member,
+        profileImg: 'https://social.example.com/profile.jpg',
+        profileImageKey: 'custom-key',
+      };
+      prisma.member.findUnique.mockResolvedValue(currentMember);
+      prisma.member.update.mockResolvedValue({
+        ...currentMember,
+        profileImageKey: null,
+      });
+
+      await expect(service.deleteProfileImage('1')).resolves.toEqual({
+        profileImage: 'https://social.example.com/profile.jpg',
+        profileImageSource: 'SOCIAL',
+      });
+      expect(profileImages.deleteBestEffort).toHaveBeenCalledWith('custom-key');
     });
   });
 });

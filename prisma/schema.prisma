@@ -12,8 +12,9 @@ model Member {
   id               BigInt    @id @default(autoincrement()) // pk
   loginId          String?   @unique @map("login_id") @db.VarChar(20) // 일반 로그인 id
   password         String?   @db.VarChar(255) // hash값
-  nickname         String?   @db.VarChar(40) // 닉네임
-  profileImg       String?   @map("profile_img") @db.VarChar(255) // 프로필 이미지 파일명
+  nickname         String?   @unique @db.VarChar(10) // 닉네임
+  profileImg       String?   @map("profile_img") @db.VarChar(255) // 소셜 제공자 프로필 이미지 URL
+  profileImageKey  String?   @map("profile_image_key") @db.VarChar(255) // 사용자 업로드 S3 Object Key
   email            String?   @unique @db.VarChar(255)
   name             String?   @db.VarChar(20)
   gender           String?   @db.Char(1) // M/F/N
@@ -32,6 +33,7 @@ model Member {
   warnAlarm        String?   @default("Y") @map("warn_alarm") @db.Char(1) // Y/N
 
   alarmMaps      AlarmMap[]
+  pushTokens     PushToken[]
   socialAccounts SocialAccount[]
   refreshTokens  RefreshToken[]
   memberConsents MemberConsent[]
@@ -39,16 +41,18 @@ model Member {
   lifeRecords    LifeRecord[]
   weeklyRecords  WeeklyRecord[]
   monthlyRecords MonthlyRecord[]
+  monthlyRuleResults MonthlyRuleResult[]
   guideFeedbacks GuideFeedback[]
 
   @@map("member")
 }
 
 model Alarm {
-  id       Int    @id @default(autoincrement())
-  category String @db.Char(1) // W/R/P
-  title    String @db.VarChar(40)
-  content  String @db.VarChar(255)
+  id       Int     @id @default(autoincrement())
+  category String  @db.Char(1) // W/R/P (점 색 표시용)
+  type     String? @db.VarChar(20) // 아이콘 구분용 의미 코드: WARNING/RECORD_REMINDER/REPORT_READY/PDF_SAVED/STREAK
+  title    String  @db.VarChar(40)
+  content  String  @db.VarChar(255)
 
   alarmMaps AlarmMap[]
 
@@ -66,6 +70,21 @@ model AlarmMap {
   alarm Alarm?  @relation(fields: [alarmId], references: [id])
 
   @@map("alarm_map")
+}
+
+// 웹 푸시(FCM) 전송 대상 기기 토큰. 한 유저가 여러 기기(PC·폰)를 가질 수 있어
+// user_id에는 여러 행이 붙고, token은 기기별로 고유하다(재등록 시 upsert).
+model PushToken {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt   @map("user_id")
+  token      String   @unique @db.VarChar(512)
+  regDate    DateTime @default(now()) @map("reg_date")
+  updateDate DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "push_token_user_id_idx")
+  @@map("push_token")
 }
 
 model SocialAccount {
@@ -135,7 +154,8 @@ model BoogleRecord {
   stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
   stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
   bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
-  stomach          String?   @db.Char(1) // 복통 N/M/L
+  stomach          Int?      // 복통 -> 숫자로 표기
+  bowelMovementAt  DateTime? @map("bowel_movement_at") // 배변 발생 시각 
   distension       String?   @db.Char(1) // 복부팽만 N/M/L
   remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
   urgency          String?   @db.Char(1) // 긴박감 N/M/L
@@ -251,6 +271,21 @@ model MonthlyRecord {
   @@map("monthly_record")
 }
 
+model MonthlyRuleResult {
+  id             BigInt   @id @default(autoincrement())
+  userId         BigInt   @map("user_id")
+  monthStartDate DateTime @map("month_start_date") @db.Date
+  ruleCode       String   @map("rule_code") @db.VarChar(40)
+  value          Float    @db.Double
+  regDate        DateTime @default(now()) @map("reg_date")
+  updateDate     DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, monthStartDate, ruleCode], map: "monthly_rule_result_user_month_rule_uq")
+  @@map("monthly_rule_result")
+}
+
 model LifeFoodTag {
   lifeId BigInt @map("life_id")
   foodId Int    @map("food_id")
@@ -271,41 +306,57 @@ model Food {
   @@map("food")
 }
 
+model Guide {
+  id  Int   @id @default(autoincrement())
+  title String @db.VarChar(255)
+  summary   String @db.VarChar(255)
+  category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
+  regDate   DateTime @default(now())
+  updateAt  DateTime? @updatedAt @map("update_date")
+  status    String @db.Char(1) @default("A")
+  source    String? @db.VarChar(255)
+
+  @@unique([category, title], map: "guide_category_title_uq")
+
+  guideContents   GuideContent[]
+  guideAdvices    GuideAdvice[]
+  guideFeedbacks  GuideFeedback[]
+
+  @@map("guide")
+}
+
 model GuideContent {
   id       Int     @id @default(autoincrement())
-  title    String  @db.VarChar(255)
-  category String? @db.Char(1) // 패턴P/장건강H/주의W
-  content  String  @db.Text
-  status   String  @default("A") @db.Char(1)
+  guideId   Int     @map("guide_id")
+  subtitle  String? @db.VarChar(255)
+  content   String  @db.Text
 
-  guideRules     GuideRule[]
-  guideFeedbacks GuideFeedback[]
+  guide Guide @relation(fields: [guideId], references: [id])
 
   @@map("guide_content")
 }
 
-model GuideRule {
-  id             Int     @id @default(autoincrement())
-  guideContentId Int     @map("guide_content_id")
-  ruleCode       String? @map("rule_code") @db.VarChar(40)
-  condition      String? @db.Text
+model GuideAdvice {
+  id      Int     @id @default(autoincrement())
+  guideId Int     @map("guide_id")
+  content String  @db.Text
 
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide   Guide   @relation(fields: [guideId], references: [id])
 
-  @@map("guide_rule")
+  @@map("guide_advice")
 }
 
 model GuideFeedback {
   id             BigInt    @id @default(autoincrement())
   userId         BigInt    @map("user_id")
-  guideContentId Int       @map("guide_content_id")
+  guideId        Int       @map("guide_id")
   feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
   regDate        DateTime  @default(now()) @map("reg_date")
-  updateDate     DateTime? @map("update_date") // 수정시 수정시각
+  updateDate     DateTime? @updatedAt @map("update_date") // 수정시 수정시각
 
   user         Member       @relation(fields: [userId], references: [id])
-  guideContent GuideContent @relation(fields: [guideContentId], references: [id])
+  guide Guide @relation(fields: [guideId], references: [id])
 
-  @@unique([userId, guideContentId], map: "guide_feedback_index_5")
+  @@unique([userId, guideId], map: "guide_feedback_index_5")
   @@map("guide_feedback")
 }

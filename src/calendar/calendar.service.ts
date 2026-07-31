@@ -4,6 +4,7 @@ import {
   BoogleStatus,
   CalendarDayDto,
   CalendarResponseDto,
+  DayStatusDto,
 } from './dto/calendar-response.dto';
 import {
   BoogleRecordDetailDto,
@@ -35,6 +36,55 @@ function kstDayStart(dateStr: string): Date {
 
 function kstDayEnd(dateStr: string): Date {
   return new Date(`${dateStr}T23:59:59.999+09:00`);
+}
+
+// "YYYY-MM-DD"에 n일을 더한 KST 달력 날짜 문자열. 범위 순회에 쓴다.
+function addDaysKey(dateStr: string, amount: number): string {
+  const date = kstDayStart(dateStr);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return toDateKey(date);
+}
+
+// 부글/생활 기록 배열을 날짜별 상태 맵으로 환원한다. 날짜별 상태 판정 규칙의
+// 단일 소스 — getMonthlyCalendar(월간)와 getDailyStatuses(범위)가 공유한다.
+// 하루 여러 건일 때 대표값: has_bowel=true 기록이 하나라도 있으면 BOWEL,
+// 그 stoolSimple은 가장 마지막(최신) BOWEL 기록 기준. (§9 팀 확정 전 잠정 규칙)
+function buildStatusMaps(
+  boogleRecords: {
+    regDate: Date;
+    hasBowel: boolean;
+    stoolSimple: string | null;
+  }[],
+  lifeRecords: { regDate: Date }[],
+): {
+  boogleByDate: Map<
+    string,
+    { boogleStatus: BoogleStatus; stoolSimple: string | null }
+  >;
+  lifeRecordDates: Set<string>;
+} {
+  const boogleByDate = new Map<
+    string,
+    { boogleStatus: BoogleStatus; stoolSimple: string | null }
+  >();
+  for (const record of boogleRecords) {
+    const key = toDateKey(record.regDate);
+    const existing = boogleByDate.get(key);
+    if (record.hasBowel) {
+      boogleByDate.set(key, {
+        boogleStatus: 'BOWEL',
+        stoolSimple: record.stoolSimple,
+      });
+    } else if (!existing || existing.boogleStatus !== 'BOWEL') {
+      boogleByDate.set(key, { boogleStatus: 'NO_BOWEL', stoolSimple: null });
+    }
+  }
+
+  const lifeRecordDates = new Set(
+    lifeRecords.map((record) => toDateKey(record.regDate)),
+  );
+
+  return { boogleByDate, lifeRecordDates };
 }
 
 @Injectable()
@@ -81,28 +131,9 @@ export class CalendarService {
       }),
     ]);
 
-    // 하루 여러 건일 때 대표값: has_bowel=true 기록이 하나라도 있으면 BOWEL,
-    // 그 stoolSimple은 가장 마지막(최신) BOWEL 기록 기준.
-    // (§9 팀 확정 전 잠정 규칙)
-    const boogleByDate = new Map<
-      string,
-      { boogleStatus: BoogleStatus; stoolSimple: string | null }
-    >();
-    for (const record of boogleRecords) {
-      const key = toDateKey(record.regDate);
-      const existing = boogleByDate.get(key);
-      if (record.hasBowel) {
-        boogleByDate.set(key, {
-          boogleStatus: 'BOWEL',
-          stoolSimple: record.stoolSimple,
-        });
-      } else if (!existing || existing.boogleStatus !== 'BOWEL') {
-        boogleByDate.set(key, { boogleStatus: 'NO_BOWEL', stoolSimple: null });
-      }
-    }
-
-    const lifeRecordDates = new Set(
-      lifeRecords.map((record) => toDateKey(record.regDate)),
+    const { boogleByDate, lifeRecordDates } = buildStatusMaps(
+      boogleRecords,
+      lifeRecords,
     );
 
     const days: CalendarDayDto[] = [];
@@ -147,6 +178,63 @@ export class CalendarService {
         },
       },
     };
+  }
+
+  // 지정한 날짜 범위(KST, 양끝 포함)의 날짜별 상태를 반환한다.
+  // 홈 요약(/home/summary)이 baseDate 앞뒤 N일을 넘겨 재사용한다.
+  // 상태 판정은 getMonthlyCalendar와 동일한 buildStatusMaps 규칙을 공유한다.
+  async getDailyStatuses(
+    userId: string,
+    startDateKey: string,
+    endDateKey: string,
+  ): Promise<DayStatusDto[]> {
+    // 역순 범위(start > end)는 유효한 조회가 아니다. 사전순=날짜순 비교로
+    // 미리 걸러 빈 배열을 반환한다(불필요한 DB 조회·순회 자체를 생략).
+    if (startDateKey > endDateKey) {
+      return [];
+    }
+
+    const memberId = BigInt(userId);
+    // 반개방 구간: [시작일 자정, 마지막일+1 자정)
+    const rangeStart = kstDayStart(startDateKey);
+    const rangeEnd = kstDayStart(addDaysKey(endDateKey, 1));
+
+    const [boogleRecords, lifeRecords] = await Promise.all([
+      this.prisma.boogleRecord.findMany({
+        where: {
+          userId: memberId,
+          status: 'A',
+          regDate: { gte: rangeStart, lt: rangeEnd },
+        },
+        select: { regDate: true, hasBowel: true, stoolSimple: true },
+        orderBy: { regDate: 'asc' },
+      }),
+      this.prisma.lifeRecord.findMany({
+        where: {
+          userId: memberId,
+          status: 'A',
+          regDate: { gte: rangeStart, lt: rangeEnd },
+        },
+        select: { regDate: true },
+      }),
+    ]);
+
+    const { boogleByDate, lifeRecordDates } = buildStatusMaps(
+      boogleRecords,
+      lifeRecords,
+    );
+
+    // YYYY-MM-DD는 사전순=날짜순이라 문자열 비교로 범위 순회가 안전하다.
+    // start > end(역순)면 루프가 아예 돌지 않아 빈 배열 — 무한 루프 방지.
+    const days: DayStatusDto[] = [];
+    for (let key = startDateKey; key <= endDateKey; key = addDaysKey(key, 1)) {
+      days.push({
+        date: key,
+        boogleStatus: boogleByDate.get(key)?.boogleStatus ?? 'NONE',
+        hasLifeRecord: lifeRecordDates.has(key),
+      });
+    }
+    return days;
   }
 
   async getDailyRecords(
@@ -206,6 +294,7 @@ export class CalendarService {
           sleep: lifeRecord.sleep,
           stress: lifeRecord.stress,
           water: lifeRecord.water,
+          waterIntake: lifeRecord.waterIntake,
           mealRegular: lifeRecord.mealRegular,
           sleepTime: lifeRecord.sleepTime,
           exercise: lifeRecord.exercise,

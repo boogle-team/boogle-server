@@ -7,6 +7,7 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { AuthErrorCode } from '@/auth/auth-error-code.enum';
+import { UserErrorCode } from '@/user/user-error-code.enum';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -45,21 +46,48 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3000);
 }
 
-const AUTH_VALIDATION_ERROR_MESSAGE: Partial<Record<AuthErrorCode, string>> = {
-  [AuthErrorCode.AUTH_INVALID_PROVIDER]:
+type DomainValidationErrorCode = AuthErrorCode | UserErrorCode;
+
+const VALIDATION_ERROR_MESSAGE = new Map<DomainValidationErrorCode, string>([
+  [
+    AuthErrorCode.AUTH_INVALID_PROVIDER,
     '지원하지 않는 소셜 로그인 제공자입니다.',
-  [AuthErrorCode.AUTH_OAUTH_RESULT_REQUIRED]:
+  ],
+  [
+    AuthErrorCode.AUTH_OAUTH_RESULT_CODE_REQUIRED,
     'OAuth 로그인 결과 코드는 필수입니다.',
-  [AuthErrorCode.AUTH_SIGNUP_TICKET_REQUIRED]: '회원가입 티켓은 필수입니다.',
-  [AuthErrorCode.AUTH_LINK_TICKET_REQUIRED]: '계정 연동 티켓은 필수입니다.',
-  [AuthErrorCode.PRIVACY_POLICY_AGREEMENT_REQUIRED]:
-    '개인정보 수집 동의가 필요합니다.',
-  [AuthErrorCode.REFRESH_TOKEN_REQUIRED]: 'refreshToken은 필수입니다.',
-};
+  ],
+  [AuthErrorCode.REFRESH_TOKEN_REQUIRED, 'refreshToken은 필수입니다.'],
+  [UserErrorCode.NICKNAME_REQUIRED, 'nickname은 필수입니다.'],
+  [
+    UserErrorCode.NICKNAME_TOO_LONG,
+    'nickname은 최대 10자까지 입력할 수 있습니다.',
+  ],
+  [UserErrorCode.NICKNAME_ALREADY_EXISTS, '이미 사용 중인 닉네임입니다.'],
+  [UserErrorCode.INVALID_GENDER, 'gender 값이 올바르지 않습니다.'],
+  [UserErrorCode.INVALID_AGE_GROUP, 'ageGroup 값이 올바르지 않습니다.'],
+  [UserErrorCode.INVALID_BASELINE_TYPE, 'baselineType 값이 올바르지 않습니다.'],
+  [
+    UserErrorCode.SENSITIVE_INFO_AGREEMENT_INVALID,
+    '민감정보 수집 동의 값이 올바르지 않습니다.',
+  ],
+  [UserErrorCode.POLICY_VERSION_REQUIRED, 'policyVersion은 필수입니다.'],
+  [UserErrorCode.WITHDRAWAL_REASON_REQUIRED, '탈퇴 사유는 필수입니다.'],
+  [
+    UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
+    '기타 탈퇴 사유를 입력해주세요.',
+  ],
+  [
+    UserErrorCode.WITHDRAWAL_CONFIRMATION_INVALID,
+    '탈퇴 확인 문구가 일치하지 않습니다.',
+  ],
+]);
 
 function createValidationException(errors: ValidationError[]) {
   const errorCode = findDomainValidationErrorCode(errors);
-  const message = errorCode ? AUTH_VALIDATION_ERROR_MESSAGE[errorCode] : null;
+  const message = errorCode
+    ? VALIDATION_ERROR_MESSAGE.get(errorCode)
+    : undefined;
 
   return errorCode && message
     ? new BusinessException(errorCode, message)
@@ -68,11 +96,15 @@ function createValidationException(errors: ValidationError[]) {
 
 function findDomainValidationErrorCode(
   errors: ValidationError[],
-): AuthErrorCode | null {
+): DomainValidationErrorCode | null {
   for (const error of errors) {
     for (const constraintMessage of Object.values(error.constraints ?? {})) {
-      if (constraintMessage in AUTH_VALIDATION_ERROR_MESSAGE) {
-        return constraintMessage as AuthErrorCode;
+      if (
+        VALIDATION_ERROR_MESSAGE.has(
+          constraintMessage as DomainValidationErrorCode,
+        )
+      ) {
+        return constraintMessage as DomainValidationErrorCode;
       }
     }
 

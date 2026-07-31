@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class UpdateMeRequestDto {
@@ -14,18 +15,10 @@ export class UpdateMeRequestDto {
     description: '사용자 닉네임, 최대 10자',
   })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @IsString({ message: 'NICKNAME_REQUIRED' })
+  @IsNotEmpty({ message: 'NICKNAME_REQUIRED' })
+  @MaxLength(10, { message: 'NICKNAME_TOO_LONG' })
   nickname?: string;
-
-  @ApiPropertyOptional({
-    example: 'https://example.com/profile.png',
-    nullable: true,
-    description: '프로필 이미지 URL. null이면 기본 이미지',
-  })
-  @IsOptional()
-  @IsString()
-  profileImage?: string | null;
 
   @ApiPropertyOptional({
     enum: ['M', 'F', 'N'],
@@ -33,7 +26,7 @@ export class UpdateMeRequestDto {
     description: 'M: 남성, F: 여성, N: 선택 안 함',
   })
   @IsOptional()
-  @IsIn(['M', 'F', 'N'])
+  @IsIn(['M', 'F', 'N'], { message: 'INVALID_GENDER' })
   gender?: 'M' | 'F' | 'N';
 
   @ApiPropertyOptional({
@@ -43,8 +36,8 @@ export class UpdateMeRequestDto {
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
-  @IsIn([10, 20, 30, 40])
+  @IsNumber({}, { message: 'INVALID_AGE_GROUP' })
+  @IsIn([10, 20, 30, 40], { message: 'INVALID_AGE_GROUP' })
   ageGroup?: number;
 
   @ApiPropertyOptional({
@@ -54,6 +47,6 @@ export class UpdateMeRequestDto {
       'R: 규칙적인 편, C: 변비 경향, L: 묽은 변 경향, U: 잘 모르겠음',
   })
   @IsOptional()
-  @IsIn(['R', 'C', 'L', 'U'])
+  @IsIn(['R', 'C', 'L', 'U'], { message: 'INVALID_BASELINE_TYPE' })
   baselineType?: 'R' | 'C' | 'L' | 'U';
 }

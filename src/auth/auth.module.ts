@@ -4,9 +4,10 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthTemporaryTokenService } from './auth-temporary-token.service';
+import { StorageModule } from '@/common/storage/storage.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, StorageModule],
   controllers: [AuthController],
   providers: [AuthService, AuthTemporaryTokenService, JwtAuthGuard],
   exports: [AuthService, JwtAuthGuard],

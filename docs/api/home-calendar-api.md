@@ -68,7 +68,7 @@
 | `stoolBristol` | `1`~`7` (브리스톨 척도) |
 | `stoolSimple` | `H` 딱딱 / `M` 보통 / `T` 묽음 *(백엔드 자동 변환: 1~2=H, 3~4=M, 5~7=T)* |
 | `bowelFeeling` | `C` 편안 / `N` 보통 / `H` 힘듦 |
-| `stomach` (복통) | `N` 없음 / `M` 보통 / `L` 심함 |
+| `stomach` (복통) | 복통 강도(**숫자**). 문자 코드(N/M/L)→숫자로 변경됨. 값 범위·의미는 부글 기록 정의 참고 |
 | `distension` (복부팽만) | `N` 없음 / `M` 보통 / `L` 심함 |
 | `remainingFeeling` (잔변감) | `N` 없음 / `M` 보통 / `L` 심함 |
 | `urgency` (긴박감) | `N` 없음 / `M` 보통 / `L` 심함 |
@@ -84,6 +84,7 @@
 | `sleep` | `G` 좋음 / `N` 보통 / `B` 부족 |
 | `stress` | `L` 낮음 / `N` 보통 / `H` 높음 |
 | `water` | `L` 부족 / `N` 보통 / `H` 충분 |
+| `waterIntake` | 물 섭취량(잔 수, `int`, 1잔≈200ml). `water`(3단계)와 별개 필드 |
 | `mealRegular` | `R` 규칙 / `N` 보통 / `I` 불규칙 |
 | `sleepTime` | `1` 5시간 이하 / `2` 5~7시간 / `3` 7시간 이상 |
 | `exercise` | `N` 안함 / `L` 가볍게 / `H` 충분히 |
@@ -108,7 +109,7 @@
 | --- | --- |
 | `FLAG_BLOOD_RED` | 변 색상 `R` (붉은색 의심) |
 | `FLAG_BLOOD_BLACK` | 변 색상 `N` (검은색 의심) |
-| `FLAG_PAIN_SEVERE` | 복통 `L` (심함) |
+| `FLAG_PAIN_SEVERE` | 복통 심함 *(stomach이 숫자로 변경됨 — 기준값 재정의 필요, 가이드/알림 도메인 소관)* |
 
 ---
 
@@ -117,8 +118,9 @@
 | # | Method | Path | 설명 | 기능 ID |
 | --- | --- | --- | --- | --- |
 | 1 | GET | `/api/v1/home` | 홈 화면 데이터 (사용자·주간스트립·오늘 기록·주간 패턴) | H101, H102 |
-| 2 | GET | `/api/v1/calendar` | 월간 캘린더 조회 | C101 |
-| 3 | GET | `/api/v1/calendar/daily` | 날짜별 기록 상세 조회 | C102 |
+| 2 | GET | `/api/v1/home/summary` | 홈 날짜별 상태 요약 (baseDate ±30일) | H101 |
+| 3 | GET | `/api/v1/calendar` | 월간 캘린더 조회 | C101 |
+| 4 | GET | `/api/v1/calendar/daily` | 날짜별 기록 상세 조회 | C102 |
 
 ---
 
@@ -173,7 +175,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 4,
       "stoolSimple": "M",
       "bowelFeeling": "C",
-      "stomach": "N"
+      "stomach": 1
     },
     {
       "id": 101,
@@ -182,7 +184,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 6,
       "stoolSimple": "T",
       "bowelFeeling": "H",
-      "stomach": "N"
+      "stomach": 1
     }
   ],
   "lifeRecord": {
@@ -191,7 +193,9 @@ Authorization: Bearer eyJhbGc...
     "sleep": "B",
     "stress": "L",
     "water": "L",
+    "waterIntake": 1,
     "mealRegular": "R",
+    "autoTags": ["음주", "자극적", "야식"],
     "foods": [
       { "id": 7, "name": "야식" },
       { "id": 1, "name": "자극적인 음식" }
@@ -227,11 +231,66 @@ Authorization: Bearer eyJhbGc...
 | `boogleCount` | int | 오늘 부글 기록 건수 ("오늘 N회 기록했어요") |
 | `boogleRecords` | array | 오늘 부글 기록 **요약 리스트** (시간 오름차순). 없으면 `[]` → '기록하기' 유도 |
 | `lifeRecord` | object \| null | 오늘 생활 기록 **요약**(+음식 태그). 없으면 `null` → '생활도 기록할까요?' 유도 |
+| `lifeRecord.waterIntake` | int \| null | 물 섭취량(잔 수, 1잔≈200ml). `water`(3단계)와 별개 필드 |
+| `lifeRecord.autoTags` | string[] | AI가 메모에서 추출한 태그(`auto_tags` 콤마 문자열을 배열로 파싱). "이날의 태그" 표시용. 없으면 `[]` |
 | `lifeRecord.foods` | array | 오늘 먹은 것 태그 (`life_food_tag` → `food`) |
 | `weeklyPattern` | object \| null | 이번 주 대표 패턴 1건. 없으면 `null` → 카드 숨김 |
 
 > 💡 부글 기록은 **하루 여러 건** 가능 → 배열(`boogleRecords`) + 건수(`boogleCount`)로 반환. 상세 항목(복부팽만·색상 등)은 홈에서 생략, 상세는 `#6` 사용.
 > ⚠️ `weeklyPattern`은 **리포트/가이드 도메인(주간 패턴 산출) 데이터**에 의존합니다. 홈은 산출 결과를 읽어 표시만 함 → 해당 팀과 데이터 소스/포맷 협의 필요.
+
+---
+
+## 4-1. GET /api/v1/home/summary
+
+홈 캘린더 스트립/날짜 모달의 **날짜별 상태 아이콘**용 요약입니다.
+`baseDate` 기준 **앞뒤 30일(총 61일)**의 날짜별 상태만 내려줍니다(상세 X).
+가로 스크롤·월 이동 시 범위 밖 날짜 아이콘을 미리 확보하기 위한 용도이며,
+날짜 상세는 별도로 `GET /api/v1/calendar/daily`(#6)를 사용합니다.
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+| Query | `baseDate` | string(`YYYY-MM-DD`) | ❌ | 기준 날짜. 생략 시 서버 오늘 날짜(KST) |
+
+```http
+GET /api/v1/home/summary?baseDate=2026-05-12
+Authorization: Bearer eyJhbGc...
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "baseDate": "2026-05-12",
+  "days": [
+    { "date": "2026-04-12", "boogleStatus": "NONE", "hasLifeRecord": false },
+    { "date": "2026-05-11", "boogleStatus": "BOWEL", "hasLifeRecord": true },
+    { "date": "2026-05-12", "boogleStatus": "NO_BOWEL", "hasLifeRecord": false }
+  ]
+}
+```
+
+### 필드 설명
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `baseDate` | string | 요약 기준 날짜(YYYY-MM-DD). `days`는 이 날짜 ±30일 |
+| `days` | array(61) | 날짜 오름차순. 양끝(baseDate-30 ~ baseDate+30) 포함 |
+| `days[].date` | string | 날짜(YYYY-MM-DD) |
+| `days[].boogleStatus` | string | `BOWEL` / `NO_BOWEL` / `NONE` (§2.3) |
+| `days[].hasLifeRecord` | boolean | 그날 생활 기록 존재 여부 |
+
+> 💡 프론트는 `boogleStatus` + `hasLifeRecord` 두 필드를 조합해 아이콘을 매핑합니다(병합 상태 코드 아님). `stoolSimple` 등 상세 필드는 미포함.
+> 🔗 날짜별 상태 계산은 캘린더 월간 조회(`#5`)와 동일한 로직을 공유합니다.
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | `baseDate` 형식 오류(YYYY-MM-DD 아님) |
 
 ---
 
@@ -331,7 +390,7 @@ Authorization: Bearer eyJhbGc...
       "stoolBristol": 4,
       "stoolSimple": "M",
       "bowelFeeling": "C",
-      "stomach": "N",
+      "stomach": 1,
       "distension": "N",
       "remainingFeeling": "N",
       "urgency": "N",
@@ -347,6 +406,7 @@ Authorization: Bearer eyJhbGc...
     "sleep": "N",
     "stress": "L",
     "water": "H",
+    "waterIntake": 3,
     "mealRegular": "R",
     "sleepTime": 2,
     "exercise": "L",
@@ -369,6 +429,7 @@ Authorization: Bearer eyJhbGc...
 | --- | --- | --- |
 | `boogleRecords` | array | 해당 날짜 부글 기록 **전체 리스트**(하루 여러 건 가능, 시간순). 없으면 `[]` |
 | `lifeRecord` | object \| null | 해당 날짜 생활 기록(하루 1건). 없으면 `null` |
+| `lifeRecord.waterIntake` | int \| null | 물 섭취량(잔 수, 1잔≈200ml). `water`(3단계)와 별개 필드 |
 | `lifeRecord.autoTags` | string[] | LLM 자동 추출 태그. `auto_tags`(콤마 문자열)를 배열로 파싱해 반환 |
 | `lifeRecord.tags` | object[] | 연결된 생활 태그 (`life_tags` → `tags`) |
 | `lifeRecord.foods` | object[] | 먹은 것 태그 (`life_food_tag` → `food`) |

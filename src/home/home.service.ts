@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { BusinessException } from '@/common/exceptions/business.exception';
+import { CalendarService } from '@/calendar/calendar.service';
 import { HomeErrorCode } from './home-error-code.enum';
 import { HomeResponseDto, WeekStripDayDto } from './dto/home-response.dto';
+import { HomeSummaryResponseDto } from './dto/home-summary-response.dto';
 
 const USER_TYPE_LABEL: Record<string, string> = {
   R: '규칙형',
@@ -14,6 +16,16 @@ const USER_TYPE_LABEL: Record<string, string> = {
   N: '기록부족형',
 };
 
+// auto_tags는 콤마로 이어붙인 문자열이라 배열로 파싱해 내려준다.
+// (캘린더 C102와 동일 규칙 — 빈 값/공백 토큰은 제외)
+function parseAutoTags(autoTags: string | null): string[] {
+  if (!autoTags) return [];
+  return autoTags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
+}
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // streak(연속 기록 일수) 조회 상한. 이 값보다 긴 연속 기록은 401(선택일 포함)로
@@ -21,6 +33,10 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // 가능성은 낮다고 보고, 무제한 역방향 페이지 조회 대신 의도적으로 상한을 둔
 // 제품 계약으로 취급한다. 필요해지면 이 상수를 늘리거나 페이지 조회로 교체한다.
 const STREAK_LOOKBACK_DAYS = 400;
+
+// 홈 날짜 요약 범위: baseDate 기준 앞뒤 이 일수만큼(총 2N+1일)을 반환한다.
+// 프론트가 홈 캘린더를 가로로 넘길 때 범위 밖 날짜 아이콘을 미리 확보하기 위함.
+const SUMMARY_RANGE_DAYS = 30;
 
 // regDate는 절대 시각(UTC instant)으로 저장되어 있다는 전제 하에,
 // "며칠"인지 판단할 때는 Asia/Seoul(KST) 기준 달력 날짜로 변환해야 한다.
@@ -60,7 +76,30 @@ function getTodayKstDateString(): string {
 
 @Injectable()
 export class HomeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendarService: CalendarService,
+  ) {}
+
+  // 홈 진입용 날짜별 상태 요약. baseDate 앞뒤 SUMMARY_RANGE_DAYS일의
+  // boogleStatus + hasLifeRecord를 반환한다. 상세는 GET /calendar/daily 재사용.
+  // 날짜별 상태 계산은 캘린더와 동일 로직(CalendarService.getDailyStatuses)을 공유한다.
+  async getDateSummary(
+    userId: string,
+    baseDateParam?: string,
+  ): Promise<HomeSummaryResponseDto> {
+    const baseDate = baseDateParam ?? getTodayKstDateString();
+    const startDateKey = addDays(baseDate, -SUMMARY_RANGE_DAYS);
+    const endDateKey = addDays(baseDate, SUMMARY_RANGE_DAYS);
+
+    const days = await this.calendarService.getDailyStatuses(
+      userId,
+      startDateKey,
+      endDateKey,
+    );
+
+    return { baseDate, days };
+  }
 
   async getHome(userId: string, dateParam?: string): Promise<HomeResponseDto> {
     const memberId = BigInt(userId);
@@ -174,7 +213,9 @@ export class HomeService {
             sleep: lifeRecord.sleep,
             stress: lifeRecord.stress,
             water: lifeRecord.water,
+            waterIntake: lifeRecord.waterIntake,
             mealRegular: lifeRecord.mealRegular,
+            autoTags: parseAutoTags(lifeRecord.autoTags),
             foods: lifeRecord.foodTags.map((ft) => ({
               id: ft.food.id,
               name: ft.food.name,

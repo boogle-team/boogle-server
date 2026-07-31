@@ -3,19 +3,30 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Patch,
   Post,
+  Put,
+  UploadedFile,
+  UseFilters,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiForbiddenResponse,
+  ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
+  ApiPayloadTooLargeResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -30,6 +41,12 @@ import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 import { SensitiveInfoConsentSuccessResponseDto } from './dto/sensitive-info-consent-response.dto';
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
+import type { ProfileImageFile } from './profile-image.service';
+import { ProfileImageUploadExceptionFilter } from './filters/profile-image-upload-exception.filter';
+import {
+  DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES,
+  PROFILE_IMAGE_TOO_LARGE_MESSAGE,
+} from './profile-image.constants';
 
 @ApiTags('온보딩, 계정 관리')
 @ApiBearerAuth()
@@ -39,10 +56,48 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post('me/onboarding')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '온보딩 정보 저장' })
-  @ApiBody({ type: SaveOnboardingRequestDto })
+  @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('profileImage', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
+  )
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['nickname', 'gender', 'ageGroup', 'baselineType'],
+      properties: {
+        nickname: { type: 'string', maxLength: 10, example: '부글이' },
+        profileImage: {
+          type: 'string',
+          format: 'binary',
+          description: '선택 이미지(JPEG, PNG, WebP), 최대 50MB',
+        },
+        gender: { type: 'string', enum: ['M', 'F', 'N'], example: 'F' },
+        ageGroup: { type: 'integer', enum: [10, 20, 30, 40], example: 20 },
+        baselineType: {
+          type: 'string',
+          enum: ['R', 'C', 'L', 'U'],
+          example: 'R',
+        },
+        sensitiveInfoAgreed: {
+          type: 'boolean',
+          example: false,
+          description: 'gender가 F 또는 N일 때 필수',
+        },
+        sensitiveInfoPolicyVersion: {
+          type: 'string',
+          example: '2026-07-01',
+          description: 'gender가 F 또는 N일 때 필수',
+        },
+      },
+    },
+  })
   @ApiResponse({
-    status: 201,
+    status: 200,
     description: '온보딩 정보 저장 성공',
   })
   @ApiConflictResponse({
@@ -55,13 +110,17 @@ export class UserController {
     description: '탈퇴한 회원',
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
   @GenericUnauthorized()
   @ResponseMessage('온보딩 정보가 저장되었습니다.')
   saveOnboarding(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: SaveOnboardingRequestDto,
+    @UploadedFile() profileImage?: ProfileImageFile,
   ) {
-    return this.userService.saveOnboarding(user.id, dto);
+    return this.userService.saveOnboarding(user.id, dto, profileImage);
   }
 
   @Get('me/onboarding')
@@ -111,6 +170,9 @@ export class UserController {
   @ApiNotFoundResponse({
     description: '사용자를 찾을 수 없음',
   })
+  @ApiForbiddenResponse({
+    description: '민감정보 동의 기능 사용 불가',
+  })
   @ApiUnauthorizedResponse({
     description: '로그인이 필요함',
   })
@@ -145,7 +207,29 @@ export class UserController {
 
   @Patch('me')
   @ApiOperation({ summary: '내 정보 수정' })
-  @ApiBody({ type: UpdateMeRequestDto })
+  @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('profileImage', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
+  )
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        nickname: { type: 'string', maxLength: 10, example: '부글이' },
+        profileImage: {
+          type: 'string',
+          format: 'binary',
+          description: '선택 이미지(JPEG, PNG, WebP), 최대 50MB',
+        },
+        gender: { type: 'string', enum: ['M', 'F', 'N'] },
+        ageGroup: { type: 'integer', enum: [10, 20, 30, 40] },
+        baselineType: { type: 'string', enum: ['R', 'C', 'L', 'U'] },
+      },
+    },
+  })
   @ApiResponse({
     status: 200,
     description: '내 정보 수정 성공',
@@ -157,13 +241,94 @@ export class UserController {
     description: '탈퇴한 회원',
   })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
   @GenericUnauthorized()
   @ResponseMessage('내 정보 수정에 성공했습니다.')
   updateMe(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateMeRequestDto,
+    @UploadedFile() profileImage?: ProfileImageFile,
   ) {
-    return this.userService.updateMe(user.id, dto);
+    return this.userService.updateMe(user.id, dto, profileImage);
+  }
+
+  @Put('me/profile-image')
+  @ApiOperation({ summary: '프로필 이미지 등록 또는 교체' })
+  @ApiConsumes('multipart/form-data')
+  @UseFilters(ProfileImageUploadExceptionFilter)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: DEFAULT_PROFILE_IMAGE_MAX_SIZE_BYTES },
+    }),
+  )
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['image'],
+      properties: {
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: '필수 이미지(JPEG, PNG, WebP), 최대 50MB',
+        },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: '프로필 이미지 등록 또는 교체 성공',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          profileImage: 'https://cdn.example.com/profile-images/users/1/id.jpg',
+          profileImageSource: 'CUSTOM',
+        },
+        message: '프로필 이미지가 변경되었습니다.',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: '이미지 누락 또는 지원하지 않는 이미지 형식',
+  })
+  @ApiPayloadTooLargeResponse({
+    description: `PROFILE_IMAGE_TOO_LARGE: ${PROFILE_IMAGE_TOO_LARGE_MESSAGE}`,
+  })
+  @ApiInternalServerErrorResponse({ description: 'S3 이미지 저장 실패' })
+  @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @GenericUnauthorized()
+  @ResponseMessage('프로필 이미지가 변경되었습니다.')
+  updateProfileImage(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() image?: ProfileImageFile,
+  ) {
+    return this.userService.updateProfileImage(user.id, image);
+  }
+
+  @Delete('me/profile-image')
+  @ApiOperation({ summary: '사용자 업로드 프로필 이미지 삭제' })
+  @ApiOkResponse({
+    description: '사용자 업로드 프로필 이미지 삭제 성공',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          profileImage: 'https://social.example.com/profile.png',
+          profileImageSource: 'SOCIAL',
+        },
+        message: '프로필 이미지가 삭제되었습니다.',
+      },
+    },
+  })
+  @ApiInternalServerErrorResponse({
+    description: '프로필 이미지 정보 변경 실패',
+  })
+  @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @GenericUnauthorized()
+  @ResponseMessage('프로필 이미지가 삭제되었습니다.')
+  deleteProfileImage(@CurrentUser() user: AuthenticatedUser) {
+    return this.userService.deleteProfileImage(user.id);
   }
 
   @Delete('me')
