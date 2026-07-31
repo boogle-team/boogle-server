@@ -103,3 +103,26 @@ await pushSenderService.send(userId, {
 
 > 📌 **범위**: 이 모듈은 "발송하는 도구"까지다. "언제 보낼지"(리마인더/연속기록 조건 판정)와 in-app 알림 생성(`NotificationCreationService`)을 함께 부르는 오케스트레이션은 **3단계(스케줄러)** 몫이다.
 > 📌 발송 검증: 유닛테스트는 firebase-admin mock으로 커버. **실제 브라우저 수신**은 프론트(PWA)가 발급한 FCM 토큰이 있어야 확인 가능하다.
+
+---
+
+## 5. 스케줄러 (3단계) — 매일 배치 발송
+
+`NotificationSchedulerService`가 매일 정해진 시각에 조건을 판정해, 대상 유저에게
+**in-app 알림 생성 + 푸시 발송**을 함께 호출한다. (`@nestjs/schedule` 기반 cron)
+
+| 알림 | 시각(KST) | 조건 | 발송 |
+| --- | --- | --- | --- |
+| N102 기록 리마인더 | 매일 18:00 | 오늘 부글 기록 없음 | `RECORD_REMINDER` 생성 + 푸시 |
+| N105 연속기록 독려 | 매일 09:00 | **어제까지** 연속 기록 **1일 이상** | `STREAK`(며칠째) 생성 + 푸시 |
+
+- **대상**: `status='A'` 이고 `record_alarm != 'N'`(null=기본 Y 포함)인 회원. 알림을 끈 유저는 제외.
+- **기록 기준**: `boogle_record`(홈 streak과 동일). 오늘 기록이 있으면 리마인더 스킵.
+- **연속 일수**: 아침 배치라 **어제까지**의 연속 일수를 센다(오늘 기록은 제외). 최근 60일까지 계산.
+- **실패 격리**: 유저별로 예외를 격리해, 한 명 발송 실패가 배치 전체를 멈추지 않는다.
+- **쿼리**: 대상 회원 ID로 DB에서 필터해 필요한 기록만 조회한다.
+- **KST**: cron에 `timeZone: 'Asia/Seoul'` 지정. 배포 인스턴스 1개 전제(중복 실행 없음).
+- 조건 판정 로직은 cron 데코레이터와 분리(`runRecordReminders`/`runStreakEncouragement`)해 유닛테스트한다.
+
+> 📌 이벤트성 알림(위험/리포트/PDF)은 스케줄러가 아니라 각 도메인이 발생 시점에
+> `NotificationCreationService.create()`를 호출해 심는다(이 스케줄러 범위 밖).
