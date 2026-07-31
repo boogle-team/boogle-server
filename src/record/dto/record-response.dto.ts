@@ -13,6 +13,9 @@ export class RecordResponseDto {
   @ApiProperty({ example: true })
   hasBowel!: boolean;
 
+  @ApiProperty({ nullable: true, example: '15:30' })
+  bowelMovementAt!: string | null;
+
   @ApiProperty({ nullable: true, example: 4 })
   stoolBristol!: number | null;
 
@@ -22,8 +25,8 @@ export class RecordResponseDto {
   @ApiProperty({ nullable: true, example: 'C' })
   bowelFeeling!: string | null;
 
-  @ApiProperty({ nullable: true, example: 'N' })
-  stomach!: string | null;
+  @ApiProperty({ nullable: true, example: '0' })
+  stomach!: number | null;
 
   @ApiProperty({ nullable: true, example: 'N' })
   distension!: string | null;

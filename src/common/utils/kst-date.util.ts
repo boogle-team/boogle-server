@@ -36,3 +36,9 @@ export function getKstMinute(date: Date): number {
 export function getKstTimeInHours(date: Date): number {
   return getKstHour(date) + getKstMinute(date) / 60;
 }
+
+export function toKstDateTime(date: Date): string {
+  const kst = new Date(date.getTime() + KST_OFFSET_MS);
+
+  return `${kst.toISOString().slice(0, 10)}T${String(kst.getUTCHours()).padStart(2, '0')}:${String(kst.getUTCMinutes()).padStart(2, '0')}:${String(kst.getUTCSeconds()).padStart(2, '0')}`;
+}
