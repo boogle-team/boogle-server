@@ -181,7 +181,7 @@ describe('CalendarService', () => {
           stoolBristol: 4,
           stoolSimple: 'M',
           bowelFeeling: 'C',
-          stomach: 'N',
+          stomach: 1,
           distension: 'N',
           remainingFeeling: 'N',
           urgency: 'N',
