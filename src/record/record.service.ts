@@ -104,6 +104,15 @@ export class RecordService {
 
     this.validateOwner(record, userId);
 
+    const dateKey = dto.regDate ?? toKstDateKey(record.regDate);
+
+    const bowelMovementAt =
+      dto.bowelMovementAt !== undefined
+        ? dto.bowelMovementAt
+          ? new Date(`${dateKey}T${dto.bowelMovementAt}:00+09:00`)
+          : null
+        : undefined;
+
     const updatedRecord = await this.prisma.boogleRecord.update({
       where: {
         id,
@@ -112,7 +121,11 @@ export class RecordService {
         ...dto,
 
         ...(dto.regDate && {
-          regDate: new Date(dto.regDate),
+          regDate: new Date(`${dto.regDate}T00:00:00+09:00`),
+        }),
+
+        ...(bowelMovementAt !== undefined && {
+          bowelMovementAt,
         }),
 
         ...(dto.stoolBristol !== undefined && {
