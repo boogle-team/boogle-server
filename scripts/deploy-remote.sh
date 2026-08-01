@@ -25,11 +25,15 @@ fi
 mv .env.new .env
 chmod 600 .env
 echo '__GHCR_TOKEN__' | docker login ghcr.io -u __GHCR_ACTOR__ --password-stdin
-docker compose pull
+# --quiet: SSM Run Command는 stdout을 약 24KB에서 잘라버려서, pull 진행률
+# 로그가 길면 뒤에 나오는 up -d/prune 결과가 잘려서 안 보이게 된다.
+docker compose pull --quiet
 docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
 docker compose run --rm --no-deps app npx prisma db seed
 # --force-recreate: image: 필드 문자열(:latest)이 그대로면 compose가 pull로
 # 받아온 새 이미지가 있어도 재생성을 건너뛰는 경우가 있어 명시적으로 강제한다.
 docker compose up -d --force-recreate
 docker image prune -f
+echo "=== deployed image ==="
+docker compose images
 DEPLOY_SCRIPT
