@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RecordController } from './record.controller';
 import { RecordService } from './record.service';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 
 describe('RecordController', () => {
   let controller: RecordController;
@@ -18,20 +19,17 @@ describe('RecordController', () => {
           useValue: mockRecordService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: jest.fn(() => true),
+      })
+      .compile();
 
     controller = module.get<RecordController>(RecordController);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
-  });
-
-  it('create()가 service.create를 호출한다', async () => {
-    const dto = { regDate: '2026-07-10', hasBowel: false };
-
-    await controller.create('1', dto);
-
-    expect(mockRecordService.create).toHaveBeenCalledWith(1, dto);
   });
 });

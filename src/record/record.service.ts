@@ -5,6 +5,12 @@ import { RecordResponseDto } from './dto/record-response.dto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { RecordErrorCode } from './record-error-code.enum';
 import { BoogleRecord } from '@/generated/prisma/client';
+import {
+  toKstDateKey,
+  getKstHour,
+  getKstMinute,
+  toKstDateTime,
+} from '@/common/utils/kst-date.util';
 
 @Injectable()
 export class RecordService {
@@ -17,12 +23,17 @@ export class RecordService {
   ): Promise<RecordResponseDto> {
     this.validateRecord(dto);
 
+    const bowelMovementAt = dto.bowelMovementAt
+      ? new Date(`${dto.regDate}T${dto.bowelMovementAt}:00+09:00`)
+      : null;
+
     const record = await this.prisma.boogleRecord.create({
       data: {
         userId,
         ...dto,
+        bowelMovementAt,
         stoolSimple: this.convertStoolSimple(dto.stoolBristol),
-        regDate: new Date(dto.regDate),
+        regDate: new Date(`${dto.regDate}T00:00:00+09:00`),
       },
     });
 
@@ -93,6 +104,15 @@ export class RecordService {
 
     this.validateOwner(record, userId);
 
+    const dateKey = dto.regDate ?? toKstDateKey(record.regDate);
+
+    const bowelMovementAt =
+      dto.bowelMovementAt !== undefined
+        ? dto.bowelMovementAt
+          ? new Date(`${dateKey}T${dto.bowelMovementAt}:00+09:00`)
+          : null
+        : undefined;
+
     const updatedRecord = await this.prisma.boogleRecord.update({
       where: {
         id,
@@ -101,7 +121,11 @@ export class RecordService {
         ...dto,
 
         ...(dto.regDate && {
-          regDate: new Date(dto.regDate),
+          regDate: new Date(`${dto.regDate}T00:00:00+09:00`),
+        }),
+
+        ...(bowelMovementAt !== undefined && {
+          bowelMovementAt,
         }),
 
         ...(dto.stoolBristol !== undefined && {
@@ -158,8 +182,13 @@ export class RecordService {
     return {
       id: Number(record.id),
       userId: Number(record.userId),
-      regDate: record.regDate.toISOString().slice(0, 10),
+      regDate: toKstDateKey(record.regDate),
       hasBowel: record.hasBowel,
+      bowelMovementAt: record.bowelMovementAt
+        ? `${String(getKstHour(record.bowelMovementAt)).padStart(2, '0')}:${String(
+            getKstMinute(record.bowelMovementAt),
+          ).padStart(2, '0')}`
+        : '',
       stoolBristol: record.stoolBristol,
       stoolSimple: record.stoolSimple,
       bowelFeeling: record.bowelFeeling,
@@ -171,7 +200,7 @@ export class RecordService {
       amount: record.amount,
       color: record.color,
       status: record.status,
-      updatedAt: record.updateDate?.toISOString() ?? '',
+      updatedAt: record.updateDate ? toKstDateTime(record.updateDate) : '',
     };
   }
 }

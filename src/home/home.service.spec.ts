@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { BusinessException } from '@/common/exceptions/business.exception';
+import { CalendarService } from '@/calendar/calendar.service';
 import { HomeErrorCode } from './home-error-code.enum';
 import { HomeService } from './home.service';
 
@@ -13,6 +14,7 @@ describe('HomeService', () => {
     boogleRecord: { findMany: jest.Mock };
     lifeRecord: { findFirst: jest.Mock };
   };
+  let calendarService: { getDailyStatuses: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -21,9 +23,14 @@ describe('HomeService', () => {
       boogleRecord: { findMany: jest.fn() },
       lifeRecord: { findFirst: jest.fn() },
     };
+    calendarService = { getDailyStatuses: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [HomeService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        HomeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CalendarService, useValue: calendarService },
+      ],
     }).compile();
 
     service = module.get<HomeService>(HomeService);
@@ -100,7 +107,7 @@ describe('HomeService', () => {
         stoolBristol: 4,
         stoolSimple: 'M',
         bowelFeeling: 'C',
-        stomach: 'N',
+        stomach: 1,
       },
     ]);
     prisma.lifeRecord.findFirst.mockResolvedValue(null);
@@ -131,6 +138,7 @@ describe('HomeService', () => {
       water: 'L',
       waterIntake: 2,
       mealRegular: 'R',
+      autoTags: '음주,자극적,야식',
       foodTags: [{ food: { id: 1, name: '자극적인 음식' } }],
     });
 
@@ -140,6 +148,7 @@ describe('HomeService', () => {
       id: 55,
       sleep: 'B',
       waterIntake: 2,
+      autoTags: ['음주', '자극적', '야식'],
       foods: [{ id: 1, name: '자극적인 음식' }],
     });
   });
@@ -186,5 +195,52 @@ describe('HomeService', () => {
     expect(callArgs.where.regDate.lt.toISOString()).toBe(
       '2026-05-12T15:00:00.000Z',
     );
+  });
+
+  describe('getDateSummary', () => {
+    it('baseDate 앞뒤 30일 범위로 캘린더 상태 조회를 위임한다', async () => {
+      calendarService.getDailyStatuses.mockResolvedValue([]);
+
+      const result = await service.getDateSummary('1', '2026-05-12');
+
+      expect(result.baseDate).toBe('2026-05-12');
+      // baseDate ±30일 = 2026-04-12 ~ 2026-06-11
+      expect(calendarService.getDailyStatuses).toHaveBeenCalledWith(
+        '1',
+        '2026-04-12',
+        '2026-06-11',
+      );
+    });
+
+    it('baseDate 생략 시 오늘(KST) 기준으로 ±30일 범위를 계산한다', async () => {
+      // 2026-05-12T03:00Z = KST 2026-05-12 12:00 → 오늘 = 2026-05-12
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-12T03:00:00.000Z'));
+      calendarService.getDailyStatuses.mockResolvedValue([]);
+
+      try {
+        const result = await service.getDateSummary('1');
+
+        expect(result.baseDate).toBe('2026-05-12');
+        expect(calendarService.getDailyStatuses).toHaveBeenCalledWith(
+          '1',
+          '2026-04-12',
+          '2026-06-11',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('캘린더가 반환한 날짜별 상태를 그대로 days로 내려준다', async () => {
+      const days = [
+        { date: '2026-05-11', boogleStatus: 'BOWEL', hasLifeRecord: true },
+        { date: '2026-05-12', boogleStatus: 'NONE', hasLifeRecord: false },
+      ];
+      calendarService.getDailyStatuses.mockResolvedValue(days);
+
+      const result = await service.getDateSummary('1', '2026-05-12');
+
+      expect(result.days).toEqual(days);
+    });
   });
 });
