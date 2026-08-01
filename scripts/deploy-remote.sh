@@ -28,6 +28,8 @@ echo '__GHCR_TOKEN__' | docker login ghcr.io -u __GHCR_ACTOR__ --password-stdin
 docker compose pull
 docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
 docker compose run --rm --no-deps app npx prisma db seed
-docker compose up -d
+# --force-recreate: image: 필드 문자열(:latest)이 그대로면 compose가 pull로
+# 받아온 새 이미지가 있어도 재생성을 건너뛰는 경우가 있어 명시적으로 강제한다.
+docker compose up -d --force-recreate
 docker image prune -f
 DEPLOY_SCRIPT
