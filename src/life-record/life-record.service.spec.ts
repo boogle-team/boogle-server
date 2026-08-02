@@ -166,6 +166,25 @@ describe('LifeRecordService', () => {
       expect(result.foods).toEqual([{ id: 1, name: '자극적인 음식' }]);
     });
 
+    it('regDate를 KST 자정에 해당하는 UTC 시각으로 저장한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
+      prisma.lifeRecord.create.mockResolvedValue(baseRecord);
+
+      await service.create('1', {
+        ...validCreateFields,
+        regDate: '2026-07-02',
+      });
+
+      const createMock = prisma.lifeRecord.create as jest.Mock<
+        unknown,
+        [{ data: { regDate: Date } }]
+      >;
+      expect(createMock.mock.calls[0][0].data.regDate).toEqual(
+        new Date('2026-07-01T15:00:00.000Z'),
+      );
+    });
+
     it('DB 저장 중 오류가 발생하면 LIFE_RECORD_CREATE_FAILED를 던진다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
       prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
