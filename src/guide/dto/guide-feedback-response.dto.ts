@@ -12,9 +12,9 @@ export class CreateGuideFeedbackResponseDto {
 
   @ApiProperty({
     type: Number,
-    example: 3,
+    example: 101,
     minimum: 1,
-    description: '피드백 대상 가이드 ID',
+    description: '피드백 대상 패턴 기반 가이드 ID',
   })
   guideId!: number;
 
@@ -45,9 +45,9 @@ export class UpdateGuideFeedbackResponseDto {
 
   @ApiProperty({
     type: Number,
-    example: 3,
+    example: 101,
     minimum: 1,
-    description: '피드백 대상 가이드 ID',
+    description: '피드백 대상 패턴 기반 가이드 ID',
   })
   guideId!: number;
 
@@ -86,9 +86,9 @@ export class DeleteGuideFeedbackResponseDto {
 
   @ApiProperty({
     type: Number,
-    example: 3,
+    example: 101,
     minimum: 1,
-    description: '피드백 대상 가이드 ID',
+    description: '피드백 대상 패턴 기반 가이드 ID',
   })
   guideId!: number;
 

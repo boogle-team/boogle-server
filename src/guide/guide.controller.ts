@@ -172,18 +172,18 @@ export class GuideController {
   @ApiOperation({
     summary: '가이드 피드백 등록',
     description:
-      '사용자와 가이드 조합당 하나의 피드백을 등록합니다. G는 도움됨, A는 이미 알고 있음, N은 잘 모르겠음을 의미합니다.',
+      '현재 KST 주의 활성 패턴 기반 가이드에 피드백을 등록합니다. 같은 사용자·가이드·주 조합에는 하나만 등록할 수 있습니다. G는 도움됨, A는 이미 알고 있음, N은 잘 모르겠음을 의미합니다.',
   })
   @ResponseMessage('가이드 피드백이 등록되었습니다.')
   @ApiParam({
     name: 'guideId',
     type: Number,
     required: true,
-    description: '피드백 대상 가이드 ID',
+    description: '피드백 대상 활성 패턴 기반 가이드 ID',
     schema: {
       type: 'integer',
       minimum: 1,
-      example: 3,
+      example: 101,
     },
   })
   @ApiBody({
@@ -217,10 +217,12 @@ export class GuideController {
   })
   @ApiBadRequestResponse({
     type: ErrorResponseDto,
-    description: 'guideId 또는 feedback 값 오류',
+    description: 'guideId, feedback 값 또는 피드백 대상 카테고리 오류',
     examples: errorExamples({
       ...GUIDE_ID_ERROR_EXAMPLES,
       GUIDE_INVALID_FEEDBACK: 'feedback은 G, A, N 중 하나여야 합니다.',
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
     }),
   })
   @ApiUnauthorizedResponse({
@@ -235,15 +237,7 @@ export class GuideController {
   })
   @ApiConflictResponse({
     type: ErrorResponseDto,
-    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
-    examples: errorExamples({
-      GUIDE_FEEDBACK_NOT_ALLOWED:
-        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
-    }),
-  })
-  @ApiConflictResponse({
-    type: ErrorResponseDto,
-    description: '같은 가이드에 피드백이 이미 존재함',
+    description: '이번 주에 같은 가이드에 피드백이 이미 존재함',
     examples: errorExamples({
       GUIDE_FEEDBACK_ALREADY_EXISTS:
         '이번 주에 이미 해당 가이드에 피드백을 등록했습니다.',
@@ -272,18 +266,18 @@ export class GuideController {
   @ApiOperation({
     summary: '가이드 피드백 수정',
     description:
-      '현재 사용자가 해당 가이드에 등록한 피드백을 G, A, N 중 하나로 변경합니다.',
+      '현재 사용자가 현재 KST 주의 활성 패턴 기반 가이드에 등록한 피드백을 G, A, N 중 하나로 변경합니다.',
   })
   @ResponseMessage('가이드 피드백이 수정되었습니다.')
   @ApiParam({
     name: 'guideId',
     required: true,
     type: Number,
-    description: '피드백을 수정할 가이드 ID',
+    description: '현재 주 피드백을 수정할 패턴 기반 가이드 ID',
     schema: {
       type: 'integer',
       minimum: 1,
-      example: 3,
+      example: 101,
     },
   })
   @ApiBody({
@@ -304,24 +298,18 @@ export class GuideController {
   })
   @ApiBadRequestResponse({
     type: ErrorResponseDto,
-    description: 'guideId 또는 feedback 값 오류',
+    description: 'guideId, feedback 값 또는 피드백 대상 카테고리 오류',
     examples: errorExamples({
       ...GUIDE_ID_ERROR_EXAMPLES,
       GUIDE_INVALID_FEEDBACK: 'feedback은 G, A, N 중 하나여야 합니다.',
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
     }),
   })
   @ApiUnauthorizedResponse({
     type: ErrorResponseDto,
     description: 'token 누락 또는 유효하지 않거나 만료된 token',
     examples: errorExamples(TOKEN_ERROR_EXAMPLES),
-  })
-  @ApiConflictResponse({
-    type: ErrorResponseDto,
-    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
-    examples: errorExamples({
-      GUIDE_FEEDBACK_NOT_ALLOWED:
-        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
-    }),
   })
   @ApiNotFoundResponse({
     type: ErrorResponseDto,
@@ -355,18 +343,19 @@ export class GuideController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: '가이드 피드백 삭제',
-    description: '현재 사용자가 해당 가이드에 등록한 피드백을 삭제합니다.',
+    description:
+      '현재 사용자가 현재 KST 주의 활성 패턴 기반 가이드에 등록한 피드백을 삭제합니다.',
   })
   @ResponseMessage('가이드 피드백이 삭제되었습니다.')
   @ApiParam({
     name: 'guideId',
     required: true,
     type: Number,
-    description: '피드백을 삭제할 가이드 ID',
+    description: '현재 주 피드백을 삭제할 패턴 기반 가이드 ID',
     schema: {
       type: 'integer',
       minimum: 1,
-      example: 3,
+      example: 101,
     },
   })
   @ApiSuccessResponse({
@@ -376,21 +365,17 @@ export class GuideController {
   })
   @ApiBadRequestResponse({
     type: ErrorResponseDto,
-    description: 'guideId 형식 오류',
-    examples: errorExamples(GUIDE_ID_ERROR_EXAMPLES),
+    description: 'guideId 형식 또는 피드백 대상 카테고리 오류',
+    examples: errorExamples({
+      ...GUIDE_ID_ERROR_EXAMPLES,
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
+    }),
   })
   @ApiUnauthorizedResponse({
     type: ErrorResponseDto,
     description: 'token 누락 또는 유효하지 않거나 만료된 token',
     examples: errorExamples(TOKEN_ERROR_EXAMPLES),
-  })
-  @ApiConflictResponse({
-    type: ErrorResponseDto,
-    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
-    examples: errorExamples({
-      GUIDE_FEEDBACK_NOT_ALLOWED:
-        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
-    }),
   })
   @ApiNotFoundResponse({
     type: ErrorResponseDto,
