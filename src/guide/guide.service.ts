@@ -67,6 +67,15 @@ export class GuideService {
         }),
       ]);
 
+      const weeklyPatternGuides =
+        weeklyReport.dataStatus === 'ENOUGH' ? weeklyReport.guides : [];
+
+      const feedbackMap = await this.findCurrentWeekFeedbackMap(
+        userId,
+        weeklyPatternGuides.map((guide) => guide.guideId),
+        weekStartDate,
+      );
+
       const healthGuideRows = staticGuides.filter(
         (guide) => guide.category === 'H',
       );
@@ -74,16 +83,14 @@ export class GuideService {
         (guide) => guide.category === 'W',
       );
 
-      const patternGuides =
-        weeklyReport.dataStatus === 'ENOUGH'
-          ? weeklyReport.guides.map((guide) => ({
-              guideId: guide.guideId,
-              category: 'P' as const,
-              title: guide.title,
-              summary: guide.summary,
-              matchedRuleCodes: guide.matchedRuleCodes,
-            }))
-          : [];
+      const patternGuides = weeklyPatternGuides.map((guide) => ({
+        guideId: guide.guideId,
+        category: 'P' as const,
+        title: guide.title,
+        summary: guide.summary,
+        matchedRuleCodes: guide.matchedRuleCodes,
+        feedbackStatus: feedbackMap.get(guide.guideId) ?? null,
+      }));
 
       return {
         sectionOrder: ['PATTERN', 'HEALTH', 'WARNING'],
@@ -237,10 +244,12 @@ export class GuideService {
       }
 
       if (guide.category === 'P') {
-        const patternReason = await this.buildPatternGuideReason(
-          userId,
-          guide.id,
-        );
+        const weekStartDate = this.getCurrentMonday();
+
+        const [patternReason, feedbackStatus] = await Promise.all([
+          this.buildPatternGuideReason(userId, guide.id),
+          this.findCurrentWeekFeedback(userId, guide.id, weekStartDate),
+        ]);
 
         const response: PatternGuideDetailResponseDto = {
           ...common,
@@ -248,6 +257,7 @@ export class GuideService {
           categoryLabel: '패턴 기반',
           recommendedGuides: [],
           patternReason,
+          feedbackStatus,
         };
 
         return response;
@@ -431,6 +441,61 @@ export class GuideService {
     };
   }
 
+  //피드백 조회
+  private async findCurrentWeekFeedback(
+    userId: bigint,
+    guideId: number,
+    weekStartDate: Date,
+  ): Promise<GuideFeedbackStatus | null> {
+    const feedback = await this.prisma.guideFeedback.findUnique({
+      where: {
+        userId_guideId_weekStartDate: {
+          userId,
+          guideId,
+          weekStartDate,
+        },
+      },
+      select: {
+        feedback: true,
+      },
+    });
+
+    return feedback === null
+      ? null
+      : this.parseGuideFeedback(feedback.feedback);
+  }
+
+  private async findCurrentWeekFeedbackMap(
+    userId: bigint,
+    guideIds: number[],
+    weekStartDate: Date,
+  ): Promise<Map<number, GuideFeedbackStatus>> {
+    if (guideIds.length === 0) {
+      return new Map<number, GuideFeedbackStatus>();
+    }
+
+    const feedbacks = await this.prisma.guideFeedback.findMany({
+      where: {
+        userId,
+        weekStartDate,
+        guideId: {
+          in: guideIds,
+        },
+      },
+      select: {
+        guideId: true,
+        feedback: true,
+      },
+    });
+
+    return new Map(
+      feedbacks.map((feedback) => [
+        feedback.guideId,
+        this.parseGuideFeedback(feedback.feedback),
+      ]),
+    );
+  }
+
   // 피드백 등록
   async createGuideFeedback(
     userId: bigint,
@@ -439,16 +504,17 @@ export class GuideService {
   ): Promise<CreateGuideFeedbackResponseDto> {
     try {
       const guideId = this.parseGuideId(rawGuideId);
-
       const feedback = this.parseGuideFeedback(body.feedback);
+      const weekStartDate = this.getCurrentMonday();
 
-      await this.assertActiveGuide(guideId);
+      await this.assertActivePatternGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideId: {
+          userId_guideId_weekStartDate: {
             userId,
             guideId,
+            weekStartDate,
           },
         },
         select: {
@@ -459,7 +525,7 @@ export class GuideService {
       if (existingFeedback !== null) {
         throw new BusinessException(
           GuideErrorCode.GUIDE_FEEDBACK_ALREADY_EXISTS,
-          '이미 해당 가이드에 피드백을 등록했습니다.',
+          '이번 주에 이미 해당 가이드의 피드백을 등록했습니다.',
           HttpStatus.CONFLICT,
         );
       }
@@ -469,6 +535,7 @@ export class GuideService {
           userId,
           guideId,
           feedback,
+          weekStartDate,
         },
         select: {
           id: true,
@@ -515,16 +582,17 @@ export class GuideService {
   ): Promise<UpdateGuideFeedbackResponseDto> {
     try {
       const guideId = this.parseGuideId(rawGuideId);
-
       const feedback = this.parseGuideFeedback(body.feedback);
+      const weekStartDate = this.getCurrentMonday();
 
-      await this.assertActiveGuide(guideId);
+      await this.assertActivePatternGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideId: {
+          userId_guideId_weekStartDate: {
             userId,
             guideId,
+            weekStartDate,
           },
         },
         select: {
@@ -535,12 +603,10 @@ export class GuideService {
       if (existingFeedback === null) {
         throw new BusinessException(
           GuideErrorCode.GUIDE_FEEDBACK_NOT_FOUND,
-          '수정할 가이드 피드백을 찾을 수 없습니다.',
+          '이번 주에 수정할 가이드 피드백을 찾을 수 없습니다.',
           HttpStatus.NOT_FOUND,
         );
       }
-
-      const updatedAt = new Date();
 
       const updatedFeedback = await this.prisma.guideFeedback.update({
         where: {
@@ -548,7 +614,7 @@ export class GuideService {
         },
         data: {
           feedback,
-          updateDate: updatedAt,
+          updateDate: new Date(),
         },
         select: {
           id: true,
@@ -590,14 +656,16 @@ export class GuideService {
   ): Promise<DeleteGuideFeedbackResponseDto> {
     try {
       const guideId = this.parseGuideId(rawGuideId);
+      const weekStartDate = this.getCurrentMonday();
 
-      await this.assertActiveGuide(guideId);
+      await this.assertActivePatternGuide(guideId);
 
       const existingFeedback = await this.prisma.guideFeedback.findUnique({
         where: {
-          userId_guideId: {
+          userId_guideId_weekStartDate: {
             userId,
             guideId,
+            weekStartDate,
           },
         },
         select: {
@@ -608,7 +676,7 @@ export class GuideService {
       if (existingFeedback === null) {
         throw new BusinessException(
           GuideErrorCode.GUIDE_FEEDBACK_NOT_FOUND,
-          '삭제할 가이드 피드백을 찾을 수 없습니다.',
+          '이번 주에 삭제할 가이드 피드백을 찾을 수 없습니다.',
           HttpStatus.NOT_FOUND,
         );
       }
@@ -654,12 +722,14 @@ export class GuideService {
     );
   }
 
-  private async assertActiveGuide(guideId: number): Promise<void> {
+  // 가이드 사용되는지 검증
+  private async assertActivePatternGuide(guideId: number): Promise<void> {
     const guide = await this.prisma.guide.findUnique({
       where: {
         id: guideId,
       },
       select: {
+        category: true,
         status: true,
       },
     });
@@ -677,6 +747,14 @@ export class GuideService {
         GuideErrorCode.GUIDE_CONTENT_INACTIVE,
         '현재 제공되지 않는 가이드입니다.',
         HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (guide.category !== 'P') {
+      throw new BusinessException(
+        GuideErrorCode.GUIDE_FEEDBACK_NOT_ALLOWED,
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
+        HttpStatus.BAD_REQUEST,
       );
     }
   }

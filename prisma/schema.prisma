@@ -351,12 +351,15 @@ model GuideFeedback {
   userId         BigInt    @map("user_id")
   guideId        Int       @map("guide_id")
   feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
+  weekStartDate DateTime  @map("week_start_date") @db.Date
   regDate        DateTime  @default(now()) @map("reg_date")
   updateDate     DateTime? @updatedAt @map("update_date") // 수정시 수정시각
 
   user         Member       @relation(fields: [userId], references: [id])
   guide Guide @relation(fields: [guideId], references: [id])
 
-  @@unique([userId, guideId], map: "guide_feedback_index_5")
+  @@unique([userId, guideId, weekStartDate], map: "guide_feedback_user_guide_week_uq")
+  @@index([userId, weekStartDate], map: "guide_feedback_user_week_idx") 
+   
   @@map("guide_feedback")
 }

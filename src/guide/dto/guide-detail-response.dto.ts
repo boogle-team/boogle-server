@@ -4,7 +4,10 @@ import {
   WEEKLY_RULE_CODES,
 } from '@/report/pattern/weekly-pattern.constants';
 import type { WeeklyRuleCode } from '@/report/pattern/weekly-pattern.constants';
-import { GuidePeriodDto } from './guide-screen-response.dto';
+import {
+  GuidePeriodDto,
+  GuideFeedbackStatus,
+} from './guide-screen-response.dto';
 
 export class GuideContentItemDto {
   @ApiProperty({
@@ -330,6 +333,15 @@ export class PatternGuideDetailResponseDto extends GuideDetailCommonDto {
     description: '현재 조회 주의 패턴 감지 상태와 근거',
   })
   patternReason!: PatternGuideReasonDto;
+
+  @ApiProperty({
+    enum: ['G', 'A', 'N'],
+    nullable: true,
+    example: 'G',
+    description:
+      '현재 주에 사용자가 남긴 피드백. 피드백을 남기지 않았으면 null',
+  })
+  feedbackStatus!: GuideFeedbackStatus | null;
 }
 
 export class WarningGuideDetailResponseDto extends GuideDetailCommonDto {

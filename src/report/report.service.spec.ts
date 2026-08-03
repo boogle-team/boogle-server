@@ -20,7 +20,6 @@ function kstDate(dateKey: string, time = '09:00'): Date {
 
 interface GuideRuleBindingTestAccessor {
   findGuidesByRules(
-    userId: bigint,
     ruleCodes: WeeklyRuleCode[],
     includeGuide: boolean,
   ): Promise<WeeklyGuideDto[]>;
@@ -100,9 +99,6 @@ describe('ReportService', () => {
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
-    guideFeedback: {
-      findMany: jest.fn(),
-    },
   };
 
   beforeEach(async () => {
@@ -146,13 +142,11 @@ describe('ReportService', () => {
         category: 'P',
       },
     ]);
-    prismaMock.guideFeedback.findMany.mockResolvedValue([]);
 
     const guideRuleBindingAccessor =
       service as unknown as GuideRuleBindingTestAccessor;
 
     const result = await guideRuleBindingAccessor.findGuidesByRules(
-      1n,
       [WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL],
       true,
     );
@@ -175,7 +169,6 @@ describe('ReportService', () => {
         title: 'DB에서 문구가 변경된 묽은 변 가이드',
         summary: '묽은 변이 반복될 때 확인해 보세요.',
         matchedRuleCodes: ['FREQUENT_LOOSE_STOOL'],
-        feedbackStatus: null,
       },
     ]);
   });

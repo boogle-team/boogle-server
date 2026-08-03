@@ -168,7 +168,6 @@ export class ReportService {
       });
 
       const guides = await this.findGuidesByRules(
-        userId,
         detectedRules.map((rule) => rule.ruleCode),
         includeGuide,
       );
@@ -685,7 +684,6 @@ export class ReportService {
   }
 
   private async findGuidesByRules(
-    userId: bigint,
     ruleCodes: WeeklyRuleCode[],
     includeGuide: boolean,
   ): Promise<WeeklyGuideDto[]> {
@@ -722,22 +720,6 @@ export class ReportService {
       },
     });
 
-    const feedbacks = await this.prisma.guideFeedback.findMany({
-      where: {
-        userId,
-        guideId: {
-          in: guides.map((guide) => guide.id),
-        },
-      },
-      select: {
-        guideId: true,
-        feedback: true,
-      },
-    });
-
-    const feedbackMap = new Map(
-      feedbacks.map((feedback) => [feedback.guideId, feedback.feedback]),
-    );
     const bindingMap = new Map<number, PatternGuideBinding>(
       matchedBindings.map((binding) => [binding.guideId, binding]),
     );
@@ -760,7 +742,6 @@ export class ReportService {
           title: guide.title,
           summary: guide.summary,
           matchedRuleCodes,
-          feedbackStatus: feedbackMap.get(guide.id) ?? null,
         },
       ];
     });

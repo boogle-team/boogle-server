@@ -235,10 +235,18 @@ export class GuideController {
   })
   @ApiConflictResponse({
     type: ErrorResponseDto,
+    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
+    examples: errorExamples({
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
+    }),
+  })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
     description: '같은 가이드에 피드백이 이미 존재함',
     examples: errorExamples({
       GUIDE_FEEDBACK_ALREADY_EXISTS:
-        '이미 해당 가이드에 피드백을 등록했습니다.',
+        '이번 주에 이미 해당 가이드에 피드백을 등록했습니다.',
     }),
   })
   @ApiInternalServerErrorResponse({
@@ -307,13 +315,22 @@ export class GuideController {
     description: 'token 누락 또는 유효하지 않거나 만료된 token',
     examples: errorExamples(TOKEN_ERROR_EXAMPLES),
   })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
+    examples: errorExamples({
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
+    }),
+  })
   @ApiNotFoundResponse({
     type: ErrorResponseDto,
     description:
       '가이드가 없거나 비활성 상태이거나 수정할 피드백이 존재하지 않음',
     examples: errorExamples({
       ...GUIDE_NOT_FOUND_ERROR_EXAMPLES,
-      GUIDE_FEEDBACK_NOT_FOUND: '수정할 가이드 피드백을 찾을 수 없습니다.',
+      GUIDE_FEEDBACK_NOT_FOUND:
+        '이번 주에 수정할 가이드 피드백을 찾을 수 없습니다.',
     }),
   })
   @ApiInternalServerErrorResponse({
@@ -367,13 +384,22 @@ export class GuideController {
     description: 'token 누락 또는 유효하지 않거나 만료된 token',
     examples: errorExamples(TOKEN_ERROR_EXAMPLES),
   })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: '패턴 기반 가이드가 아닌 가이드에 피드백을 남김',
+    examples: errorExamples({
+      GUIDE_FEEDBACK_NOT_ALLOWED:
+        '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',
+    }),
+  })
   @ApiNotFoundResponse({
     type: ErrorResponseDto,
     description:
       '가이드가 없거나 비활성 상태이거나 삭제할 피드백이 존재하지 않음',
     examples: errorExamples({
       ...GUIDE_NOT_FOUND_ERROR_EXAMPLES,
-      GUIDE_FEEDBACK_NOT_FOUND: '삭제할 가이드 피드백을 찾을 수 없습니다.',
+      GUIDE_FEEDBACK_NOT_FOUND:
+        '이번 주에 삭제할 가이드 피드백을 찾을 수 없습니다.',
     }),
   })
   @ApiInternalServerErrorResponse({

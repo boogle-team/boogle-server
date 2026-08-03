@@ -244,9 +244,6 @@ export class WeeklyGuideDto {
 
   @ApiProperty({ isArray: true, enum: WEEKLY_RULE_CODES })
   matchedRuleCodes!: WeeklyRuleCode[];
-
-  @ApiProperty({ nullable: true, enum: ['G', 'A', 'N'] })
-  feedbackStatus!: string | null;
 }
 
 export class InsufficientNoticeDto {
