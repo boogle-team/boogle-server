@@ -25,10 +25,10 @@ const jwtAuthGuard = {
 
 describe('PushController', () => {
   let controller: PushController;
-  let service: { registerToken: jest.Mock };
+  let service: { registerToken: jest.Mock; deleteToken: jest.Mock };
 
   beforeEach(async () => {
-    service = { registerToken: jest.fn() };
+    service = { registerToken: jest.fn(), deleteToken: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PushController],
@@ -49,6 +49,12 @@ describe('PushController', () => {
     await controller.registerToken({ id: '1' }, { token: 'fcm-abc' });
 
     expect(service.registerToken).toHaveBeenCalledWith('1', 'fcm-abc');
+  });
+
+  it('deleteToken은 로그인 사용자 id와 token을 서비스에 전달한다', async () => {
+    await controller.deleteToken({ id: '1' }, { token: 'fcm-abc' });
+
+    expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
   });
 
   describe('라우트 레벨 검증', () => {
@@ -101,6 +107,26 @@ describe('PushController', () => {
         .expect(400);
 
       expect(service.registerToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 정상 토큰이면 200으로 서비스가 호출된다', async () => {
+      service.deleteToken.mockResolvedValueOnce({ deleted: true });
+
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'fcm-abc' })
+        .expect(200);
+
+      expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
+    });
+
+    it('DELETE는 token이 비어있으면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: '' })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
     });
   });
 
