@@ -109,13 +109,24 @@ describe('PushController', () => {
       expect(service.registerToken).not.toHaveBeenCalled();
     });
 
-    it('DELETE는 정상 토큰이면 200으로 서비스가 호출된다', async () => {
+    it('DELETE는 정상 토큰이면 200과 { deleted: true } 본문을 반환한다', async () => {
       service.deleteToken.mockResolvedValueOnce({ deleted: true });
 
       await request(app.getHttpServer())
         .delete('/push/tokens')
         .send({ token: 'fcm-abc' })
-        .expect(200);
+        .expect(200, { deleted: true });
+
+      expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
+    });
+
+    it('DELETE는 이미 없던 토큰이어도 200과 { deleted: false }를 반환한다(멱등)', async () => {
+      service.deleteToken.mockResolvedValueOnce({ deleted: false });
+
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'fcm-abc' })
+        .expect(200, { deleted: false });
 
       expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
     });
@@ -124,6 +135,24 @@ describe('PushController', () => {
       await request(app.getHttpServer())
         .delete('/push/tokens')
         .send({ token: '' })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 token이 문자열이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 123 })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 token이 512자를 초과하면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'a'.repeat(513) })
         .expect(400);
 
       expect(service.deleteToken).not.toHaveBeenCalled();
