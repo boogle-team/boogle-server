@@ -72,11 +72,6 @@ const VALIDATION_ERROR_MESSAGE = new Map<DomainValidationErrorCode, string>([
     '민감정보 수집 동의 값이 올바르지 않습니다.',
   ],
   [UserErrorCode.POLICY_VERSION_REQUIRED, 'policyVersion은 필수입니다.'],
-  [UserErrorCode.WITHDRAWAL_REASON_REQUIRED, '탈퇴 사유는 필수입니다.'],
-  [
-    UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
-    '기타 탈퇴 사유를 입력해주세요.',
-  ],
   [
     UserErrorCode.WITHDRAWAL_CONFIRMATION_INVALID,
     '탈퇴 확인 문구가 일치하지 않습니다.',

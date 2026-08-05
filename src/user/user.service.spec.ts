@@ -389,21 +389,6 @@ describe('UserService', () => {
     });
   });
 
-  describe('deleteMe', () => {
-    it('requires a detail when the withdrawal reason is OTHER', async () => {
-      await expect(
-        service.deleteMe('1', {
-          reason: 'OTHER',
-          confirmation: '탈퇴합니다',
-        }),
-      ).rejects.toMatchObject({
-        errorCode: UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
-        status: 400,
-      });
-      expect(prisma.member.findUnique).not.toHaveBeenCalled();
-    });
-  });
-
   describe('profile image storage', () => {
     it('stores the new object key before deleting the previous object', async () => {
       const currentMember = { ...member, profileImageKey: 'old-key' };
