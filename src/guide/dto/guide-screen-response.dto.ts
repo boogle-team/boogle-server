@@ -122,6 +122,15 @@ export class PatternGuideDto {
     description: '이 가이드에 매칭된 주간 패턴 rule code',
   })
   matchedRuleCodes!: WeeklyRuleCode[];
+
+  @ApiProperty({
+    enum: ['G', 'A', 'N'],
+    nullable: true,
+    example: 'G',
+    description:
+      '현재 주에 사용자가 남긴 피드백. 피드백을 남기지 않았으면 null',
+  })
+  feedbackStatus!: GuideFeedbackStatus | null;
 }
 
 export class PatternGuideSectionDto {

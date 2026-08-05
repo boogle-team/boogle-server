@@ -48,6 +48,7 @@ describe('GuideService', () => {
     guideAdvices: [
       {
         id: 201,
+        subtitle: null,
         content: '갑작스러운 변화가 더 중요할 수 있어요.',
       },
     ],
@@ -98,10 +99,19 @@ describe('GuideService', () => {
     ],
   };
 
+  const activePatternGuideForFeedback = {
+    category: 'P',
+    status: 'A',
+  };
+
   beforeEach(async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-07-22T03:00:00.000Z'));
-    jest.clearAllMocks();
+
+    jest.resetAllMocks();
+
+    prismaMock.guideFeedback.findUnique.mockResolvedValue(null);
+    prismaMock.guideFeedback.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -209,9 +219,9 @@ describe('GuideService', () => {
     });
 
     it('이미 피드백이 있으면 GUIDE_FEEDBACK_ALREADY_EXISTS를 반환한다', async () => {
-      prismaMock.guide.findUnique.mockResolvedValueOnce({
-        status: 'A',
-      });
+      prismaMock.guide.findUnique.mockResolvedValueOnce(
+        activePatternGuideForFeedback,
+      );
       prismaMock.guideFeedback.findUnique.mockResolvedValueOnce({
         id: 501n,
       });
@@ -228,9 +238,9 @@ describe('GuideService', () => {
     });
 
     it('동시 등록으로 P2002가 발생해도 GUIDE_FEEDBACK_ALREADY_EXISTS를 반환한다', async () => {
-      prismaMock.guide.findUnique.mockResolvedValueOnce({
-        status: 'A',
-      });
+      prismaMock.guide.findUnique.mockResolvedValueOnce(
+        activePatternGuideForFeedback,
+      );
       prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
       prismaMock.guideFeedback.create.mockRejectedValueOnce(
         Object.assign(new Error('unique constraint'), {
@@ -248,9 +258,9 @@ describe('GuideService', () => {
     });
 
     it('수정할 피드백이 없으면 GUIDE_FEEDBACK_NOT_FOUND를 반환한다', async () => {
-      prismaMock.guide.findUnique.mockResolvedValueOnce({
-        status: 'A',
-      });
+      prismaMock.guide.findUnique.mockResolvedValueOnce(
+        activePatternGuideForFeedback,
+      );
       prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
 
       await expect(
@@ -265,9 +275,9 @@ describe('GuideService', () => {
     });
 
     it('삭제할 피드백이 없으면 GUIDE_FEEDBACK_NOT_FOUND를 반환한다', async () => {
-      prismaMock.guide.findUnique.mockResolvedValueOnce({
-        status: 'A',
-      });
+      prismaMock.guide.findUnique.mockResolvedValueOnce(
+        activePatternGuideForFeedback,
+      );
       prismaMock.guideFeedback.findUnique.mockResolvedValueOnce(null);
 
       await expect(
@@ -336,6 +346,7 @@ describe('GuideService', () => {
       {
         adviceId: 201,
         order: 1,
+        subtitle: null,
         content: '갑작스러운 변화가 더 중요할 수 있어요.',
       },
     ]);
@@ -363,14 +374,23 @@ describe('GuideService', () => {
     });
     reportServiceMock.getWeeklyReport.mockResolvedValue(weeklyPatternReport);
 
+    prismaMock.guideFeedback.findUnique.mockResolvedValueOnce({
+      feedback: 'G',
+    });
+
     const result = await service.getGuideDetail(1n, '109');
+
+    if (result.category !== 'P') {
+      throw new Error('패턴 가이드 응답이어야 합니다.');
+    }
+
+    expect(result.feedbackStatus).toBe('G');
 
     expect(reportServiceMock.getWeeklyReport).toHaveBeenCalledWith(1n, {
       weekStartDate: '2026-07-20',
       includeGuide: false,
     });
     expect(result.guideId).toBe(109);
-    expect(result).not.toHaveProperty('feedbackStatus');
     expect(result.patternReason?.matchedRuleCodes).toEqual([
       'FREQUENT_LOOSE_STOOL',
       'CONTINUOUS_LOOSE_STOOL',
@@ -434,6 +454,12 @@ describe('GuideService', () => {
       requiredDays: 3,
       completionScore: 28.6,
     });
+
+    expect(result.category).toBe('P');
+
+    if (result.category === 'P') {
+      expect(result.feedbackStatus).toBeNull();
+    }
   });
 
   it('W의 정적 본문과 DB 조언을 반환하고 사용자 위험 신호 분석은 포함하지 않는다', async () => {
@@ -454,7 +480,9 @@ describe('GuideService', () => {
       guideAdvices: [
         {
           id: 501,
-          content: '증상이 지속되면 병원에 방문하세요.',
+          subtitle: '가능한 빨리 내과 진료를 받아보세요',
+          content:
+            '검은 변은 위·소장 등 소화관 위쪽에서, 붉은 변은 대장·항문 근처에서 출혈이 있다는 신호일 수 있어요.',
         },
       ],
     });
@@ -475,7 +503,9 @@ describe('GuideService', () => {
       {
         adviceId: 501,
         order: 1,
-        content: '증상이 지속되면 병원에 방문하세요.',
+        subtitle: '가능한 빨리 내과 진료를 받아보세요',
+        content:
+          '검은 변은 위·소장 등 소화관 위쪽에서, 붉은 변은 대장·항문 근처에서 출혈이 있다는 신호일 수 있어요.',
       },
     ]);
     expect(result.recommendedGuides).toEqual([]);
@@ -483,7 +513,7 @@ describe('GuideService', () => {
     expect(result).not.toHaveProperty('warningAnalysis');
   });
 
-  it('가이드 화면의 섹션 제목을 고정하고 피드백 필드를 반환하지 않는다', async () => {
+  it('가이드 화면의 패턴 카드에 현재 주 피드백 상태를 반환한다', async () => {
     reportServiceMock.getWeeklyReport.mockResolvedValue({
       period: {
         type: 'WEEKLY',
@@ -519,6 +549,12 @@ describe('GuideService', () => {
         category: 'W',
       },
     ]);
+    prismaMock.guideFeedback.findMany.mockResolvedValueOnce([
+      {
+        guideId: 101,
+        feedback: 'G',
+      },
+    ]);
 
     const result = await service.getGuideScreen(1n);
     const cards = [
@@ -529,8 +565,35 @@ describe('GuideService', () => {
 
     expect(result.patternGuideSection.sectionTitle).toBe('내 패턴 기반');
     expect(cards).toHaveLength(3);
-    cards.forEach((card) => {
-      expect(card).not.toHaveProperty('feedbackStatus');
+
+    expect(result.patternGuideSection.guides[0]).toEqual({
+      guideId: 101,
+      category: 'P',
+      title: '수분과 딱딱한 변의 관계',
+      summary: '수분이 부족했던 날 딱딱한 변이 함께 나타났어요.',
+      matchedRuleCodes: ['LOW_WATER_WITH_HARD_STOOL'],
+      feedbackStatus: 'G',
+    });
+
+    expect(result.healthGuideSection.guides[0]).not.toHaveProperty(
+      'feedbackStatus',
+    );
+    expect(result.warningGuideSection.guides[0]).not.toHaveProperty(
+      'feedbackStatus',
+    );
+
+    expect(prismaMock.guideFeedback.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 1n,
+        weekStartDate: new Date('2026-07-20T00:00:00.000Z'),
+        guideId: {
+          in: [101],
+        },
+      },
+      select: {
+        guideId: true,
+        feedback: true,
+      },
     });
 
     expect(result.sectionOrder).toEqual(['PATTERN', 'HEALTH', 'WARNING']);
@@ -547,6 +610,28 @@ describe('GuideService', () => {
     expect(result.warningGuideSection).not.toHaveProperty('period');
     expect(result.warningGuideSection).not.toHaveProperty('highlighted');
     expect(result.warningGuideSection).not.toHaveProperty('detectedFlags');
-    expect(prismaMock.guideFeedback.findMany).not.toHaveBeenCalled();
+  });
+
+  it('조언 소제목이 없으면 subtitle을 null로 반환한다', async () => {
+    prismaMock.guide.findUnique.mockResolvedValue({
+      ...healthGuideRow,
+      guideAdvices: [
+        {
+          id: 201,
+          subtitle: null,
+          content: '갑작스러운 변화가 더 중요할 수 있어요.',
+        },
+      ],
+    });
+    prismaMock.guide.findMany.mockResolvedValue([]);
+
+    const result = await service.getGuideDetail(1n, '1');
+
+    expect(result.advices[0]).toEqual({
+      adviceId: 201,
+      order: 1,
+      subtitle: null,
+      content: '갑작스러운 변화가 더 중요할 수 있어요.',
+    });
   });
 });

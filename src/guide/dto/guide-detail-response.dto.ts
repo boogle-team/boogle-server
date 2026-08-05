@@ -4,7 +4,10 @@ import {
   WEEKLY_RULE_CODES,
 } from '@/report/pattern/weekly-pattern.constants';
 import type { WeeklyRuleCode } from '@/report/pattern/weekly-pattern.constants';
-import { GuidePeriodDto } from './guide-screen-response.dto';
+import {
+  GuidePeriodDto,
+  GuideFeedbackStatus,
+} from './guide-screen-response.dto';
 
 export class GuideContentItemDto {
   @ApiProperty({
@@ -55,6 +58,14 @@ export class GuideAdviceItemDto {
     description: '가이드 실천 조언 표시 순서',
   })
   order!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '이렇게 실천해 보세요',
+    description: '가이드 실천 조언 소제목. 소제목이 없으면 null',
+  })
+  subtitle!: string | null;
 
   @ApiProperty({
     type: String,
@@ -270,7 +281,7 @@ export class GuideDetailCommonDto {
   @ApiProperty({
     type: [GuideAdviceItemDto],
     description:
-      'ID 오름차순으로 정렬된 실천 조언. 조언이 없거나 주의 신호 가이드이면 빈 배열 가능',
+      'ID 오름차순으로 정렬된 실천 조언 목록. 각 항목은 소제목과 내용을 포함하며 소제목이 없으면 null. 조언이 없으면 빈 배열',
   })
   advices!: GuideAdviceItemDto[];
 
@@ -330,6 +341,15 @@ export class PatternGuideDetailResponseDto extends GuideDetailCommonDto {
     description: '현재 조회 주의 패턴 감지 상태와 근거',
   })
   patternReason!: PatternGuideReasonDto;
+
+  @ApiProperty({
+    enum: ['G', 'A', 'N'],
+    nullable: true,
+    example: 'G',
+    description:
+      '현재 주에 사용자가 남긴 피드백. 피드백을 남기지 않았으면 null',
+  })
+  feedbackStatus!: GuideFeedbackStatus | null;
 }
 
 export class WarningGuideDetailResponseDto extends GuideDetailCommonDto {

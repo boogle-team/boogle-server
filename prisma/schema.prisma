@@ -32,17 +32,17 @@ model Member {
   reportAlarm      String?   @default("Y") @map("report_alarm") @db.Char(1) // Y/N
   warnAlarm        String?   @default("Y") @map("warn_alarm") @db.Char(1) // Y/N
 
-  alarmMaps      AlarmMap[]
-  pushTokens     PushToken[]
-  socialAccounts SocialAccount[]
-  refreshTokens  RefreshToken[]
-  memberConsents MemberConsent[]
-  boogleRecords  BoogleRecord[]
-  lifeRecords    LifeRecord[]
-  weeklyRecords  WeeklyRecord[]
-  monthlyRecords MonthlyRecord[]
+  alarmMaps          AlarmMap[]
+  pushTokens         PushToken[]
+  socialAccounts     SocialAccount[]
+  refreshTokens      RefreshToken[]
+  memberConsents     MemberConsent[]
+  boogleRecords      BoogleRecord[]
+  lifeRecords        LifeRecord[]
+  weeklyRecords      WeeklyRecord[]
+  monthlyRecords     MonthlyRecord[]
   monthlyRuleResults MonthlyRuleResult[]
-  guideFeedbacks GuideFeedback[]
+  guideFeedbacks     GuideFeedback[]
 
   @@map("member")
 }
@@ -154,7 +154,7 @@ model BoogleRecord {
   stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
   stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
   bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
-  stomach          Int?      // 복통 -> 숫자로 표기
+  stomach          Int? // 복통 -> 숫자로 표기
   bowelMovementAt  DateTime? @map("bowel_movement_at") // 배변 발생 시각 
   distension       String?   @db.Char(1) // 복부팽만 N/M/L
   remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
@@ -307,29 +307,28 @@ model Food {
 }
 
 model Guide {
-  id  Int   @id @default(autoincrement())
-  title String @db.VarChar(255)
-  summary   String @db.VarChar(255)
-  category  String @db.Char(1) // 패턴 P / 장건강 H / 주의 W
-  regDate   DateTime @default(now())
-  updateAt  DateTime? @updatedAt @map("update_date")
-  status    String @db.Char(1) @default("A")
-  source    String? @db.VarChar(255)
+  id       Int       @id @default(autoincrement())
+  title    String    @db.VarChar(255)
+  summary  String    @db.VarChar(255)
+  category String    @db.Char(1) // 패턴 P / 장건강 H / 주의 W
+  regDate  DateTime  @default(now())
+  updateAt DateTime? @updatedAt @map("update_date")
+  status   String    @default("A") @db.Char(1)
+  source   String?   @db.VarChar(255)
+
+  guideContents  GuideContent[]
+  guideAdvices   GuideAdvice[]
+  guideFeedbacks GuideFeedback[]
 
   @@unique([category, title], map: "guide_category_title_uq")
-
-  guideContents   GuideContent[]
-  guideAdvices    GuideAdvice[]
-  guideFeedbacks  GuideFeedback[]
-
   @@map("guide")
 }
 
 model GuideContent {
   id       Int     @id @default(autoincrement())
-  guideId   Int     @map("guide_id")
-  subtitle  String? @db.VarChar(255)
-  content   String  @db.Text
+  guideId  Int     @map("guide_id")
+  subtitle String? @db.VarChar(255)
+  content  String  @db.Text
 
   guide Guide @relation(fields: [guideId], references: [id])
 
@@ -337,26 +336,29 @@ model GuideContent {
 }
 
 model GuideAdvice {
-  id      Int     @id @default(autoincrement())
-  guideId Int     @map("guide_id")
-  content String  @db.Text
+  id       Int     @id @default(autoincrement())
+  guideId  Int     @map("guide_id")
+  subtitle String? @db.VarChar(255)
+  content  String  @db.Text
 
-  guide   Guide   @relation(fields: [guideId], references: [id])
+  guide Guide @relation(fields: [guideId], references: [id])
 
   @@map("guide_advice")
 }
 
 model GuideFeedback {
-  id             BigInt    @id @default(autoincrement())
-  userId         BigInt    @map("user_id")
-  guideId        Int       @map("guide_id")
-  feedback       String    @db.Char(1) // 도움G/이미A/잘모름N
-  regDate        DateTime  @default(now()) @map("reg_date")
-  updateDate     DateTime? @updatedAt @map("update_date") // 수정시 수정시각
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  guideId       Int       @map("guide_id")
+  feedback      String    @db.Char(1) // 도움G/이미A/잘모름N
+  weekStartDate DateTime  @map("week_start_date") @db.Date
+  regDate       DateTime  @default(now()) @map("reg_date")
+  updateDate    DateTime? @updatedAt @map("update_date") // 수정시 수정시각
 
-  user         Member       @relation(fields: [userId], references: [id])
-  guide Guide @relation(fields: [guideId], references: [id])
+  user  Member @relation(fields: [userId], references: [id])
+  guide Guide  @relation(fields: [guideId], references: [id])
 
-  @@unique([userId, guideId], map: "guide_feedback_index_5")
+  @@unique([userId, guideId, weekStartDate], map: "guide_feedback_user_guide_week_uq")
+  @@index([userId, weekStartDate], map: "guide_feedback_user_week_idx")
   @@map("guide_feedback")
 }
