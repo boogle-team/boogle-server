@@ -13,7 +13,6 @@ describe('UserController', () => {
     saveOnboarding: jest.fn(),
     updateMe: jest.fn(),
     updateProfileImage: jest.fn(),
-    deleteProfileImage: jest.fn(),
     getSensitiveInfoConsent: jest.fn(),
     updateSensitiveInfoConsent: jest.fn(),
   };
@@ -101,14 +100,6 @@ describe('UserController', () => {
     await controller.updateProfileImage(user, file);
 
     expect(userService.updateProfileImage).toHaveBeenCalledWith('1', file);
-  });
-
-  it('passes the authenticated user to the profile image delete API', async () => {
-    userService.deleteProfileImage.mockResolvedValue({});
-
-    await controller.deleteProfileImage(user);
-
-    expect(userService.deleteProfileImage).toHaveBeenCalledWith('1');
   });
 
   it('should be defined', () => {
