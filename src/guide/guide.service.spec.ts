@@ -48,6 +48,7 @@ describe('GuideService', () => {
     guideAdvices: [
       {
         id: 201,
+        subtitle: null,
         content: '갑작스러운 변화가 더 중요할 수 있어요.',
       },
     ],
@@ -345,6 +346,7 @@ describe('GuideService', () => {
       {
         adviceId: 201,
         order: 1,
+        subtitle: null,
         content: '갑작스러운 변화가 더 중요할 수 있어요.',
       },
     ]);
@@ -478,7 +480,9 @@ describe('GuideService', () => {
       guideAdvices: [
         {
           id: 501,
-          content: '증상이 지속되면 병원에 방문하세요.',
+          subtitle: '가능한 빨리 내과 진료를 받아보세요',
+          content:
+            '검은 변은 위·소장 등 소화관 위쪽에서, 붉은 변은 대장·항문 근처에서 출혈이 있다는 신호일 수 있어요.',
         },
       ],
     });
@@ -499,7 +503,9 @@ describe('GuideService', () => {
       {
         adviceId: 501,
         order: 1,
-        content: '증상이 지속되면 병원에 방문하세요.',
+        subtitle: '가능한 빨리 내과 진료를 받아보세요',
+        content:
+          '검은 변은 위·소장 등 소화관 위쪽에서, 붉은 변은 대장·항문 근처에서 출혈이 있다는 신호일 수 있어요.',
       },
     ]);
     expect(result.recommendedGuides).toEqual([]);
@@ -604,5 +610,28 @@ describe('GuideService', () => {
     expect(result.warningGuideSection).not.toHaveProperty('period');
     expect(result.warningGuideSection).not.toHaveProperty('highlighted');
     expect(result.warningGuideSection).not.toHaveProperty('detectedFlags');
+  });
+
+  it('조언 소제목이 없으면 subtitle을 null로 반환한다', async () => {
+    prismaMock.guide.findUnique.mockResolvedValue({
+      ...healthGuideRow,
+      guideAdvices: [
+        {
+          id: 201,
+          subtitle: null,
+          content: '갑작스러운 변화가 더 중요할 수 있어요.',
+        },
+      ],
+    });
+    prismaMock.guide.findMany.mockResolvedValue([]);
+
+    const result = await service.getGuideDetail(1n, '1');
+
+    expect(result.advices[0]).toEqual({
+      adviceId: 201,
+      order: 1,
+      subtitle: null,
+      content: '갑작스러운 변화가 더 중요할 수 있어요.',
+    });
   });
 });

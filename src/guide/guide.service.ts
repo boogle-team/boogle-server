@@ -317,6 +317,7 @@ export class GuideService {
         guideAdvices: {
           select: {
             id: true,
+            subtitle: true,
             content: true,
           },
           orderBy: {
@@ -344,6 +345,7 @@ export class GuideService {
     return rows.map((row, index) => ({
       adviceId: row.id,
       order: index + 1,
+      subtitle: row.subtitle,
       content: row.content,
     }));
   }

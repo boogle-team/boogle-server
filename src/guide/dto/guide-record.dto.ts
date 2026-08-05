@@ -6,6 +6,7 @@ export interface GuideContentRow {
 
 export interface GuideAdviceRow {
   id: number;
+  subtitle: string | null;
   content: string;
 }
 

@@ -61,6 +61,14 @@ export class GuideAdviceItemDto {
 
   @ApiProperty({
     type: String,
+    nullable: true,
+    example: '이렇게 실천해 보세요',
+    description: '가이드 실천 조언 소제목. 소제목이 없으면 null',
+  })
+  subtitle!: string | null;
+
+  @ApiProperty({
+    type: String,
     example: '물을 충분히 마시고 규칙적으로 움직여보세요.',
     description: '가이드 실천 조언 내용',
   })
@@ -273,7 +281,7 @@ export class GuideDetailCommonDto {
   @ApiProperty({
     type: [GuideAdviceItemDto],
     description:
-      'ID 오름차순으로 정렬된 실천 조언. 조언이 없거나 주의 신호 가이드이면 빈 배열 가능',
+      'ID 오름차순으로 정렬된 실천 조언 목록. 각 항목은 소제목과 내용을 포함하며 소제목이 없으면 null. 조언이 없으면 빈 배열',
   })
   advices!: GuideAdviceItemDto[];
 
