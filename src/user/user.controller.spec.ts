@@ -16,6 +16,8 @@ describe('UserController', () => {
     deleteProfileImage: jest.fn(),
     getSensitiveInfoConsent: jest.fn(),
     updateSensitiveInfoConsent: jest.fn(),
+    getNotificationSettings: jest.fn(),
+    updateNotificationSettings: jest.fn(),
   };
   let controller: UserController;
 
@@ -36,6 +38,58 @@ describe('UserController', () => {
     }).compile();
 
     controller = module.get<UserController>(UserController);
+  });
+
+  describe('notification settings', () => {
+    it('getNotificationSettings는 사용자 id로 서비스에 위임한다', async () => {
+      const response = { recordAlarm: 'Y', reportAlarm: 'Y', warnAlarm: 'N' };
+      userService.getNotificationSettings.mockResolvedValue(response);
+
+      await expect(controller.getNotificationSettings(user)).resolves.toBe(
+        response,
+      );
+      expect(userService.getNotificationSettings).toHaveBeenCalledWith('1');
+    });
+
+    it('updateNotificationSettings는 사용자 id와 부분 변경 dto를 서비스에 전달한다', async () => {
+      const dto = { recordAlarm: 'N' as const };
+      const response = { recordAlarm: 'N', reportAlarm: 'Y', warnAlarm: 'Y' };
+      userService.updateNotificationSettings.mockResolvedValue(response);
+
+      await expect(
+        controller.updateNotificationSettings(user, dto),
+      ).resolves.toBe(response);
+      expect(userService.updateNotificationSettings).toHaveBeenCalledWith(
+        '1',
+        dto,
+      );
+    });
+
+    it('getNotificationSettings는 서비스 예외를 그대로 전파한다', async () => {
+      const error = new BusinessException(
+        UserErrorCode.USER_WITHDRAWN,
+        '탈퇴한 회원입니다.',
+        HttpStatus.FORBIDDEN,
+      );
+      userService.getNotificationSettings.mockRejectedValue(error);
+
+      await expect(controller.getNotificationSettings(user)).rejects.toBe(
+        error,
+      );
+    });
+
+    it('updateNotificationSettings는 서비스 예외를 그대로 전파한다', async () => {
+      const error = new BusinessException(
+        UserErrorCode.USER_NOT_FOUND,
+        '사용자를 찾을 수 없습니다.',
+        HttpStatus.NOT_FOUND,
+      );
+      userService.updateNotificationSettings.mockRejectedValue(error);
+
+      await expect(
+        controller.updateNotificationSettings(user, { recordAlarm: 'N' }),
+      ).rejects.toBe(error);
+    });
   });
 
   describe('updateSensitiveInfoConsent', () => {

@@ -132,6 +132,92 @@ describe('UserService', () => {
     });
   });
 
+  describe('getNotificationSettings', () => {
+    it('알림 설정 3종을 Y/N으로 반환하고 null은 Y로 폴백한다', async () => {
+      prisma.member.findUnique.mockResolvedValue({
+        ...member,
+        recordAlarm: 'N',
+        reportAlarm: 'Y',
+        warnAlarm: null,
+      });
+
+      await expect(service.getNotificationSettings('1')).resolves.toEqual({
+        recordAlarm: 'N',
+        reportAlarm: 'Y',
+        warnAlarm: 'Y',
+      });
+    });
+
+    it('회원이 없으면 USER_NOT_FOUND를 던진다', async () => {
+      prisma.member.findUnique.mockResolvedValue(null);
+
+      await expect(service.getNotificationSettings('1')).rejects.toMatchObject({
+        errorCode: UserErrorCode.USER_NOT_FOUND,
+      });
+    });
+
+    it('탈퇴 회원(status D)이면 USER_WITHDRAWN(403)을 던진다', async () => {
+      prisma.member.findUnique.mockResolvedValue({ ...member, status: 'D' });
+
+      await expect(service.getNotificationSettings('1')).rejects.toMatchObject({
+        errorCode: UserErrorCode.USER_WITHDRAWN,
+        status: 403,
+      });
+    });
+  });
+
+  describe('updateNotificationSettings', () => {
+    it('전달된 필드만 update에 반영하고 변경 후 전체 설정을 반환한다', async () => {
+      prisma.member.findUnique.mockResolvedValue({
+        ...member,
+        recordAlarm: 'Y',
+        reportAlarm: 'Y',
+        warnAlarm: 'Y',
+      });
+      prisma.member.update.mockResolvedValue({
+        ...member,
+        recordAlarm: 'N',
+        reportAlarm: 'Y',
+        warnAlarm: 'Y',
+      });
+
+      await expect(
+        service.updateNotificationSettings('1', { recordAlarm: 'N' }),
+      ).resolves.toEqual({
+        recordAlarm: 'N',
+        reportAlarm: 'Y',
+        warnAlarm: 'Y',
+      });
+
+      // 생략된 필드는 update data에 넣지 않는다(부분 변경).
+      expect(prisma.member.update).toHaveBeenCalledWith({
+        where: { id: 1n },
+        data: { recordAlarm: 'N' },
+      });
+    });
+
+    it('회원이 없으면 USER_NOT_FOUND를 던지고 update하지 않는다', async () => {
+      prisma.member.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateNotificationSettings('1', { recordAlarm: 'N' }),
+      ).rejects.toMatchObject({ errorCode: UserErrorCode.USER_NOT_FOUND });
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+
+    it('탈퇴 회원(status D)이면 USER_WITHDRAWN을 던지고 update하지 않는다', async () => {
+      prisma.member.findUnique.mockResolvedValue({ ...member, status: 'D' });
+
+      await expect(
+        service.updateNotificationSettings('1', { recordAlarm: 'N' }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.USER_WITHDRAWN,
+        status: 403,
+      });
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updateSensitiveInfoConsent', () => {
     it('creates a new consent history when the user agrees', async () => {
       const agreedAt = new Date('2026-07-15T00:00:00.000Z');

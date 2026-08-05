@@ -7,6 +7,7 @@ import {
   NOTIFICATION_TEMPLATES,
   renderTemplate,
 } from './notification-templates';
+import { NOTIFICATION_LINK_TO } from './dto/notification-response.dto';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // 연속 기록 계산 시 거슬러 올라가는 최대 일수. 이보다 긴 연속 기록은 이 값으로
@@ -96,10 +97,16 @@ export class NotificationSchedulerService {
 
       // 한 유저 실패가 배치 전체를 멈추지 않도록 유저별로 격리한다.
       try {
-        await this.creation.create({ userId, type: 'RECORD_REMINDER' });
+        const created = await this.creation.create({
+          userId,
+          type: 'RECORD_REMINDER',
+        });
         await this.pushSender.send(userId, {
+          notificationId: created.id,
           title: template.title,
           body: template.content,
+          type: 'RECORD_REMINDER',
+          linkTo: NOTIFICATION_LINK_TO[template.category],
         });
         sent += 1;
       } catch (error) {
@@ -134,10 +141,17 @@ export class NotificationSchedulerService {
 
       const params = { days: streak };
       try {
-        await this.creation.create({ userId, type: 'STREAK', params });
+        const created = await this.creation.create({
+          userId,
+          type: 'STREAK',
+          params,
+        });
         await this.pushSender.send(userId, {
+          notificationId: created.id,
           title: renderTemplate(template.title, params),
           body: renderTemplate(template.content, params),
+          type: 'STREAK',
+          linkTo: NOTIFICATION_LINK_TO[template.category],
         });
         sent += 1;
       } catch (error) {

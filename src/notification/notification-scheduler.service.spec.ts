@@ -86,6 +86,14 @@ describe('NotificationSchedulerService', () => {
       expect(creation.create).not.toHaveBeenCalledWith(
         expect.objectContaining({ userId: '2' }),
       );
+      // 발송 payload에 새 필드(notificationId·type·linkTo)까지 포함되는지 검증.
+      expect(pushSender.send).toHaveBeenCalledWith('1', {
+        notificationId: 1,
+        title: '기록할 시간이에요',
+        body: '30초면 충분해요. 지금 기록해볼까요?',
+        type: 'RECORD_REMINDER',
+        linkTo: 'HOME',
+      });
     });
 
     it('기록 알림이 꺼지지 않은(null 포함) 활성 회원만 조회한다', async () => {
@@ -121,8 +129,11 @@ describe('NotificationSchedulerService', () => {
         params: { days: 3 },
       });
       expect(pushSender.send).toHaveBeenCalledWith('1', {
+        notificationId: 1,
         title: '3일째 기록 중이에요!',
         body: '꾸준한 기록이 패턴 분석의 기본이에요',
+        type: 'STREAK',
+        linkTo: 'HOME',
       });
     });
 
