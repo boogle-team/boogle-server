@@ -1,7 +1,7 @@
 # API 명세서 — 알림
 
 > 담당: 알림(Notification) 백엔드
-> 범위: 알림 목록 조회(GET) · 알림 읽음 처리(PATCH)
+> 범위: 알림 목록 조회(GET) · 알림 읽음 처리(PATCH) · 알림 설정 조회/변경(GET·PATCH)
 > 관련 기능 ID: `N101`~`N105` (조회는 전부 동일 API로 커버)
 
 ---
@@ -159,6 +159,106 @@ Authorization: Bearer eyJhbGc...
 | alarm_map | 본인 소유(`id` + `user_id`) 알림의 `is_read`='Y' 갱신 + 갱신 후 안읽음 개수 재계산 | id, user_id, is_read |
 
 > 🔒 소유 검증: `id` + `user_id`로만 갱신(`updateMany`)하고, 매칭 0건이면 404. 타인 알림 존재 여부를 노출하지 않는다.
+
+---
+
+## 3-2. GET /api/v1/users/me/notification-settings — 알림 설정 조회
+
+사용자의 알림 켜짐/꺼짐 설정 3종을 조회한다. (경로 prefix가 `users`임에 주의 — `members` 아님)
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+
+```http
+GET /api/v1/users/me/notification-settings
+Authorization: Bearer eyJhbGc...
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "recordAlarm": "Y",
+  "reportAlarm": "Y",
+  "warnAlarm": "N"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `recordAlarm` | string | Y | 기록 리마인더(N102·N105) 알림. `Y`/`N` |
+| `reportAlarm` | string | Y | 리포트 도착(N103·N104) 알림. `Y`/`N` |
+| `warnAlarm` | string | Y | 위험 신호(N101) 알림. `Y`/`N` |
+
+> 📌 저장된 값이 `null`(레거시)이면 기본값 `Y`로 폴백해 내려준다. 즉 응답은 항상 `Y` 또는 `N`.
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 |
+| 403 | `USER_WITHDRAWN` | 탈퇴한 회원 |
+| 404 | `USER_NOT_FOUND` | 사용자를 찾을 수 없음 |
+
+---
+
+## 3-3. PATCH /api/v1/users/me/notification-settings — 알림 설정 변경
+
+전달된 필드만 변경하고(단일 필드 부분 변경 지원), **변경 후 전체 설정값**을 반환한다.
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+| Body | `recordAlarm` | string | ✕ | `Y`/`N`. 생략 시 유지 |
+| Body | `reportAlarm` | string | ✕ | `Y`/`N`. 생략 시 유지 |
+| Body | `warnAlarm` | string | ✕ | `Y`/`N`. 생략 시 유지 |
+
+```http
+PATCH /api/v1/users/me/notification-settings
+Authorization: Bearer eyJhbGc...
+Content-Type: application/json
+
+{ "recordAlarm": "N" }
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "recordAlarm": "N",
+  "reportAlarm": "Y",
+  "warnAlarm": "Y"
+}
+```
+
+> 📌 응답은 변경 후 **전체 설정**(3종)이다.
+> 📌 값은 `Y`/`N`만 허용한다. `null`이나 그 외 값은 400으로 거부한다(생략은 `undefined`만 해당 — 필드를 아예 안 보내면 유지).
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | 알림 값이 `Y`/`N`이 아님(`null` 포함) |
+| 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 |
+| 403 | `USER_WITHDRAWN` | 탈퇴한 회원 |
+| 404 | `USER_NOT_FOUND` | 사용자를 찾을 수 없음 |
+
+### DB 처리
+
+| 사용 테이블 | 사용 목적 | 사용 컬럼 |
+| --- | --- | --- |
+| member | 전달된 알림 플래그만 갱신 | record_alarm, report_alarm, warn_alarm |
+
+> ⚠️ **enforcement 현황(구현 정확성)**: 현재 **발송에서 실제로 반영되는 건 `recordAlarm`뿐**이다.
+> 스케줄러가 `record_alarm != 'N'`인 회원에게만 리마인더(N102)·연속기록(N105)을 발송한다.
+> `reportAlarm`·`warnAlarm`은 값은 저장되지만, 리포트/위험 신호의 **이벤트성 푸시 발송이 아직
+> 미배선**이라 발송 게이트로는 쓰이지 않는다. 프론트 합의 정책(설정 ≠ 등록 분리, `warnAlarm=N`이어도
+> 위험 신호 인앱 알림은 저장·노출하고 푸시만 차단)은 이벤트 푸시 배선 시 함께 반영해야 한다.
 
 ---
 
