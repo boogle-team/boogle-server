@@ -9,6 +9,7 @@ describe('AuthController', () => {
     createAuthorizationUrl: jest.fn(),
     createOAuthCallbackRedirect: jest.fn(),
     exchangeOAuthResult: jest.fn(),
+    linkOAuthAccount: jest.fn(),
     logout: jest.fn(),
     refresh: jest.fn(),
   };
@@ -168,6 +169,18 @@ describe('AuthController', () => {
     await expect(
       controller.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
     ).rejects.toBe(error);
+  });
+
+  it('passes the one-time token to the account-link service', async () => {
+    const result = { nextAction: 'HOME' };
+    authService.linkOAuthAccount.mockResolvedValue(result);
+
+    await expect(
+      controller.linkOAuthAccount({ accountLinkToken: 'account-link-token' }),
+    ).resolves.toBe(result);
+    expect(authService.linkOAuthAccount).toHaveBeenCalledWith({
+      accountLinkToken: 'account-link-token',
+    });
   });
 
   it('requires and forwards the current refresh token on logout', async () => {

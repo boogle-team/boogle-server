@@ -205,6 +205,7 @@ npx prisma studio # DB GUI 실행
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: 서로 다른 충분히 긴 임의 문자열
 - `AUTH_TEMPORARY_TOKEN_RETENTION`: 사용 완료·만료된 OAuth 임시 토큰의 보존 기간(기본 `7d`)
 - `AUTH_TEMPORARY_TOKEN_CLEANUP_INTERVAL`: 임시 토큰 정리 주기(기본 `1h`)
+- `ACCOUNT_LINK_TOKEN_EXPIRES_IN`: 동일 이메일 소셜 계정 연동 토큰의 만료 시간(기본 `5m`)
 
 Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_REDIRECT_URI`, `KAKAO_REDIRECT_URI`와 문자 단위로 같아야 합니다. 운영 DB에는 배포 전에 `npx prisma migrate deploy`를 실행해야 합니다.
 

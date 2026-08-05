@@ -133,8 +133,9 @@ describe('AuthService', () => {
     expect(prisma.member.create).not.toHaveBeenCalled();
   });
 
-  it('automatically links a verified matching email', async () => {
+  it('requires confirmation before linking a verified matching email', async () => {
     temporaryTokens.consume.mockResolvedValue(oauthProfile);
+    temporaryTokens.create.mockResolvedValue('account-link-token');
     prisma.socialAccount.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
@@ -143,9 +144,44 @@ describe('AuthService', () => {
     await expect(
       service.exchangeOAuthResult({ oauthResultCode: 'result-code' }),
     ).resolves.toMatchObject({
+      nextAction: 'ACCOUNT_LINK_REQUIRED',
+      accountLinkToken: 'account-link-token',
+      accountLinkTokenExpiresIn: 300,
+      provider: 'google',
+      email: 'member@example.com',
+    });
+    expect(temporaryTokens.create).toHaveBeenCalledWith(
+      'ACCOUNT_LINK',
+      { ...oauthProfile, memberId: '1' },
+      300,
+    );
+    expect(prisma.socialAccount.create).not.toHaveBeenCalled();
+    expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+  });
+
+  it('links a confirmed social account and logs in as the existing member', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      ...oauthProfile,
+      memberId: '1',
+    });
+    prisma.member.findUnique.mockResolvedValue(completeMember);
+    prisma.socialAccount.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.linkOAuthAccount({ accountLinkToken: 'account-link-token' }),
+    ).resolves.toMatchObject({
       nextAction: 'HOME',
       isNewUser: false,
+      user: { id: 1, email: 'member@example.com' },
     });
+    expect(temporaryTokens.consume).toHaveBeenCalledWith(
+      'account-link-token',
+      'ACCOUNT_LINK',
+      expect.objectContaining({
+        invalidCode: AuthErrorCode.AUTH_INVALID_ACCOUNT_LINK_TOKEN,
+        expiredCode: AuthErrorCode.AUTH_ACCOUNT_LINK_TOKEN_EXPIRED,
+      }),
+    );
     expect(prisma.socialAccount.create).toHaveBeenCalledWith({
       data: {
         userId: 1n,
@@ -154,6 +190,25 @@ describe('AuthService', () => {
         email: 'member@example.com',
       },
     });
+  });
+
+  it('rejects account linking when the member email has changed', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      ...oauthProfile,
+      memberId: '1',
+    });
+    prisma.member.findUnique.mockResolvedValue({
+      ...completeMember,
+      email: 'changed@example.com',
+    });
+
+    await expect(
+      service.linkOAuthAccount({ accountLinkToken: 'account-link-token' }),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.SOCIAL_LOGIN_FAILED,
+      status: HttpStatus.CONFLICT,
+    });
+    expect(prisma.socialAccount.create).not.toHaveBeenCalled();
   });
 
   it('creates a new member and immediately returns a token pair', async () => {
@@ -268,6 +323,9 @@ describe('AuthService', () => {
     const exchange = await service.exchangeOAuthResult({
       oauthResultCode: 'result-code',
     });
+    if (exchange.nextAction === 'ACCOUNT_LINK_REQUIRED') {
+      throw new Error('기존 소셜 계정 로그인 결과가 필요합니다.');
+    }
     prisma.refreshToken.findUnique.mockResolvedValue({
       id: 10n,
       userId: 1n,
