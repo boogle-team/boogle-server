@@ -40,6 +40,7 @@ import { SaveOnboardingRequestDto } from './dto/save-onboarding-request.dto';
 import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 import { SensitiveInfoConsentSuccessResponseDto } from './dto/sensitive-info-consent-response.dto';
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
+import { UpdateNotificationSettingsRequestDto } from './dto/update-notification-settings-request.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import type { ProfileImageFile } from './profile-image.service';
 import { ProfileImageUploadExceptionFilter } from './filters/profile-image-upload-exception.filter';
@@ -159,6 +160,39 @@ export class UserController {
   @ResponseMessage('내 정보 조회에 성공했습니다.')
   getMe(@CurrentUser() user: AuthenticatedUser) {
     return this.userService.getMe(user.id);
+  }
+
+  @Get('me/notification-settings')
+  @ApiOperation({ summary: '알림 설정 조회' })
+  @ApiOkResponse({ description: '알림 설정 조회 성공' })
+  @ApiNotFoundResponse({ description: '사용자를 찾을 수 없음' })
+  @ApiForbiddenResponse({ description: '탈퇴한 회원' })
+  @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @GenericUnauthorized()
+  @ResponseMessage('알림 설정을 조회했습니다.')
+  getNotificationSettings(@CurrentUser() user: AuthenticatedUser) {
+    return this.userService.getNotificationSettings(user.id);
+  }
+
+  @Patch('me/notification-settings')
+  @ApiOperation({
+    summary: '알림 설정 변경',
+    description:
+      '전달된 필드만 변경하고(단일 필드 부분 변경), 변경 후 전체 설정값을 반환합니다.',
+  })
+  @ApiBody({ type: UpdateNotificationSettingsRequestDto })
+  @ApiOkResponse({ description: '알림 설정 변경 성공' })
+  @ApiBadRequestResponse({ description: '알림 값이 Y/N이 아님' })
+  @ApiNotFoundResponse({ description: '사용자를 찾을 수 없음' })
+  @ApiForbiddenResponse({ description: '탈퇴한 회원' })
+  @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
+  @GenericUnauthorized()
+  @ResponseMessage('알림 설정이 변경되었습니다.')
+  updateNotificationSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateNotificationSettingsRequestDto,
+  ) {
+    return this.userService.updateNotificationSettings(user.id, dto);
   }
 
   @Get('me/sensitive-info-consent')

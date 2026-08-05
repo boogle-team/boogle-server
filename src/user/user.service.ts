@@ -5,6 +5,11 @@ import type { MemberConsent } from '@/generated/prisma/client';
 import { SaveOnboardingRequestDto } from './dto/save-onboarding-request.dto';
 import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
+import { UpdateNotificationSettingsRequestDto } from './dto/update-notification-settings-request.dto';
+import type {
+  AlarmFlag,
+  NotificationSettingsResponseDto,
+} from './dto/notification-settings-response.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import { UserErrorCode } from './user-error-code.enum';
 import { ProfileImageFile, ProfileImageService } from './profile-image.service';
@@ -156,6 +161,51 @@ export class UserService {
     const member = await this.findActiveMemberWithSocialAccountsOrThrow(userId);
 
     return this.toMeResponse(member);
+  }
+
+  async getNotificationSettings(
+    userId: string,
+  ): Promise<NotificationSettingsResponseDto> {
+    const member = await this.findActiveMemberOrThrow(userId);
+
+    return this.toNotificationSettings(member);
+  }
+
+  async updateNotificationSettings(
+    userId: string,
+    dto: UpdateNotificationSettingsRequestDto,
+  ): Promise<NotificationSettingsResponseDto> {
+    // 존재·활성 회원 검증(없으면 USER_NOT_FOUND). 전달된 필드만 반영한다.
+    await this.findActiveMemberOrThrow(userId);
+
+    const data: {
+      recordAlarm?: AlarmFlag;
+      reportAlarm?: AlarmFlag;
+      warnAlarm?: AlarmFlag;
+    } = {};
+    if (dto.recordAlarm !== undefined) data.recordAlarm = dto.recordAlarm;
+    if (dto.reportAlarm !== undefined) data.reportAlarm = dto.reportAlarm;
+    if (dto.warnAlarm !== undefined) data.warnAlarm = dto.warnAlarm;
+
+    const updated = await this.prisma.member.update({
+      where: { id: this.toBigIntId(userId) },
+      data,
+    });
+
+    return this.toNotificationSettings(updated);
+  }
+
+  // null(레거시 데이터)은 기본값 'Y'로 폴백한다(스케줄러의 "null=기본 Y" 규칙과 동일).
+  private toNotificationSettings(member: {
+    recordAlarm: string | null;
+    reportAlarm: string | null;
+    warnAlarm: string | null;
+  }): NotificationSettingsResponseDto {
+    return {
+      recordAlarm: member.recordAlarm === 'N' ? 'N' : 'Y',
+      reportAlarm: member.reportAlarm === 'N' ? 'N' : 'Y',
+      warnAlarm: member.warnAlarm === 'N' ? 'N' : 'Y',
+    };
   }
 
   async getSensitiveInfoConsent(userId: string) {

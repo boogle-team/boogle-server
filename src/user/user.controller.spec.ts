@@ -16,6 +16,8 @@ describe('UserController', () => {
     deleteProfileImage: jest.fn(),
     getSensitiveInfoConsent: jest.fn(),
     updateSensitiveInfoConsent: jest.fn(),
+    getNotificationSettings: jest.fn(),
+    updateNotificationSettings: jest.fn(),
   };
   let controller: UserController;
 
@@ -36,6 +38,32 @@ describe('UserController', () => {
     }).compile();
 
     controller = module.get<UserController>(UserController);
+  });
+
+  describe('notification settings', () => {
+    it('getNotificationSettings는 사용자 id로 서비스에 위임한다', async () => {
+      const response = { recordAlarm: 'Y', reportAlarm: 'Y', warnAlarm: 'N' };
+      userService.getNotificationSettings.mockResolvedValue(response);
+
+      await expect(controller.getNotificationSettings(user)).resolves.toBe(
+        response,
+      );
+      expect(userService.getNotificationSettings).toHaveBeenCalledWith('1');
+    });
+
+    it('updateNotificationSettings는 사용자 id와 부분 변경 dto를 서비스에 전달한다', async () => {
+      const dto = { recordAlarm: 'N' as const };
+      const response = { recordAlarm: 'N', reportAlarm: 'Y', warnAlarm: 'Y' };
+      userService.updateNotificationSettings.mockResolvedValue(response);
+
+      await expect(
+        controller.updateNotificationSettings(user, dto),
+      ).resolves.toBe(response);
+      expect(userService.updateNotificationSettings).toHaveBeenCalledWith(
+        '1',
+        dto,
+      );
+    });
   });
 
   describe('updateSensitiveInfoConsent', () => {
