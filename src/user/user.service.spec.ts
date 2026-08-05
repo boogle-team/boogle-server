@@ -155,6 +155,15 @@ describe('UserService', () => {
         errorCode: UserErrorCode.USER_NOT_FOUND,
       });
     });
+
+    it('탈퇴 회원(status D)이면 USER_WITHDRAWN(403)을 던진다', async () => {
+      prisma.member.findUnique.mockResolvedValue({ ...member, status: 'D' });
+
+      await expect(service.getNotificationSettings('1')).rejects.toMatchObject({
+        errorCode: UserErrorCode.USER_WITHDRAWN,
+        status: 403,
+      });
+    });
   });
 
   describe('updateNotificationSettings', () => {
@@ -193,6 +202,18 @@ describe('UserService', () => {
       await expect(
         service.updateNotificationSettings('1', { recordAlarm: 'N' }),
       ).rejects.toMatchObject({ errorCode: UserErrorCode.USER_NOT_FOUND });
+      expect(prisma.member.update).not.toHaveBeenCalled();
+    });
+
+    it('탈퇴 회원(status D)이면 USER_WITHDRAWN을 던지고 update하지 않는다', async () => {
+      prisma.member.findUnique.mockResolvedValue({ ...member, status: 'D' });
+
+      await expect(
+        service.updateNotificationSettings('1', { recordAlarm: 'N' }),
+      ).rejects.toMatchObject({
+        errorCode: UserErrorCode.USER_WITHDRAWN,
+        status: 403,
+      });
       expect(prisma.member.update).not.toHaveBeenCalled();
     });
   });

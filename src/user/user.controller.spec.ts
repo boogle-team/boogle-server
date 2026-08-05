@@ -64,6 +64,32 @@ describe('UserController', () => {
         dto,
       );
     });
+
+    it('getNotificationSettings는 서비스 예외를 그대로 전파한다', async () => {
+      const error = new BusinessException(
+        UserErrorCode.USER_WITHDRAWN,
+        '탈퇴한 회원입니다.',
+        HttpStatus.FORBIDDEN,
+      );
+      userService.getNotificationSettings.mockRejectedValue(error);
+
+      await expect(controller.getNotificationSettings(user)).rejects.toBe(
+        error,
+      );
+    });
+
+    it('updateNotificationSettings는 서비스 예외를 그대로 전파한다', async () => {
+      const error = new BusinessException(
+        UserErrorCode.USER_NOT_FOUND,
+        '사용자를 찾을 수 없습니다.',
+        HttpStatus.NOT_FOUND,
+      );
+      userService.updateNotificationSettings.mockRejectedValue(error);
+
+      await expect(
+        controller.updateNotificationSettings(user, { recordAlarm: 'N' }),
+      ).rejects.toBe(error);
+    });
   });
 
   describe('updateSensitiveInfoConsent', () => {
