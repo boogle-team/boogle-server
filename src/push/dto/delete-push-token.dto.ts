@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
-export class RegisterPushTokenDto {
-  // 프론트(PWA)가 FCM에서 발급받은 기기 등록 토큰.
+export class DeletePushTokenDto {
+  // 로그아웃/알림 해제 시 프론트가 해제할 자신의 기기 토큰.
   @ApiProperty({
-    description: 'FCM에서 발급받은 기기 토큰',
+    description: '해제할 FCM 기기 토큰',
     example: 'fGqJ...:APA91b...(FCM 등록 토큰)',
     maxLength: 512,
   })

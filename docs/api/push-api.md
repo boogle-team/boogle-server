@@ -1,8 +1,8 @@
 # API 명세서 — 웹 푸시 (Push)
 
 > 담당: 알림(Notification) 백엔드
-> 범위: 웹 푸시(FCM) 기기 토큰 등록 — 리마인더·연속기록 푸시의 **1단계**
-> 관련: 발송 모듈(2단계)·스케줄러(3단계)는 별도. 이 API는 토큰 저장만 담당.
+> 범위: 웹 푸시(FCM) 기기 토큰 등록·해제 — 리마인더·연속기록 푸시의 **1단계**
+> 관련: 발송 모듈(2단계)·스케줄러(3단계)는 별도. 이 API는 토큰 저장·삭제만 담당.
 
 ---
 
@@ -59,7 +59,7 @@ Content-Type: application/json
 
 | HTTP | code | 조건 |
 | --- | --- | --- |
-| 400 | `BAD_REQUEST` | `token` 누락/빈 문자열/512자 초과 |
+| 400 | `BAD_REQUEST` | `token` 누락/빈 문자열/512자 초과/문자열 아님 |
 | 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 |
 
 ### DB 처리
@@ -70,7 +70,61 @@ Content-Type: application/json
 
 ---
 
-## 3. 필요한 환경변수 (참고 — 발송 단계에서 사용)
+## 3. DELETE /api/v1/push/tokens — FCM 기기 토큰 해제
+
+로그아웃/알림 끄기 시 **해당 기기의 토큰만** 해제한다. 공용 기기에서 로그아웃한 뒤
+이전 사용자에게 푸시가 가는 것을 막기 위함. 프론트는 로그아웃 시 자신이 보유한
+FCM 토큰으로 이 API를 호출한다.
+
+### Request
+
+| 위치 | 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- | --- |
+| Header | `Authorization` | string | ✅ | `Bearer {accessToken}` |
+| Body | `token` | string | ✅ | 해제할 FCM 기기 토큰 (1~512자) |
+
+```http
+DELETE /api/v1/push/tokens
+Authorization: Bearer eyJhbGc...
+Content-Type: application/json
+
+{ "token": "fcm-registration-token..." }
+```
+
+### Response 200 — `data`
+
+```json
+{
+  "deleted": true
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `deleted` | boolean | Y | 실제로 삭제된 토큰이 있었으면 `true`, 이미 없던 토큰이면 `false` |
+
+> 📌 **멱등**: 이미 없던 토큰을 해제해도 `200 { deleted: false }`로 성공한다. 로그아웃 재시도가 안전하다.
+> 📌 **스코프**: `(user_id, token)` 조건으로 삭제한다. 같은 토큰이 다른 유저에게
+> 재등록(소유 이전)된 경우 그 유저의 유효 토큰은 지우지 않는다.
+> 📌 **범위**: 요청한 그 기기 토큰만 해제한다. 유저의 다른 기기(PC·폰) 토큰은
+> 유지되어 다른 기기 푸시는 끊기지 않는다.
+
+### Error
+
+| HTTP | code | 조건 |
+| --- | --- | --- |
+| 400 | `BAD_REQUEST` | `token` 누락/빈 문자열/512자 초과/문자열 아님 |
+| 401 | `UNAUTHORIZED` | 토큰 없음 / 만료 / 유효하지 않음 |
+
+### DB 처리
+
+| 사용 테이블 | 사용 목적 | 사용 컬럼 |
+| --- | --- | --- |
+| push_token | `(user_id, token)`로 스코프해 삭제(`deleteMany`) | user_id, token |
+
+---
+
+## 4. 필요한 환경변수 (참고 — 발송 단계에서 사용)
 
 이 API(토큰 등록)는 Firebase 없이 동작하지만, 이후 발송(2단계)에서 아래 env가 필요하다.
 
@@ -83,7 +137,7 @@ Content-Type: application/json
 
 ---
 
-## 4. 발송 모듈 (2단계) — 내부 서비스 (API 아님)
+## 5. 발송 모듈 (2단계) — 내부 서비스 (API 아님)
 
 각 도메인/배치는 아래 서비스를 주입해 푸시를 발송한다. (HTTP 엔드포인트 아님)
 
@@ -106,7 +160,7 @@ await pushSenderService.send(userId, {
 
 ---
 
-## 5. 스케줄러 (3단계) — 매일 배치 발송
+## 6. 스케줄러 (3단계) — 매일 배치 발송
 
 `NotificationSchedulerService`가 매일 정해진 시각에 조건을 판정해, 대상 유저에게
 **in-app 알림 생성 + 푸시 발송**을 함께 호출한다. (`@nestjs/schedule` 기반 cron)

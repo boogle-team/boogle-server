@@ -4,10 +4,12 @@ import { PushService } from './push.service';
 
 describe('PushService', () => {
   let service: PushService;
-  let prisma: { pushToken: { upsert: jest.Mock } };
+  let prisma: {
+    pushToken: { upsert: jest.Mock; deleteMany: jest.Mock };
+  };
 
   beforeEach(async () => {
-    prisma = { pushToken: { upsert: jest.fn() } };
+    prisma = { pushToken: { upsert: jest.fn(), deleteMany: jest.fn() } };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [PushService, { provide: PrismaService, useValue: prisma }],
@@ -44,5 +46,28 @@ describe('PushService', () => {
     expect(prisma.pushToken.upsert).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { token: 'fcm-abc' } }),
     );
+  });
+
+  describe('deleteToken', () => {
+    it('(userId, token)로 스코프해 삭제하고 deleted:true를 반환한다', async () => {
+      prisma.pushToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.deleteToken('1', 'fcm-abc');
+
+      expect(result).toEqual({ deleted: true });
+      // token만으로 지우면 재등록으로 소유가 넘어간 남의 토큰을 지울 수 있어
+      // 반드시 userId까지 조건에 포함한다.
+      expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 1n, token: 'fcm-abc' },
+      });
+    });
+
+    it('이미 없던 토큰이면 deleted:false로 조용히 성공한다(멱등)', async () => {
+      prisma.pushToken.deleteMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.deleteToken('1', 'fcm-abc');
+
+      expect(result).toEqual({ deleted: false });
+    });
   });
 });

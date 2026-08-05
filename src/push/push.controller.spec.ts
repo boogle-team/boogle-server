@@ -25,10 +25,10 @@ const jwtAuthGuard = {
 
 describe('PushController', () => {
   let controller: PushController;
-  let service: { registerToken: jest.Mock };
+  let service: { registerToken: jest.Mock; deleteToken: jest.Mock };
 
   beforeEach(async () => {
-    service = { registerToken: jest.fn() };
+    service = { registerToken: jest.fn(), deleteToken: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PushController],
@@ -49,6 +49,12 @@ describe('PushController', () => {
     await controller.registerToken({ id: '1' }, { token: 'fcm-abc' });
 
     expect(service.registerToken).toHaveBeenCalledWith('1', 'fcm-abc');
+  });
+
+  it('deleteToken은 로그인 사용자 id와 token을 서비스에 전달한다', async () => {
+    await controller.deleteToken({ id: '1' }, { token: 'fcm-abc' });
+
+    expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
   });
 
   describe('라우트 레벨 검증', () => {
@@ -101,6 +107,55 @@ describe('PushController', () => {
         .expect(400);
 
       expect(service.registerToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 정상 토큰이면 200과 { deleted: true } 본문을 반환한다', async () => {
+      service.deleteToken.mockResolvedValueOnce({ deleted: true });
+
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'fcm-abc' })
+        .expect(200, { deleted: true });
+
+      expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
+    });
+
+    it('DELETE는 이미 없던 토큰이어도 200과 { deleted: false }를 반환한다(멱등)', async () => {
+      service.deleteToken.mockResolvedValueOnce({ deleted: false });
+
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'fcm-abc' })
+        .expect(200, { deleted: false });
+
+      expect(service.deleteToken).toHaveBeenCalledWith('1', 'fcm-abc');
+    });
+
+    it('DELETE는 token이 비어있으면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: '' })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 token이 문자열이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 123 })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
+    });
+
+    it('DELETE는 token이 512자를 초과하면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .delete('/push/tokens')
+        .send({ token: 'a'.repeat(513) })
+        .expect(400);
+
+      expect(service.deleteToken).not.toHaveBeenCalled();
     });
   });
 
