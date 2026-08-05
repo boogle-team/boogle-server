@@ -33,7 +33,13 @@ describe('PushSenderService', () => {
     service = module.get<PushSenderService>(PushSenderService);
   });
 
-  const payload = { title: '기록할 시간이에요', body: '30초면 충분해요.' };
+  const payload = {
+    notificationId: 123,
+    title: '기록할 시간이에요',
+    body: '30초면 충분해요.',
+    type: 'RECORD_REMINDER' as const,
+    linkTo: 'HOME' as const,
+  };
 
   it('발송 비활성(Firebase 미초기화)이면 아무것도 하지 않는다', async () => {
     firebase.isEnabled.mockReturnValue(false);
@@ -61,16 +67,22 @@ describe('PushSenderService', () => {
       responses: [{ success: true }, { success: true }],
     });
 
-    await service.send('1', { ...payload, link: 'https://app/home' });
+    await service.send('1', payload);
 
     expect(prisma.pushToken.findMany).toHaveBeenCalledWith({
       where: { userId: 1n },
       select: { token: true },
     });
+    // data-only 메시지: notification 필드 없이 data에 모두 문자열로 담는다.
     expect(firebase.sendEachForMulticast).toHaveBeenCalledWith({
       tokens: ['tok-A', 'tok-B'],
-      notification: { title: payload.title, body: payload.body },
-      webpush: { fcmOptions: { link: 'https://app/home' } },
+      data: {
+        notificationId: '123',
+        title: payload.title,
+        body: payload.body,
+        type: 'RECORD_REMINDER',
+        linkTo: 'HOME',
+      },
     });
     expect(prisma.pushToken.deleteMany).not.toHaveBeenCalled();
   });

@@ -121,8 +121,11 @@ describe('NotificationSchedulerService', () => {
         params: { days: 3 },
       });
       expect(pushSender.send).toHaveBeenCalledWith('1', {
+        notificationId: 1,
         title: '3일째 기록 중이에요!',
         body: '꾸준한 기록이 패턴 분석의 기본이에요',
+        type: 'STREAK',
+        linkTo: 'HOME',
       });
     });
 

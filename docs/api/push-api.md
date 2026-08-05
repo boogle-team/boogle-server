@@ -141,18 +141,39 @@ Content-Type: application/json
 
 각 도메인/배치는 아래 서비스를 주입해 푸시를 발송한다. (HTTP 엔드포인트 아님)
 
-**`PushSenderService.send(userId, { title, body, link? })`**
+**`PushSenderService.send(userId, { notificationId, title, body, type, linkTo })`**
 - 해당 유저의 `push_token` 전부를 조회해 **모든 기기로 발송**(멀티 기기).
 - 발송 결과에서 만료·무효 토큰(`registration-token-not-registered` 등)은 `push_token`에서 **자동 삭제**(죽은 토큰 누적 방지).
 - `FIREBASE_SERVICE_ACCOUNT_BASE64` 미설정 환경에서는 앱을 죽이지 않고 **발송을 no-op**으로 처리한다(토큰 등록 등 나머지 기능은 정상 동작).
 
+**FCM 메시지는 data-only** (프론트 계약). `notification` 필드를 넣지 않고 `data`에만
+담아, 백그라운드는 서비스워커의 `showNotification()`, 포그라운드는 `onMessage()`가
+직접 표시한다(자동 표시·수동 표시 중복 방지). **FCM `data` 값은 모두 문자열**이라
+`notificationId`는 문자열로 변환해 전송한다.
+
 ```ts
 // 사용 예 (3단계 스케줄러 등에서)
 await pushSenderService.send(userId, {
+  notificationId: 123,          // 인앱 알림 DB id (문자열로 변환되어 전송)
   title: '기록할 시간이에요',
   body: '30초면 충분해요. 지금 기록해볼까요?',
-  link: 'https://app/home',
+  type: 'RECORD_REMINDER',      // WARNING/RECORD_REMINDER/REPORT_READY/PDF_SAVED/STREAK
+  linkTo: 'HOME',               // GUIDE_WARNING/HOME/REPORT
 });
+```
+
+실제 전송되는 FCM payload:
+
+```json
+{
+  "data": {
+    "notificationId": "123",
+    "title": "기록할 시간이에요",
+    "body": "30초면 충분해요. 지금 기록해볼까요?",
+    "type": "RECORD_REMINDER",
+    "linkTo": "HOME"
+  }
+}
 ```
 
 > 📌 **범위**: 이 모듈은 "발송하는 도구"까지다. "언제 보낼지"(리마인더/연속기록 조건 판정)와 in-app 알림 생성(`NotificationCreationService`)을 함께 부르는 오케스트레이션은 **3단계(스케줄러)** 몫이다.

@@ -1,12 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import type {
+  NotificationLinkTo,
+  NotificationType,
+} from '@/notification/dto/notification-response.dto';
 import { FirebaseAdminService } from './firebase-admin.service';
 
 export interface PushPayload {
+  // 인앱 알림 DB id(= 알림 목록 응답의 notification id). 프론트가 클릭 시 매칭·조회에 사용.
+  notificationId: number | string;
   title: string;
   body: string;
-  // 알림 클릭 시 이동할 URL(웹 푸시). 없으면 기본 동작.
-  link?: string;
+  // 아이콘 매핑용 의미 코드(WARNING/RECORD_REMINDER/...).
+  type: NotificationType;
+  // 클릭 시 이동 대상(GUIDE_WARNING/HOME/REPORT). 임의 URL이 아니라 enum만 전달.
+  linkTo: NotificationLinkTo;
 }
 
 // FCM이 "이 토큰은 더 이상 유효하지 않다"고 알리는 에러 코드들.
@@ -56,12 +64,19 @@ export class PushSenderService {
     // FCM 상한(500) 단위로 나눠 발송하고, 각 청크의 죽은 토큰을 모은다.
     for (let start = 0; start < tokens.length; start += FCM_MULTICAST_LIMIT) {
       const chunk = tokens.slice(start, start + FCM_MULTICAST_LIMIT);
+      // data-only 메시지: notification 필드를 넣지 않는다. 백그라운드에서는 프론트
+      // 서비스워커가 showNotification()으로, 포그라운드에서는 onMessage()로 직접
+      // 표시해 자동 표시와 수동 표시가 겹치지 않게 한다(프론트 계약). FCM data 값은
+      // 모두 문자열이어야 하므로 notificationId는 문자열로 변환해 넣는다.
       const response = await this.firebase.sendEachForMulticast({
         tokens: chunk,
-        notification: { title: payload.title, body: payload.body },
-        ...(payload.link
-          ? { webpush: { fcmOptions: { link: payload.link } } }
-          : {}),
+        data: {
+          notificationId: String(payload.notificationId),
+          title: payload.title,
+          body: payload.body,
+          type: payload.type,
+          linkTo: payload.linkTo,
+        },
       });
 
       response.responses.forEach((result, index) => {
