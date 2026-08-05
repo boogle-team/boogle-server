@@ -12,4 +12,15 @@ describe('DeleteMeRequestDto', () => {
       await expect(validate(dto)).resolves.toHaveLength(0);
     },
   );
+
+  it('rejects a withdrawal reason outside the allowed values', async () => {
+    const dto = Object.assign(new DeleteMeRequestDto(), {
+      confirmation: '탈퇴합니다',
+      reason: 'INVALID',
+    });
+
+    await expect(validate(dto)).resolves.toEqual([
+      expect.objectContaining({ property: 'reason' }),
+    ]);
+  });
 });
