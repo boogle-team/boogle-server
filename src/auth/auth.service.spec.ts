@@ -128,6 +128,9 @@ describe('AuthService', () => {
       tokenType: 'Bearer',
       user: { id: 1, email: 'member@example.com' },
     });
+    if (result.nextAction === 'ACCOUNT_LINK_REQUIRED') {
+      throw new Error('기존 소셜 계정 로그인 결과가 필요합니다.');
+    }
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBeTruthy();
     expect(prisma.member.create).not.toHaveBeenCalled();
