@@ -454,20 +454,6 @@ export class UserService {
   }
 
   async deleteMe(userId: string, dto: DeleteMeRequestDto) {
-    if (!dto.reason) {
-      throw new BusinessException(
-        UserErrorCode.WITHDRAWAL_REASON_REQUIRED,
-        '회원탈퇴 사유는 필수입니다.',
-      );
-    }
-
-    if (dto.reason === 'OTHER' && !dto.reasonDetail?.trim()) {
-      throw new BusinessException(
-        UserErrorCode.WITHDRAWAL_REASON_DETAIL_REQUIRED,
-        '기타 사유를 선택한 경우 상세 사유를 입력해주세요.',
-      );
-    }
-
     if (dto.confirmation !== '탈퇴합니다') {
       throw new BusinessException(
         UserErrorCode.WITHDRAWAL_CONFIRMATION_INVALID,
