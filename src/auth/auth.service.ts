@@ -12,6 +12,7 @@ import { S3StorageService } from '@/common/storage/s3-storage.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AuthErrorCode } from './auth-error-code.enum';
 import { AuthTemporaryTokenService } from './auth-temporary-token.service';
+import { AccountLinkRequestDto } from './dto/account-link-request.dto';
 import { LogoutRequestDto } from './dto/logout-request.dto';
 import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
 import { OAuthResultExchangeRequestDto } from './dto/oauth-result-exchange-request.dto';
@@ -20,6 +21,7 @@ import { AuthenticatedUser } from './types/authenticated-user.type';
 import type {
   AuthTokenPairResponse,
   OAuthExchangeUserResponse,
+  OAuthLoginSuccessResponse,
   OAuthResultExchangeResponse,
 } from './types/oauth-result-exchange-response.type';
 
@@ -52,6 +54,10 @@ interface OAuthStatePayload {
 }
 
 type OAuthResultPayload = OAuthProfile;
+
+interface AccountLinkPayload extends OAuthProfile {
+  memberId: string;
+}
 
 interface MemberResponseSource {
   id: bigint;
@@ -268,6 +274,7 @@ export class AuthService {
         if (socialAccount) {
           this.assertActiveMember(socialAccount.user);
           return {
+            kind: 'login' as const,
             member: socialAccount.user,
             tokens: await this.issueTokenPair(socialAccount.user, tx),
             isNewUser: false,
@@ -292,19 +299,10 @@ export class AuthService {
             );
           }
 
-          await tx.socialAccount.create({
-            data: {
-              userId: member.id,
-              provider: providerCode,
-              providerId: profile.providerId,
-              email: verifiedEmail,
-            },
-          });
-
           return {
+            kind: 'link' as const,
             member,
-            tokens: await this.issueTokenPair(member, tx),
-            isNewUser: false,
+            profile,
           };
         }
 
@@ -328,43 +326,38 @@ export class AuthService {
         });
 
         return {
+          kind: 'login' as const,
           member: createdMember,
           tokens: await this.issueTokenPair(createdMember, tx),
           isNewUser: true,
         };
       });
 
-      const onboardingCompleted = this.isOnboardingCompleted(
+      if (exchangeResult.kind === 'link') {
+        const accountLinkTokenExpiresIn = this.getAccountLinkTokenExpiresIn();
+        const accountLinkToken = await this.temporaryTokens.create(
+          'ACCOUNT_LINK',
+          {
+            ...exchangeResult.profile,
+            memberId: exchangeResult.member.id.toString(),
+          } satisfies AccountLinkPayload,
+          accountLinkTokenExpiresIn,
+        );
+
+        return {
+          nextAction: 'ACCOUNT_LINK_REQUIRED',
+          accountLinkToken,
+          accountLinkTokenExpiresIn,
+          provider: exchangeResult.profile.provider,
+          email: verifiedEmail,
+        };
+      }
+
+      return this.buildOAuthLoginResponse(
         exchangeResult.member,
+        exchangeResult.tokens,
+        exchangeResult.isNewUser,
       );
-      const sensitiveInfoAgreed =
-        exchangeResult.member.gender === 'M'
-          ? false
-          : await this.getSensitiveInfoAgreed(
-              exchangeResult.member.id,
-              exchangeResult.member.sensInfo,
-            );
-
-      const response = {
-        ...exchangeResult.tokens,
-        isNewUser: exchangeResult.isNewUser,
-        user: await this.toMemberResponse(
-          exchangeResult.member,
-          sensitiveInfoAgreed,
-        ),
-      };
-
-      return onboardingCompleted
-        ? {
-            ...response,
-            nextAction: 'HOME',
-            onboardingCompleted: true,
-          }
-        : {
-            ...response,
-            nextAction: 'ONBOARDING_REQUIRED',
-            onboardingCompleted: false,
-          };
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;
@@ -382,6 +375,93 @@ export class AuthService {
       throw new BusinessException(
         AuthErrorCode.SOCIAL_LOGIN_FAILED,
         '소셜 로그인 처리 중 오류가 발생했습니다.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async linkOAuthAccount(
+    dto: AccountLinkRequestDto,
+  ): Promise<OAuthLoginSuccessResponse> {
+    try {
+      const rawPayload = await this.temporaryTokens.consume<unknown>(
+        dto.accountLinkToken,
+        'ACCOUNT_LINK',
+        {
+          invalidCode: AuthErrorCode.AUTH_INVALID_ACCOUNT_LINK_TOKEN,
+          invalidMessage: '유효하지 않거나 이미 사용된 계정 연동 토큰입니다.',
+          expiredCode: AuthErrorCode.AUTH_ACCOUNT_LINK_TOKEN_EXPIRED,
+          expiredMessage:
+            '계정 연동 요청이 만료되었습니다. 소셜 로그인을 다시 진행해주세요.',
+        },
+      );
+      const payload = this.parseAccountLinkPayload(rawPayload);
+      const providerCode = this.toProviderCode(payload.provider);
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const member = await tx.member.findUnique({
+          where: { id: BigInt(payload.memberId) },
+        });
+        if (!member || member.email !== payload.email) {
+          throw new BusinessException(
+            AuthErrorCode.SOCIAL_LOGIN_FAILED,
+            '소셜 계정을 연동할 수 없습니다.',
+            HttpStatus.CONFLICT,
+          );
+        }
+        this.assertActiveMember(member);
+
+        const socialAccount = await tx.socialAccount.findFirst({
+          where: {
+            OR: [
+              {
+                provider: providerCode,
+                providerId: payload.providerId,
+              },
+              { userId: member.id, provider: providerCode },
+            ],
+          },
+        });
+        if (socialAccount) {
+          throw new BusinessException(
+            AuthErrorCode.SOCIAL_LOGIN_FAILED,
+            '소셜 계정을 연동할 수 없습니다.',
+            HttpStatus.CONFLICT,
+          );
+        }
+
+        await tx.socialAccount.create({
+          data: {
+            userId: member.id,
+            provider: providerCode,
+            providerId: payload.providerId,
+            email: payload.email,
+          },
+        });
+
+        return {
+          member,
+          tokens: await this.issueTokenPair(member, tx),
+        };
+      });
+
+      return this.buildOAuthLoginResponse(result.member, result.tokens, false);
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      if (this.isUniqueConstraintError(error)) {
+        throw new BusinessException(
+          AuthErrorCode.SOCIAL_LOGIN_FAILED,
+          '소셜 계정을 연동할 수 없습니다.',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      this.logError('linkOAuthAccount', error);
+      throw new BusinessException(
+        AuthErrorCode.SOCIAL_LOGIN_FAILED,
+        '소셜 계정 연동 중 오류가 발생했습니다.',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -750,6 +830,41 @@ export class AuthService {
     };
   }
 
+  private parseAccountLinkPayload(payload: unknown): AccountLinkPayload {
+    if (!this.isRecord(payload) || typeof payload.memberId !== 'string') {
+      throw this.invalidAccountLinkToken();
+    }
+
+    const provider = payload.provider;
+    const providerId = payload.providerId;
+    const email = payload.email;
+    const emailVerified = payload.emailVerified;
+    const nickname = payload.nickname;
+    const profileImage = payload.profileImage;
+    if (
+      !/^\d+$/.test(payload.memberId) ||
+      (provider !== 'google' && provider !== 'kakao') ||
+      typeof providerId !== 'string' ||
+      typeof email !== 'string' ||
+      email.length === 0 ||
+      emailVerified !== true ||
+      (nickname !== null && typeof nickname !== 'string') ||
+      (profileImage !== null && typeof profileImage !== 'string')
+    ) {
+      throw this.invalidAccountLinkToken();
+    }
+
+    return {
+      memberId: payload.memberId,
+      provider,
+      providerId,
+      email,
+      emailVerified,
+      nickname,
+      profileImage,
+    };
+  }
+
   private normalizeProfile(profile: OAuthProfile): OAuthProfile {
     return {
       ...profile,
@@ -979,6 +1094,14 @@ export class AuthService {
     );
   }
 
+  private invalidAccountLinkToken() {
+    return new BusinessException(
+      AuthErrorCode.AUTH_INVALID_ACCOUNT_LINK_TOKEN,
+      '유효하지 않거나 이미 사용된 계정 연동 토큰입니다.',
+      HttpStatus.UNAUTHORIZED,
+    );
+  }
+
   private invalidAuthorizationCode() {
     return this.socialProviderError();
   }
@@ -1025,6 +1148,31 @@ export class AuthService {
     };
   }
 
+  private async buildOAuthLoginResponse(
+    member: MemberResponseSource,
+    tokens: AuthTokenPairResponse,
+    isNewUser: boolean,
+  ): Promise<OAuthLoginSuccessResponse> {
+    const onboardingCompleted = this.isOnboardingCompleted(member);
+    const sensitiveInfoAgreed =
+      member.gender === 'M'
+        ? false
+        : await this.getSensitiveInfoAgreed(member.id, member.sensInfo);
+    const response = {
+      ...tokens,
+      isNewUser,
+      user: await this.toMemberResponse(member, sensitiveInfoAgreed),
+    };
+
+    return onboardingCompleted
+      ? { ...response, nextAction: 'HOME', onboardingCompleted: true }
+      : {
+          ...response,
+          nextAction: 'ONBOARDING_REQUIRED',
+          onboardingCompleted: false,
+        };
+  }
+
   private isOnboardingCompleted(member: MemberResponseSource) {
     return Boolean(
       member.nickname &&
@@ -1067,6 +1215,13 @@ export class AuthService {
 
   private getOAuthResultExpiresIn() {
     return this.parseExpiresIn(process.env.OAUTH_RESULT_EXPIRES_IN ?? '60', 60);
+  }
+
+  private getAccountLinkTokenExpiresIn() {
+    return this.parseExpiresIn(
+      process.env.ACCOUNT_LINK_TOKEN_EXPIRES_IN ?? '300',
+      300,
+    );
   }
 
   private getAccessTokenExpiresIn() {

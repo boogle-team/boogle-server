@@ -9,7 +9,8 @@ import { createHash, randomBytes } from 'crypto';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
 
-export type AuthTemporaryTokenType = 'OAUTH_STATE' | 'OAUTH_RESULT';
+export type AuthTemporaryTokenType =
+  'OAUTH_STATE' | 'OAUTH_RESULT' | 'ACCOUNT_LINK';
 
 interface ConsumeTokenErrors {
   invalidCode: string;

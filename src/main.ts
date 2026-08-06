@@ -57,6 +57,10 @@ const VALIDATION_ERROR_MESSAGE = new Map<DomainValidationErrorCode, string>([
     AuthErrorCode.AUTH_OAUTH_RESULT_CODE_REQUIRED,
     'OAuth 로그인 결과 코드는 필수입니다.',
   ],
+  [
+    AuthErrorCode.AUTH_ACCOUNT_LINK_TOKEN_REQUIRED,
+    'accountLinkToken은 필수입니다.',
+  ],
   [AuthErrorCode.REFRESH_TOKEN_REQUIRED, 'refreshToken은 필수입니다.'],
   [UserErrorCode.NICKNAME_REQUIRED, 'nickname은 필수입니다.'],
   [

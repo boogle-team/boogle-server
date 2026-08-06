@@ -453,30 +453,6 @@ export class UserService {
     return this.toProfileImageResponse(updatedMember);
   }
 
-  async deleteProfileImage(userId: string) {
-    const member = await this.findActiveMemberOrThrow(userId);
-    if (!member.profileImageKey) {
-      return this.toProfileImageResponse(member);
-    }
-
-    let updatedMember: MemberResponseSource;
-    try {
-      updatedMember = await this.prisma.member.update({
-        where: { id: member.id },
-        data: { profileImageKey: null },
-      });
-    } catch {
-      throw new BusinessException(
-        UserErrorCode.PROFILE_IMAGE_UPDATE_FAILED,
-        '프로필 이미지 정보를 변경하지 못했습니다.',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    await this.profileImages.deleteBestEffort(member.profileImageKey);
-    return this.toProfileImageResponse(updatedMember);
-  }
-
   async deleteMe(userId: string, dto: DeleteMeRequestDto) {
     if (!dto.reason) {
       throw new BusinessException(

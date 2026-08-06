@@ -535,24 +535,5 @@ describe('UserService', () => {
       });
       expect(profileImages.deleteBestEffort).toHaveBeenCalledWith('new-key');
     });
-
-    it('deletes custom image data and falls back to the social image', async () => {
-      const currentMember = {
-        ...member,
-        profileImg: 'https://social.example.com/profile.jpg',
-        profileImageKey: 'custom-key',
-      };
-      prisma.member.findUnique.mockResolvedValue(currentMember);
-      prisma.member.update.mockResolvedValue({
-        ...currentMember,
-        profileImageKey: null,
-      });
-
-      await expect(service.deleteProfileImage('1')).resolves.toEqual({
-        profileImage: 'https://social.example.com/profile.jpg',
-        profileImageSource: 'SOCIAL',
-      });
-      expect(profileImages.deleteBestEffort).toHaveBeenCalledWith('custom-key');
-    });
   });
 });

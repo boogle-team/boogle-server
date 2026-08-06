@@ -15,6 +15,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiFoundResponse,
   ApiInternalServerErrorResponse,
@@ -28,6 +29,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ResponseMessage } from '@/common/decorators/response-message.decorator';
 import { AuthService } from './auth.service';
+import { AccountLinkRequestDto } from './dto/account-link-request.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LogoutRequestDto } from './dto/logout-request.dto';
 import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
@@ -101,13 +103,34 @@ export class AuthController {
     description: '유효하지 않거나 만료된 결과 코드 또는 미검증 이메일',
   })
   @ApiForbiddenResponse({ description: '탈퇴한 회원' })
-  @ResponseMessage<{ nextAction: 'HOME' | 'ONBOARDING_REQUIRED' }>((data) =>
-    data.nextAction === 'ONBOARDING_REQUIRED'
+  @ResponseMessage<{
+    nextAction: 'HOME' | 'ONBOARDING_REQUIRED' | 'ACCOUNT_LINK_REQUIRED';
+  }>((data) => {
+    if (data.nextAction === 'ACCOUNT_LINK_REQUIRED') {
+      return '동일한 이메일로 가입된 계정이 있습니다. 계정 연동 여부를 선택해주세요.';
+    }
+    return data.nextAction === 'ONBOARDING_REQUIRED'
       ? '로그인했습니다. 프로필을 입력해주세요.'
-      : '로그인했습니다.',
-  )
+      : '로그인했습니다.';
+  })
   exchangeOAuthResult(@Body() dto: OAuthResultExchangeRequestDto) {
     return this.authService.exchangeOAuthResult(dto);
+  }
+
+  @Post('oauth/link')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '동일 이메일 소셜 계정 연동' })
+  @ApiBody({ type: AccountLinkRequestDto })
+  @ApiOkResponse({ description: '계정 연동 및 로그인 성공' })
+  @ApiBadRequestResponse({ description: '계정 연동 토큰 누락' })
+  @ApiUnauthorizedResponse({
+    description: '유효하지 않음·사용 완료·만료된 계정 연동 토큰',
+  })
+  @ApiForbiddenResponse({ description: '탈퇴한 회원' })
+  @ApiConflictResponse({ description: '이미 연결된 소셜 계정' })
+  @ResponseMessage('소셜 계정이 연동되었습니다.')
+  linkOAuthAccount(@Body() dto: AccountLinkRequestDto) {
+    return this.authService.linkOAuthAccount(dto);
   }
 
   @Post('logout')

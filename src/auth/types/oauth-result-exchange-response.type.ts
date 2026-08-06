@@ -23,7 +23,7 @@ interface OAuthResultExchangeBase extends AuthTokenPairResponse {
   user: OAuthExchangeUserResponse;
 }
 
-export type OAuthResultExchangeResponse =
+export type OAuthLoginSuccessResponse =
   | (OAuthResultExchangeBase & {
       nextAction: 'HOME';
       onboardingCompleted: true;
@@ -32,3 +32,14 @@ export type OAuthResultExchangeResponse =
       nextAction: 'ONBOARDING_REQUIRED';
       onboardingCompleted: false;
     });
+
+export interface OAuthAccountLinkRequiredResponse {
+  nextAction: 'ACCOUNT_LINK_REQUIRED';
+  accountLinkToken: string;
+  accountLinkTokenExpiresIn: number;
+  provider: 'google' | 'kakao';
+  email: string;
+}
+
+export type OAuthResultExchangeResponse =
+  OAuthLoginSuccessResponse | OAuthAccountLinkRequiredResponse;

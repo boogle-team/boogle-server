@@ -340,31 +340,6 @@ export class UserController {
     return this.userService.updateProfileImage(user.id, image);
   }
 
-  @Delete('me/profile-image')
-  @ApiOperation({ summary: '사용자 업로드 프로필 이미지 삭제' })
-  @ApiOkResponse({
-    description: '사용자 업로드 프로필 이미지 삭제 성공',
-    schema: {
-      example: {
-        success: true,
-        data: {
-          profileImage: 'https://social.example.com/profile.png',
-          profileImageSource: 'SOCIAL',
-        },
-        message: '프로필 이미지가 삭제되었습니다.',
-      },
-    },
-  })
-  @ApiInternalServerErrorResponse({
-    description: '프로필 이미지 정보 변경 실패',
-  })
-  @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
-  @GenericUnauthorized()
-  @ResponseMessage('프로필 이미지가 삭제되었습니다.')
-  deleteProfileImage(@CurrentUser() user: AuthenticatedUser) {
-    return this.userService.deleteProfileImage(user.id);
-  }
-
   @Delete('me')
   @ApiOperation({ summary: '회원탈퇴' })
   @ApiResponse({
