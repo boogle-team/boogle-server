@@ -41,9 +41,15 @@ export class RecordService {
   }
 
   // 변 상태 stoolSimple 변환 저장
-  private convertStoolSimple(stoolBristol?: number): string | undefined {
+  private convertStoolSimple(
+    stoolBristol?: number | null,
+  ): string | null | undefined {
     if (stoolBristol == null) {
       return undefined;
+    }
+
+    if (stoolBristol === null) {
+      return null;
     }
 
     if (stoolBristol <= 2) {

@@ -39,7 +39,7 @@ export class CreateRecordDto {
   @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, {
     message: 'bowelMovementAt must be HH:mm format',
   })
-  bowelMovementAt?: string;
+  bowelMovementAt?: string | null;
 
   @ApiPropertyOptional({
     example: 4,
@@ -47,7 +47,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsInt()
-  stoolBristol?: number;
+  stoolBristol?: number | null;
 
   @ApiPropertyOptional({
     example: 'C',
@@ -55,7 +55,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  bowelFeeling?: string;
+  bowelFeeling?: string | null;
 
   @ApiPropertyOptional({
     example: '0',
@@ -63,7 +63,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsInt()
-  stomach?: number;
+  stomach?: number | null;
 
   @ApiPropertyOptional({
     example: 'L',
@@ -71,7 +71,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  distension?: string;
+  distension?: string | null;
 
   @ApiPropertyOptional({
     example: 'N',
@@ -79,7 +79,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  remainingFeeling?: string;
+  remainingFeeling?: string | null;
 
   @ApiPropertyOptional({
     example: 'M',
@@ -87,7 +87,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  urgency?: string;
+  urgency?: string | null;
 
   @ApiPropertyOptional({
     example: 5,
@@ -95,7 +95,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsInt()
-  takenTime?: number;
+  takenTime?: number | null;
 
   @ApiPropertyOptional({
     example: 'M',
@@ -103,7 +103,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  amount?: string;
+  amount?: string | null;
 
   @ApiPropertyOptional({
     example: 'B',
@@ -111,7 +111,7 @@ export class CreateRecordDto {
   })
   @IsOptional()
   @IsString()
-  color?: string;
+  color?: string | null;
 }
 
 // 부글 기록 수정 dto
