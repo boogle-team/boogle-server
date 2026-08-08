@@ -216,7 +216,7 @@ Google/Kakao 개발자 콘솔에 등록하는 Redirect URI는 각각 `GOOGLE_RED
 - 운영 Google Redirect URI: `https://api.glgc.cloud/api/v1/auth/oauth/google/callback`
 - 운영 Kakao Redirect URI: `https://api.glgc.cloud/api/v1/auth/oauth/kakao/callback`
 
-운영 `FRONTEND_ORIGIN`과 `FRONTEND_OAUTH_CALLBACK_URL`에는 API 도메인이 아니라 실제 배포된 프론트엔드 도메인을 입력합니다. `FRONTEND_ORIGIN`은 쉼표로 여러 허용 Origin을 지정할 수 있습니다.
+운영 `FRONTEND_ORIGIN`과 `FRONTEND_OAUTH_CALLBACK_URL`에는 API 도메인이 아니라 실제 배포된 프론트엔드 도메인을 입력합니다. `FRONTEND_ORIGIN`은 로컬과 배포 주소를 쉼표로 함께 등록할 수 있습니다(예: `http://localhost:5173,https://app.example.com`). 프론트는 소셜 로그인 시작 URL에 자신의 Origin을 `frontendOrigin` 쿼리로 전달합니다(예: `/api/v1/auth/oauth/google?frontendOrigin=http%3A%2F%2Flocalhost%3A5173`). 서버는 허용 목록에 있는 Origin만 OAuth state에 저장하며, 로그인 완료 후 해당 Origin의 `/oauth/callback`으로 돌려보냅니다. `frontendOrigin`을 생략하면 기존 `FRONTEND_OAUTH_CALLBACK_URL`로 이동합니다.
 
 ### 프로필 이미지 S3 저장
 

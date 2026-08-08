@@ -46,7 +46,12 @@ describe('AuthController', () => {
     });
     const { response, redirect, cookie } = createResponse();
 
-    await controller.startOAuth('kakao', response);
+    await controller.startOAuth('kakao', {}, response);
+
+    expect(authService.createAuthorizationUrl).toHaveBeenCalledWith(
+      'kakao',
+      undefined,
+    );
 
     expect(cookie).toHaveBeenCalledWith(
       'boogle_oauth_state_kakao',
@@ -69,9 +74,31 @@ describe('AuthController', () => {
     authService.createAuthorizationUrl.mockRejectedValue(error);
     const { response, redirect, cookie } = createResponse();
 
-    await expect(controller.startOAuth('google', response)).rejects.toBe(error);
+    await expect(controller.startOAuth('google', {}, response)).rejects.toBe(
+      error,
+    );
     expect(cookie).not.toHaveBeenCalled();
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('passes the requested frontend Origin to the authorization service', async () => {
+    authService.createAuthorizationUrl.mockResolvedValue({
+      authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+      state: 'state-value',
+      stateExpiresIn: 600,
+    });
+    const { response } = createResponse();
+
+    await controller.startOAuth(
+      'google',
+      { frontendOrigin: 'http://localhost:5173' },
+      response,
+    );
+
+    expect(authService.createAuthorizationUrl).toHaveBeenCalledWith(
+      'google',
+      'http://localhost:5173',
+    );
   });
 
   it('passes the browser state cookie to the OAuth callback', async () => {

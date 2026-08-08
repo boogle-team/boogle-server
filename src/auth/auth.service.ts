@@ -51,6 +51,7 @@ interface OAuthStatePayload {
   provider: OAuthProvider;
   redirectUri: string;
   codeVerifier: string | null;
+  frontendCallbackUrl: string;
 }
 
 type OAuthResultPayload = OAuthProfile;
@@ -84,18 +85,24 @@ export class AuthService {
     private readonly storage: S3StorageService,
   ) {}
 
-  async createAuthorizationUrl(providerValue: string) {
+  async createAuthorizationUrl(
+    providerValue: string,
+    requestedFrontendOrigin?: string,
+  ) {
     const provider = this.assertProvider(providerValue);
 
     try {
       const clientId = this.getProviderClientId(provider);
       const redirectUri = this.getProviderRedirectUri(provider);
+      const frontendCallbackUrl = this.getFrontendOAuthCallbackUrl(
+        requestedFrontendOrigin,
+      );
       const stateExpiresIn = this.getOAuthStateExpiresIn();
       const codeVerifier =
         provider === 'google' ? randomBytes(48).toString('base64url') : null;
       const state = await this.temporaryTokens.create(
         'OAUTH_STATE',
-        { provider, redirectUri, codeVerifier },
+        { provider, redirectUri, codeVerifier, frontendCallbackUrl },
         stateExpiresIn,
       );
 
@@ -156,6 +163,7 @@ export class AuthService {
     query: OAuthCallbackQueryDto,
     browserState?: string,
   ) {
+    let frontendCallbackUrl: string | undefined;
     try {
       const provider = this.assertProvider(providerValue);
 
@@ -182,6 +190,7 @@ export class AuthService {
         },
       );
       const state = this.parseOAuthState(statePayload);
+      frontendCallbackUrl = state.frontendCallbackUrl;
 
       if (state.provider !== provider) {
         throw new BusinessException(
@@ -222,7 +231,10 @@ export class AuthService {
         this.getOAuthResultExpiresIn(),
       );
 
-      return this.buildFrontendOAuthCallbackUrl({ oauthResultCode });
+      return this.buildFrontendOAuthCallbackUrl(
+        { oauthResultCode },
+        frontendCallbackUrl,
+      );
     } catch (error) {
       const errorCode = this.toOAuthCallbackErrorCode(error);
 
@@ -230,7 +242,10 @@ export class AuthService {
         this.logError('createOAuthCallbackRedirect', error);
       }
 
-      return this.buildFrontendOAuthCallbackUrl({ error: errorCode });
+      return this.buildFrontendOAuthCallbackUrl(
+        { error: errorCode },
+        frontendCallbackUrl,
+      );
     }
   }
 
@@ -785,16 +800,18 @@ export class AuthService {
     const provider = payload.provider;
     const redirectUri = payload.redirectUri;
     const codeVerifier = payload.codeVerifier;
+    const frontendCallbackUrl = payload.frontendCallbackUrl;
 
     if (
       (provider !== 'google' && provider !== 'kakao') ||
       typeof redirectUri !== 'string' ||
-      (codeVerifier !== null && typeof codeVerifier !== 'string')
+      (codeVerifier !== null && typeof codeVerifier !== 'string') ||
+      typeof frontendCallbackUrl !== 'string'
     ) {
       throw this.invalidOAuthState();
     }
 
-    return { provider, redirectUri, codeVerifier };
+    return { provider, redirectUri, codeVerifier, frontendCallbackUrl };
   }
 
   private parseOAuthResult(payload: unknown): OAuthResultPayload {
@@ -872,12 +889,11 @@ export class AuthService {
     };
   }
 
-  private buildFrontendOAuthCallbackUrl(params: Record<string, string>) {
-    const configuredUrl = process.env.FRONTEND_OAUTH_CALLBACK_URL?.trim();
-    const frontendOrigin = process.env.FRONTEND_ORIGIN?.split(',')[0]?.trim();
-    const rawUrl =
-      configuredUrl ||
-      (frontendOrigin ? `${frontendOrigin}/oauth/callback` : null);
+  private buildFrontendOAuthCallbackUrl(
+    params: Record<string, string>,
+    callbackUrl?: string,
+  ) {
+    const rawUrl = callbackUrl ?? this.getFrontendOAuthCallbackUrl();
 
     if (!rawUrl) {
       throw new BusinessException(
@@ -900,6 +916,47 @@ export class AuthService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private getFrontendOAuthCallbackUrl(requestedOrigin?: string) {
+    const allowedOrigins = (process.env.FRONTEND_ORIGIN ?? '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/$/, ''))
+      .filter(Boolean);
+
+    if (requestedOrigin) {
+      let normalizedOrigin: string;
+      try {
+        const url = new URL(requestedOrigin);
+        normalizedOrigin = url.origin;
+        if (
+          url.href !== `${url.origin}/` ||
+          !allowedOrigins.includes(url.origin)
+        ) {
+          throw new Error('not allowed');
+        }
+      } catch {
+        throw new BusinessException(
+          AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+          '허용되지 않은 프론트 Origin입니다.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      return `${normalizedOrigin}/oauth/callback`;
+    }
+
+    const configuredUrl = process.env.FRONTEND_OAUTH_CALLBACK_URL?.trim();
+    if (configuredUrl) {
+      return configuredUrl;
+    }
+    if (allowedOrigins[0]) {
+      return `${allowedOrigins[0]}/oauth/callback`;
+    }
+    throw new BusinessException(
+      AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+      'FRONTEND_OAUTH_CALLBACK_URL 환경변수가 필요합니다.',
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
   }
 
   private toOAuthCallbackErrorCode(error: unknown) {
