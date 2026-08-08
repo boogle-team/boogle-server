@@ -144,6 +144,50 @@ describe('AuthService', () => {
     );
   });
 
+  it('returns an access-denied error to the frontend callback stored in OAuth state', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      provider: 'google',
+      redirectUri: 'https://api.example.com/api/v1/auth/oauth/google/callback',
+      codeVerifier: 'verifier',
+      frontendCallbackUrl: 'http://localhost:5173/oauth/callback',
+    });
+
+    await expect(
+      service.createOAuthCallbackRedirect(
+        'google',
+        {
+          error: 'access_denied',
+          state: 'state-value',
+        },
+        'state-value',
+      ),
+    ).resolves.toBe(
+      'http://localhost:5173/oauth/callback?error=AUTH_OAUTH_ACCESS_DENIED',
+    );
+  });
+
+  it('returns an authorization-code exchange error to the frontend callback stored in OAuth state', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      provider: 'google',
+      redirectUri: 'https://api.example.com/api/v1/auth/oauth/google/callback',
+      codeVerifier: 'verifier',
+      frontendCallbackUrl: 'http://localhost:5173/oauth/callback',
+    });
+    jest
+      .spyOn(service as never, 'exchangeAuthorizationCode' as never)
+      .mockRejectedValue(new Error('provider failed') as never);
+
+    await expect(
+      service.createOAuthCallbackRedirect(
+        'google',
+        { code: 'code', state: 'state-value' },
+        'state-value',
+      ),
+    ).resolves.toBe(
+      'http://localhost:5173/oauth/callback?error=AUTH_OAUTH_CALLBACK_FAILED',
+    );
+  });
+
   it('rejects an OAuth callback whose browser state does not match', async () => {
     await expect(
       service.createOAuthCallbackRedirect(
