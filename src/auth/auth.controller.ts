@@ -34,6 +34,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LogoutRequestDto } from './dto/logout-request.dto';
 import { OAuthCallbackQueryDto } from './dto/oauth-callback-query.dto';
 import { OAuthResultExchangeRequestDto } from './dto/oauth-result-exchange-request.dto';
+import { OAuthStartQueryDto } from './dto/oauth-start-query.dto';
 import { RefreshTokenRequestDto } from './dto/refresh-token-request.dto';
 import type { AuthenticatedUser } from './types/authenticated-user.type';
 
@@ -52,10 +53,14 @@ export class AuthController {
   @ApiInternalServerErrorResponse({ description: 'OAuth 요청 생성 실패' })
   async startOAuth(
     @Param('provider') provider: string,
+    @Query() query: OAuthStartQueryDto,
     @Res() response: Response,
   ) {
     const { authorizationUrl, state, stateExpiresIn } =
-      await this.authService.createAuthorizationUrl(provider);
+      await this.authService.createAuthorizationUrl(
+        provider,
+        query.frontendOrigin,
+      );
     response.cookie(this.getOAuthStateCookieName(provider), state, {
       ...this.getOAuthStateCookieOptions(provider),
       maxAge: stateExpiresIn * 1000,

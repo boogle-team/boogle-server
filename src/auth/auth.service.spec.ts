@@ -67,6 +67,8 @@ describe('AuthService', () => {
       'https://api.example.com/api/v1/auth/oauth/google/callback';
     process.env.FRONTEND_OAUTH_CALLBACK_URL =
       'https://frontend.example.com/oauth/callback';
+    process.env.FRONTEND_ORIGIN =
+      'http://localhost:5173,https://frontend.example.com';
     prisma.$transaction.mockImplementation(
       (callback: (tx: typeof prisma) => unknown) => callback(prisma),
     );
@@ -92,6 +94,53 @@ describe('AuthService', () => {
       'OAUTH_STATE',
       expect.objectContaining({ provider: 'google' }),
       600,
+    );
+  });
+
+  it('stores the requested local frontend callback in OAuth state', async () => {
+    temporaryTokens.create.mockResolvedValue('state-value');
+
+    await service.createAuthorizationUrl('google', 'http://localhost:5173');
+
+    expect(temporaryTokens.create).toHaveBeenCalledWith(
+      'OAUTH_STATE',
+      expect.objectContaining({
+        frontendCallbackUrl: 'http://localhost:5173/oauth/callback',
+      }),
+      600,
+    );
+  });
+
+  it('rejects a frontend Origin outside the allowlist', async () => {
+    await expect(
+      service.createAuthorizationUrl('google', 'https://evil.example.com'),
+    ).rejects.toMatchObject({
+      errorCode: AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+      status: HttpStatus.BAD_REQUEST,
+    });
+    expect(temporaryTokens.create).not.toHaveBeenCalled();
+  });
+
+  it('returns to the frontend callback stored in OAuth state', async () => {
+    temporaryTokens.consume.mockResolvedValue({
+      provider: 'google',
+      redirectUri: 'https://api.example.com/api/v1/auth/oauth/google/callback',
+      codeVerifier: 'verifier',
+      frontendCallbackUrl: 'http://localhost:5173/oauth/callback',
+    });
+    temporaryTokens.create.mockResolvedValue('result-code');
+    jest
+      .spyOn(service as never, 'exchangeAuthorizationCode' as never)
+      .mockResolvedValue(oauthProfile as never);
+
+    await expect(
+      service.createOAuthCallbackRedirect(
+        'google',
+        { code: 'code', state: 'state-value' },
+        'state-value',
+      ),
+    ).resolves.toBe(
+      'http://localhost:5173/oauth/callback?oauthResultCode=result-code',
     );
   });
 
