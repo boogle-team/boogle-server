@@ -70,12 +70,15 @@ export class LifeRecordService {
     const regDate = dto.regDate as string;
     const userIdBigInt = toBigInt(userId);
 
+    // status='D'(soft-delete)인 기록은 (userId, regDate) DB 유니크 제약은 그대로
+    // 차지하고 있으므로, 존재 여부만으로 막지 않고 "삭제된 기록을 되살리는" 방식으로
+    // 처리한다. 실제로 막아야 하는 건 status가 'D'가 아닌(=현재 살아있는) 중복뿐이다.
     const existing = await this.prisma.lifeRecord.findUnique({
       where: {
         userId_regDate: { userId: userIdBigInt, regDate: this.toDate(regDate) },
       },
     });
-    if (existing) {
+    if (existing && existing.status !== 'D') {
       throw new BusinessException(
         LifeRecordErrorCode.LIFE_RECORD_ALREADY_EXISTS,
         '해당 날짜의 생활 기록이 이미 존재합니다.',
@@ -88,51 +91,79 @@ export class LifeRecordService {
     const medicineIds = await this.resolveValidMedicineIds(dto.medicineIds);
 
     try {
-      const created = await this.prisma.lifeRecord.create({
-        data: {
-          userId: userIdBigInt,
-          regDate: this.toDate(regDate),
-          sleep: dto.sleep,
-          stress: dto.stress,
-          water: dto.water,
-          waterIntake: dto.waterIntake,
-          mealRegular: dto.mealRegular,
-          memo: dto.memo,
-          autoTags: tagNames.length ? tagNames.join(',') : null,
-          sleepTime: dto.sleepTime,
-          exercise: dto.exercise,
-          caffeine: dto.caffeine,
-          outing: dto.outing,
-          hormone: dto.hormone,
-          lifeTags: tagNames.length
-            ? {
-                create: tagNames.map((name) => ({
-                  tag: {
-                    connectOrCreate: {
-                      where: { name },
-                      create: { name },
-                    },
-                  },
-                })),
-              }
-            : undefined,
-          foodTags: foodIds.length
-            ? {
-                create: foodIds.map((foodId) => ({
-                  food: { connect: { id: foodId } },
-                })),
-              }
-            : undefined,
-          medicineMaps: medicineIds.length
-            ? {
-                create: medicineIds.map((medicineId) => ({
-                  medicine: { connect: { id: medicineId } },
-                })),
-              }
-            : undefined,
-        },
-        include: LIFE_RECORD_INCLUDE,
-      });
+      const recordData = {
+        sleep: dto.sleep,
+        stress: dto.stress,
+        water: dto.water,
+        waterIntake: dto.waterIntake,
+        mealRegular: dto.mealRegular,
+        memo: dto.memo,
+        autoTags: tagNames.length ? tagNames.join(',') : null,
+        sleepTime: dto.sleepTime,
+        exercise: dto.exercise,
+        caffeine: dto.caffeine,
+        outing: dto.outing,
+        hormone: dto.hormone,
+      };
+      const lifeTagsWrite = tagNames.length
+        ? {
+            create: tagNames.map((name) => ({
+              tag: {
+                connectOrCreate: {
+                  where: { name },
+                  create: { name },
+                },
+              },
+            })),
+          }
+        : undefined;
+      const foodTagsWrite = foodIds.length
+        ? {
+            create: foodIds.map((foodId) => ({
+              food: { connect: { id: foodId } },
+            })),
+          }
+        : undefined;
+      const medicineMapsWrite = medicineIds.length
+        ? {
+            create: medicineIds.map((medicineId) => ({
+              medicine: { connect: { id: medicineId } },
+            })),
+          }
+        : undefined;
+
+      const created = existing
+        ? await this.prisma.$transaction(async (tx) => {
+            await tx.lifeTag.deleteMany({ where: { lifeId: existing.id } });
+            await tx.lifeFoodTag.deleteMany({ where: { lifeId: existing.id } });
+            await tx.medicineMap.deleteMany({
+              where: { lifeRecordId: existing.id },
+            });
+
+            return tx.lifeRecord.update({
+              where: { id: existing.id },
+              data: {
+                ...recordData,
+                status: 'A',
+                updateTime: new Date(),
+                lifeTags: lifeTagsWrite,
+                foodTags: foodTagsWrite,
+                medicineMaps: medicineMapsWrite,
+              },
+              include: LIFE_RECORD_INCLUDE,
+            });
+          })
+        : await this.prisma.lifeRecord.create({
+            data: {
+              userId: userIdBigInt,
+              regDate: this.toDate(regDate),
+              ...recordData,
+              lifeTags: lifeTagsWrite,
+              foodTags: foodTagsWrite,
+              medicineMaps: medicineMapsWrite,
+            },
+            include: LIFE_RECORD_INCLUDE,
+          });
 
       return this.toDetailResponse(created);
     } catch (error) {
