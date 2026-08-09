@@ -148,6 +148,43 @@ describe('LifeRecordService', () => {
       });
     });
 
+    it('같은 날짜에 삭제(status=D)된 기록이 있으면 막지 않고 되살려서(update) 반환한다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        status: 'D',
+      });
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
+      prisma.lifeRecord.update.mockResolvedValue({
+        ...baseRecord,
+        status: 'A',
+      });
+
+      const result = await service.create('1', {
+        ...validCreateFields,
+        regDate: '2026-07-02',
+        tagNames: ['야식'],
+        foodIds: [1],
+      });
+
+      expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+      expect(prisma.lifeTag.deleteMany).toHaveBeenCalledWith({
+        where: { lifeId: baseRecord.id },
+      });
+      expect(prisma.lifeFoodTag.deleteMany).toHaveBeenCalledWith({
+        where: { lifeId: baseRecord.id },
+      });
+      expect(prisma.medicineMap.deleteMany).toHaveBeenCalledWith({
+        where: { lifeRecordId: baseRecord.id },
+      });
+
+      const [[callArgs]] = prisma.lifeRecord.update.mock.calls as [
+        [{ where: { id: bigint }; data: { status: string } }],
+      ];
+      expect(callArgs.where).toEqual({ id: baseRecord.id });
+      expect(callArgs.data.status).toBe('A');
+      expect(result.id).toBe(15);
+    });
+
     it('정상 생성 시 매핑된 상세 응답을 반환한다', async () => {
       prisma.lifeRecord.findUnique.mockResolvedValue(null);
       prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
