@@ -474,12 +474,14 @@ export class UserService {
         where: { lifeRecord: { userId: member.id } },
       });
       await tx.alarmMap.deleteMany({ where: { userId: member.id } });
+      await tx.pushToken.deleteMany({ where: { userId: member.id } });
       await tx.memberConsent.deleteMany({ where: { userId: member.id } });
       await tx.refreshToken.deleteMany({ where: { userId: member.id } });
       await tx.socialAccount.deleteMany({ where: { userId: member.id } });
       await tx.guideFeedback.deleteMany({ where: { userId: member.id } });
       await tx.weeklyRecord.deleteMany({ where: { userId: member.id } });
       await tx.monthlyRecord.deleteMany({ where: { userId: member.id } });
+      await tx.monthlyRuleResult.deleteMany({ where: { userId: member.id } });
       await tx.boogleRecord.deleteMany({ where: { userId: member.id } });
       await tx.lifeRecord.deleteMany({ where: { userId: member.id } });
       await tx.member.delete({ where: { id: member.id } });
