@@ -133,6 +133,15 @@ export class BowelRhythmByDayDto {
 
   @ApiProperty({ example: 1 })
   bowelCount!: number;
+
+  @ApiProperty({
+    enum: ['H', 'M', 'T'],
+    nullable: true,
+    example: 'M',
+    description:
+      '해당 날짜의 마지막 배변 상태. H 딱딱함, M 보통, T 묽음. 상태가 없거나 유효하지 않으면 null',
+  })
+  stoolSimple!: 'H' | 'M' | 'T' | null;
 }
 
 export class FrequentTimeSlotDto {

@@ -8,6 +8,7 @@ import type {
   ChangeTrend,
   FrequentTimeSlotDto,
   WeeklyGuideDto,
+  BowelRhythmByDayDto,
 } from './dto/weekly-report-response.dto';
 import {
   WEEKLY_RULE_CODE,
@@ -16,6 +17,10 @@ import {
 
 function kstDate(dateKey: string, time = '09:00'): Date {
   return new Date(`${dateKey}T${time}:00.000+09:00`);
+}
+
+function calendarDate(dateKey: string): Date {
+  return new Date(`${dateKey}T00:00:00.000Z`);
 }
 
 interface GuideRuleBindingTestAccessor {
@@ -41,6 +46,13 @@ interface BoogleRecordQueryTestAccessor {
     startDate: Date,
     endDateExclusive: Date,
   ): Promise<BoogleRecordForReport[]>;
+}
+
+interface BowelRhythmByDayTestAccessor {
+  buildBowelRhythmByDay(
+    records: BoogleRecordForReport[],
+    weekStartDate: Date,
+  ): BowelRhythmByDayDto[];
 }
 
 function createBoogleRecord(
@@ -256,6 +268,111 @@ describe('ReportService', () => {
         count: 2,
       },
     ]);
+  });
+
+  it('요일별 배변 횟수와 해당 날짜의 마지막 변 상태를 반환한다', () => {
+    const accessor = service as unknown as BowelRhythmByDayTestAccessor;
+    const records = [
+      createBoogleRecord('2026-08-03', {
+        id: 1n,
+        bowelMovementAt: kstDate('2026-08-03', '08:00'),
+        stoolSimple: 'H',
+      }),
+      createBoogleRecord('2026-08-03', {
+        id: 2n,
+        bowelMovementAt: kstDate('2026-08-03', '19:00'),
+        stoolSimple: 'T',
+      }),
+      createBoogleRecord('2026-08-04', {
+        id: 3n,
+        bowelMovementAt: kstDate('2026-08-04', '09:00'),
+        stoolSimple: 'M',
+      }),
+    ];
+
+    expect(
+      accessor.buildBowelRhythmByDay(records, calendarDate('2026-08-03')),
+    ).toEqual([
+      {
+        dayOfWeek: 'MON',
+        label: '월',
+        bowelCount: 2,
+        stoolSimple: 'T',
+      },
+      {
+        dayOfWeek: 'TUE',
+        label: '화',
+        bowelCount: 1,
+        stoolSimple: 'M',
+      },
+    ]);
+  });
+
+  it('입력 순서와 관계없이 bowelMovementAt이 가장 늦은 기록의 상태를 사용한다', () => {
+    const accessor = service as unknown as BowelRhythmByDayTestAccessor;
+    const records = [
+      createBoogleRecord('2026-08-03', {
+        id: 2n,
+        bowelMovementAt: kstDate('2026-08-03', '20:00'),
+        stoolSimple: 'T',
+      }),
+      createBoogleRecord('2026-08-03', {
+        id: 1n,
+        bowelMovementAt: kstDate('2026-08-03', '08:00'),
+        stoolSimple: 'H',
+      }),
+    ];
+
+    const result = accessor.buildBowelRhythmByDay(
+      records,
+      calendarDate('2026-08-03'),
+    );
+
+    expect(result[0]).toMatchObject({
+      bowelCount: 2,
+      stoolSimple: 'T',
+    });
+  });
+
+  it('마지막 배변의 변 상태가 없으면 stoolSimple을 null로 반환한다', () => {
+    const accessor = service as unknown as BowelRhythmByDayTestAccessor;
+    const records = [
+      createBoogleRecord('2026-08-03', {
+        id: 1n,
+        bowelMovementAt: kstDate('2026-08-03', '08:00'),
+        stoolSimple: 'M',
+      }),
+      createBoogleRecord('2026-08-03', {
+        id: 2n,
+        bowelMovementAt: kstDate('2026-08-03', '20:00'),
+        stoolSimple: null,
+      }),
+    ];
+
+    const result = accessor.buildBowelRhythmByDay(
+      records,
+      calendarDate('2026-08-03'),
+    );
+
+    expect(result[0]).toMatchObject({
+      bowelCount: 2,
+      stoolSimple: null,
+    });
+  });
+
+  it('hasBowel이 false인 기록은 배변 리듬과 변 상태 계산에서 제외한다', () => {
+    const accessor = service as unknown as BowelRhythmByDayTestAccessor;
+    const records = [
+      createBoogleRecord('2026-08-03', {
+        hasBowel: false,
+        bowelMovementAt: null,
+        stoolSimple: 'H',
+      }),
+    ];
+
+    expect(
+      accessor.buildBowelRhythmByDay(records, calendarDate('2026-08-03')),
+    ).toEqual([]);
   });
 
   describe('createPdfReport', () => {

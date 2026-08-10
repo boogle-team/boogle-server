@@ -72,6 +72,12 @@ const REQUIRED_MONTHLY_RECORDED_DAYS = 7;
 
 const MONTHLY_PDF_ENDPOINT = '/api/v1/reports/pdf';
 
+function isValidStoolSimple(
+  value: string | null,
+): value is NonNullable<BowelRhythmByDayDto['stoolSimple']> {
+  return value === 'H' || value === 'M' || value === 'T';
+}
+
 @Injectable()
 export class ReportService {
   constructor(private readonly prisma: PrismaService) {}
@@ -1061,15 +1067,47 @@ export class ReportService {
           this.addDays(weekStartDate, index),
         );
 
-        const bowelCount = boogleRecords.filter(
+        const dailyBowelRecords = boogleRecords.filter(
           (record) =>
             record.hasBowel && toKstDateKey(record.regDate) === targetDate,
-        ).length;
+        );
+
+        const latestBowelRecord =
+          dailyBowelRecords.reduce<BoogleRecordForReport | null>(
+            (latest, current) => {
+              if (latest === null) {
+                return current;
+              }
+
+              const latestMovementTime =
+                latest.bowelMovementAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+              const currentMovementTime =
+                current.bowelMovementAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+
+              if (currentMovementTime > latestMovementTime) {
+                return current;
+              }
+
+              if (currentMovementTime < latestMovementTime) {
+                return latest;
+              }
+
+              return current.id > latest.id ? current : latest;
+            },
+            null,
+          );
+
+        const stoolSimple =
+          latestBowelRecord !== null &&
+          isValidStoolSimple(latestBowelRecord.stoolSimple)
+            ? latestBowelRecord.stoolSimple
+            : null;
 
         return {
           dayOfWeek: meta.dayOfWeek,
           label: meta.label,
-          bowelCount,
+          bowelCount: dailyBowelRecords.length,
+          stoolSimple,
         };
       })
       .filter((item) => item.bowelCount > 0);
