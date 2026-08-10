@@ -25,7 +25,12 @@ export class RecordResponseDto {
   @ApiProperty({ nullable: true, example: 'C' })
   bowelFeeling!: string | null;
 
-  @ApiProperty({ nullable: true, example: '0' })
+  @ApiProperty({
+    nullable: true,
+    example: 0,
+    description:
+      '복통 강도(0~4). 없음 0(구 N) / 중간 1~2(구 M) / 심함 3~4(구 L)',
+  })
   stomach!: number | null;
 
   @ApiProperty({ nullable: true, example: 'N' })

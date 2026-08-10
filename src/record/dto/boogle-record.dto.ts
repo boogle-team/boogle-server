@@ -7,7 +7,10 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
+import { STOMACH_PAIN_SCALE } from '@/common/utils/stomach-pain.util';
 
 // 부글 기록 생성 dto
 export class CreateRecordDto {
@@ -58,11 +61,16 @@ export class CreateRecordDto {
   bowelFeeling?: string | null;
 
   @ApiPropertyOptional({
-    example: '0',
-    description: '복통 없음 0 / 중간 1~3 / 심함 4',
+    example: 0,
+    minimum: STOMACH_PAIN_SCALE.MIN,
+    maximum: STOMACH_PAIN_SCALE.MAX,
+    description:
+      '복통 강도(0~4). 없음 0(구 N) / 중간 1~2(구 M) / 심함 3~4(구 L)',
   })
   @IsOptional()
   @IsInt()
+  @Min(STOMACH_PAIN_SCALE.MIN)
+  @Max(STOMACH_PAIN_SCALE.MAX)
   stomach?: number | null;
 
   @ApiPropertyOptional({
