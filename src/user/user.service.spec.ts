@@ -23,9 +23,16 @@ describe('UserService', () => {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
     },
+    lifeTag: { deleteMany: jest.fn() },
+    lifeFoodTag: { deleteMany: jest.fn() },
+    medicineMap: { deleteMany: jest.fn() },
+    alarmMap: { deleteMany: jest.fn() },
+    pushToken: { deleteMany: jest.fn() },
     memberConsent: {
       findFirst: jest.fn(),
+      deleteMany: jest.fn(),
       create: jest.fn<
         Promise<Record<string, unknown>>,
         [
@@ -59,7 +66,15 @@ describe('UserService', () => {
     },
     lifeRecord: {
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
+    refreshToken: { deleteMany: jest.fn() },
+    socialAccount: { deleteMany: jest.fn() },
+    guideFeedback: { deleteMany: jest.fn() },
+    weeklyRecord: { deleteMany: jest.fn() },
+    monthlyRecord: { deleteMany: jest.fn() },
+    monthlyRuleResult: { deleteMany: jest.fn() },
+    boogleRecord: { deleteMany: jest.fn() },
     $transaction: jest.fn(),
   };
   const profileImages = {
@@ -472,6 +487,60 @@ describe('UserService', () => {
         errorCode: UserErrorCode.NICKNAME_ALREADY_EXISTS,
         status: 409,
       });
+    });
+  });
+
+  describe('deleteMe', () => {
+    it('deletes every restrictive member relation before deleting the member', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.member.delete.mockResolvedValue(member);
+
+      await expect(
+        service.deleteMe('1', {
+          reason: 'NO_NEEDED_INFO',
+          confirmation: '탈퇴합니다',
+        }),
+      ).resolves.toBeNull();
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.pushToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: member.id },
+      });
+      expect(prisma.monthlyRuleResult.deleteMany).toHaveBeenCalledWith({
+        where: { userId: member.id },
+      });
+      expect(prisma.member.delete).toHaveBeenCalledWith({
+        where: { id: member.id },
+      });
+
+      const memberDeleteOrder =
+        prisma.member.delete.mock.invocationCallOrder[0];
+      expect(
+        prisma.pushToken.deleteMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(memberDeleteOrder);
+      expect(
+        prisma.monthlyRuleResult.deleteMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(memberDeleteOrder);
+      expect(profileImages.deleteBestEffort).toHaveBeenCalledWith(
+        member.profileImageKey,
+      );
+    });
+
+    it('does not delete the member or profile image when relation cleanup fails', async () => {
+      prisma.member.findUnique.mockResolvedValue(member);
+      prisma.pushToken.deleteMany.mockRejectedValue(
+        new Error('push token cleanup failed'),
+      );
+
+      await expect(
+        service.deleteMe('1', {
+          reason: 'NO_NEEDED_INFO',
+          confirmation: '탈퇴합니다',
+        }),
+      ).rejects.toThrow('push token cleanup failed');
+
+      expect(prisma.member.delete).not.toHaveBeenCalled();
+      expect(profileImages.deleteBestEffort).not.toHaveBeenCalled();
     });
   });
 
