@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export type NotificationCategory = 'W' | 'R' | 'P';
 
 export type NotificationLinkTo = 'GUIDE_WARNING' | 'HOME' | 'REPORT';
@@ -37,27 +39,79 @@ export const NOTIFICATION_LINK_TO: Record<
   P: 'REPORT',
 };
 
-export interface NotificationItemDto {
-  id: number;
-  category: NotificationCategory;
+export class NotificationItemDto {
+  @ApiProperty({ example: 5001, description: '알림 ID (alarm_map.id)' })
+  id!: number;
+
+  @ApiProperty({
+    enum: ['W', 'R', 'P'],
+    example: 'W',
+    description: '알림 분류(W 위험 / R 기록 / P 리포트). 점 색 표시용',
+  })
+  category!: NotificationCategory;
+
   // 아이콘 매핑용 의미 코드. 알람 원본에 값이 없으면(구 데이터 등) null →
   // 프론트는 기본 아이콘으로 폴백한다.
-  type: NotificationType | null;
-  title: string;
-  content: string;
-  linkTo: NotificationLinkTo;
-  regDate: Date;
-  isRead: boolean;
+  @ApiProperty({
+    enum: NOTIFICATION_TYPES,
+    nullable: true,
+    example: 'WARNING',
+    description:
+      '아이콘 매핑용 의미 코드. 값이 없거나 계약 밖 값이면 null(프론트 기본 아이콘 폴백)',
+  })
+  type!: NotificationType | null;
+
+  @ApiProperty({
+    example: '주의가 필요한 기록이 있어요',
+    description: '알림 제목',
+  })
+  title!: string;
+
+  @ApiProperty({
+    example: '오늘 기록에서 붉은색 변이 감지됐어요.',
+    description: '알림 내용',
+  })
+  content!: string;
+
+  @ApiProperty({
+    enum: ['GUIDE_WARNING', 'HOME', 'REPORT'],
+    example: 'GUIDE_WARNING',
+    description: '탭 시 이동할 화면. category로부터 서버가 매핑',
+  })
+  linkTo!: NotificationLinkTo;
+
+  @ApiProperty({
+    example: '2026-05-12T14:32:00.000Z',
+    description: '알림 발생 일시',
+  })
+  regDate!: Date;
+
+  @ApiProperty({ example: false, description: '읽음 여부' })
+  isRead!: boolean;
 }
 
-export interface NotificationReadResponseDto {
-  id: number;
-  isRead: boolean;
+export class NotificationReadResponseDto {
+  @ApiProperty({ example: 5001, description: '처리된 알림 ID' })
+  id!: number;
+
+  @ApiProperty({ example: true, description: '처리 결과(항상 true)' })
+  isRead!: boolean;
+
   // 읽음 처리 후 다시 센 안읽음 개수(🔔 뱃지 즉시 갱신용).
-  unreadCount: number;
+  @ApiProperty({
+    example: 1,
+    description: '읽음 처리 후 재계산한 안읽음 개수(뱃지 갱신용)',
+  })
+  unreadCount!: number;
 }
 
-export interface NotificationListResponseDto {
-  unreadCount: number;
-  notifications: NotificationItemDto[];
+export class NotificationListResponseDto {
+  @ApiProperty({ example: 2, description: '안읽음 알림 개수(뱃지용)' })
+  unreadCount!: number;
+
+  @ApiProperty({
+    type: [NotificationItemDto],
+    description: '알림 목록(발생 일시 내림차순). 없으면 []',
+  })
+  notifications!: NotificationItemDto[];
 }

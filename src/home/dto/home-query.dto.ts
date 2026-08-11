@@ -1,6 +1,11 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsOptional, Matches } from 'class-validator';
 
 export class HomeQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-05-12',
+    description: '기준 날짜(YYYY-MM-DD). 생략 시 서버 오늘 날짜(KST)',
+  })
   @IsOptional()
   // IsDateString(ISO 8601)만으로는 "2026-05-12T00:00:00Z" 같은 datetime도
   // 통과되므로, 명세대로 YYYY-MM-DD 형식만 받도록 별도로 고정한다.

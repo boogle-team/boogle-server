@@ -41,6 +41,7 @@ import { UpdateMeRequestDto } from './dto/update-me-request.dto';
 import { SensitiveInfoConsentSuccessResponseDto } from './dto/sensitive-info-consent-response.dto';
 import { UpdateSensitiveInfoConsentRequestDto } from './dto/update-sensitive-info-consent-request.dto';
 import { UpdateNotificationSettingsRequestDto } from './dto/update-notification-settings-request.dto';
+import { NotificationSettingsResponseDto } from './dto/notification-settings-response.dto';
 import { DeleteMeRequestDto } from './dto/delete-me-request.dto';
 import type { ProfileImageFile } from './profile-image.service';
 import { ProfileImageUploadExceptionFilter } from './filters/profile-image-upload-exception.filter';
@@ -163,8 +164,15 @@ export class UserController {
   }
 
   @Get('me/notification-settings')
-  @ApiOperation({ summary: '알림 설정 조회' })
-  @ApiOkResponse({ description: '알림 설정 조회 성공' })
+  @ApiOperation({
+    summary: '알림 설정 조회',
+    description:
+      '기록·리포트·주의 알림의 on/off 설정을 조회합니다. 저장값이 없으면(레거시) 기본값 Y로 폴백해 항상 Y 또는 N을 반환합니다.',
+  })
+  @ApiOkResponse({
+    description: '알림 설정 조회 성공',
+    type: NotificationSettingsResponseDto,
+  })
   @ApiNotFoundResponse({ description: '사용자를 찾을 수 없음' })
   @ApiForbiddenResponse({ description: '탈퇴한 회원' })
   @ApiUnauthorizedResponse({ description: '로그인이 필요함' })
@@ -181,7 +189,10 @@ export class UserController {
       '전달된 필드만 변경하고(단일 필드 부분 변경), 변경 후 전체 설정값을 반환합니다.',
   })
   @ApiBody({ type: UpdateNotificationSettingsRequestDto })
-  @ApiOkResponse({ description: '알림 설정 변경 성공' })
+  @ApiOkResponse({
+    description: '알림 설정 변경 성공(변경 후 전체 설정 반환)',
+    type: NotificationSettingsResponseDto,
+  })
   @ApiBadRequestResponse({ description: '알림 값이 Y/N이 아님' })
   @ApiNotFoundResponse({ description: '사용자를 찾을 수 없음' })
   @ApiForbiddenResponse({ description: '탈퇴한 회원' })
