@@ -126,6 +126,16 @@ describe('HomeService', () => {
       // 시각은 regDate(자정)가 아니라 bowelMovementAt을 KST HH:mm으로 내려준다.
       bowelMovementAt: '17:30',
     });
+    // mock은 Prisma projection을 적용하지 않으므로, select에서 컬럼이 빠져도
+    // 위 단언은 통과한다. 조회 계약 자체를 검증한다.
+    expect(
+      (
+        prisma.boogleRecord.findMany as jest.Mock<
+          unknown,
+          [{ select: Record<string, boolean> }]
+        >
+      ).mock.calls[0][0].select.bowelMovementAt,
+    ).toBe(true);
   });
 
   it('배변 시각을 기록하지 않았으면 bowelMovementAt은 null이다', async () => {
