@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PushSenderService } from '@/push/push-sender.service';
 import { NotificationCreationService } from './notification-creation.service';
+import { NotificationDispatchService } from './notification-dispatch.service';
 import {
   NOTIFICATION_TEMPLATES,
   renderTemplate,
@@ -63,6 +64,7 @@ export class NotificationSchedulerService {
     private readonly prisma: PrismaService,
     private readonly creation: NotificationCreationService,
     private readonly pushSender: PushSenderService,
+    private readonly dispatch: NotificationDispatchService,
   ) {}
 
   @Cron('0 18 * * *', {
@@ -79,6 +81,44 @@ export class NotificationSchedulerService {
   })
   handleStreakCron(): Promise<void> {
     return this.runStreakEncouragement(getTodayKstDateString());
+  }
+
+  // 주간 리포트는 매주 월요일 아침에 "지난주 리포트가 준비됐다"고 알린다.
+  // (리포트 조회 API는 GET이라 조회 시점에 알림을 심으면 볼 때마다 쌓인다)
+  @Cron('0 9 * * 1', {
+    name: 'weekly-report-ready',
+    timeZone: 'Asia/Seoul',
+  })
+  handleWeeklyReportCron(): Promise<void> {
+    return this.runWeeklyReportReady(getTodayKstDateString());
+  }
+
+  /**
+   * 지난주에 부글 기록이 하나라도 있는 유저에게 리포트 도착 알림을 보낸다.
+   * 기록이 없으면 볼 리포트도 없으므로 대상에서 제외한다.
+   *
+   * 대상 필터에 reportAlarm을 쓰지 않는 이유: 이벤트성 알림은 설정과 무관하게
+   * 인앱에는 남겨야 하고, 푸시 여부만 NotificationDispatchService가 판단한다.
+   */
+  async runWeeklyReportReady(today: string): Promise<void> {
+    const lastWeekStart = addDaysKey(today, -7);
+    const recorderIds = await this.findRecorderIdsBetween(lastWeekStart, today);
+    if (recorderIds.size === 0) return;
+
+    let sent = 0;
+    for (const userId of recorderIds) {
+      // 한 유저 실패가 배치 전체를 멈추지 않도록 유저별로 격리한다.
+      try {
+        await this.dispatch.dispatch(userId, 'REPORT_READY');
+        sent += 1;
+      } catch (error) {
+        this.logger.error(
+          `리포트 도착 알림 실패 userId=${userId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+    this.logger.log(`리포트 도착 알림 발송 ${sent}명`);
   }
 
   // 오늘 부글 기록이 없는(=기록 알림 켠 활성) 유저에게 리마인더 발송.
@@ -173,6 +213,26 @@ export class NotificationSchedulerService {
       },
       select: { id: true },
     });
+  }
+
+  // [startKey, endKeyExclusive) 구간(KST)에 부글 기록이 있는 활성 회원 id 집합.
+  private async findRecorderIdsBetween(
+    startKey: string,
+    endKeyExclusive: string,
+  ): Promise<Set<string>> {
+    const records = await this.prisma.boogleRecord.findMany({
+      where: {
+        status: 'A',
+        user: { status: 'A' },
+        regDate: {
+          gte: kstDayStart(startKey),
+          lt: kstDayStart(endKeyExclusive),
+        },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    return new Set(records.map((record) => record.userId.toString()));
   }
 
   private async findTodayRecorderIds(

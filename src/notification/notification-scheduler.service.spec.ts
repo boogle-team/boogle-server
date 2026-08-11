@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PushSenderService } from '@/push/push-sender.service';
 import { NotificationCreationService } from './notification-creation.service';
+import { NotificationDispatchService } from './notification-dispatch.service';
 import {
   NotificationSchedulerService,
   calculateStreak,
@@ -15,6 +16,7 @@ describe('NotificationSchedulerService', () => {
   };
   let creation: { create: jest.Mock };
   let pushSender: { send: jest.Mock };
+  let dispatch: { dispatch: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -23,6 +25,7 @@ describe('NotificationSchedulerService', () => {
     };
     creation = { create: jest.fn().mockResolvedValue({ id: 1 }) };
     pushSender = { send: jest.fn().mockResolvedValue(undefined) };
+    dispatch = { dispatch: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,6 +33,7 @@ describe('NotificationSchedulerService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationCreationService, useValue: creation },
         { provide: PushSenderService, useValue: pushSender },
+        { provide: NotificationDispatchService, useValue: dispatch },
       ],
     }).compile();
 
@@ -185,6 +189,62 @@ describe('NotificationSchedulerService', () => {
         userId: '2',
         type: 'RECORD_REMINDER',
       });
+    });
+  });
+
+  describe('runWeeklyReportReady', () => {
+    it('지난주 기록이 있는 유저에게만 리포트 도착 알림을 보낸다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([
+        { userId: 1n },
+        { userId: 3n },
+      ]);
+
+      await service.runWeeklyReportReady('2026-05-18');
+
+      expect(dispatch.dispatch).toHaveBeenCalledTimes(2);
+      expect(dispatch.dispatch).toHaveBeenCalledWith('1', 'REPORT_READY');
+      expect(dispatch.dispatch).toHaveBeenCalledWith('3', 'REPORT_READY');
+    });
+
+    it('지난주 7일 구간(KST)으로 기록을 조회한다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+
+      await service.runWeeklyReportReady('2026-05-18');
+
+      const findManyMock = prisma.boogleRecord.findMany as jest.Mock<
+        unknown,
+        [{ where: { regDate: { gte: Date; lt: Date } } }]
+      >;
+      const callArgs = findManyMock.mock.calls[0][0];
+      // 2026-05-11 00:00 KST ~ 2026-05-18 00:00 KST
+      expect(callArgs.where.regDate.gte.toISOString()).toBe(
+        '2026-05-10T15:00:00.000Z',
+      );
+      expect(callArgs.where.regDate.lt.toISOString()).toBe(
+        '2026-05-17T15:00:00.000Z',
+      );
+    });
+
+    it('지난주 기록이 아무도 없으면 발송하지 않는다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([]);
+
+      await service.runWeeklyReportReady('2026-05-18');
+
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('한 유저 발송이 실패해도 나머지 유저는 계속 처리한다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([
+        { userId: 1n },
+        { userId: 2n },
+      ]);
+      dispatch.dispatch
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce(undefined);
+
+      await service.runWeeklyReportReady('2026-05-18');
+
+      expect(dispatch.dispatch).toHaveBeenCalledTimes(2);
     });
   });
 });
