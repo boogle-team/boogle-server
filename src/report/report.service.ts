@@ -1,6 +1,7 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { PrismaService } from '@/prisma/prisma.service';
+import { NotificationDispatchService } from '@/notification/notification-dispatch.service';
 import {
   getKstHour,
   getTodayKstDateKey,
@@ -80,7 +81,12 @@ function isValidStoolSimple(
 
 @Injectable()
 export class ReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ReportService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationDispatchService,
+  ) {}
   // 주간 메인
   async getWeeklyReport(
     userId: bigint,
@@ -545,10 +551,23 @@ export class ReportService {
         patternCards,
       });
 
-      return {
+      const result = {
         buffer: await renderMonthlyPdf(pdfData),
         filename: this.buildPdfFilename(monthStartDate),
       };
+
+      // PDF 저장 완료 알림(N104). 알림 실패가 PDF 응답을 막지 않도록 격리한다
+      // (사용자는 이미 만들어진 PDF를 받아야 한다).
+      try {
+        await this.notifications.dispatch(userId, 'PDF_SAVED');
+      } catch (error) {
+        this.logger.error(
+          `PDF 저장 완료 알림 실패 userId=${userId.toString()}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+
+      return result;
     } catch (error) {
       if (error instanceof BusinessException) {
         throw error;

@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
+import { NotificationDispatchService } from '@/notification/notification-dispatch.service';
 import { ReportService } from './report.service';
+
+const notificationDispatchMock = {
+  dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
+};
 import { ReportErrorCode } from './report-error-code.enum';
 import { BoogleRecordForReport } from './dto/report-record.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
@@ -121,6 +126,10 @@ describe('ReportService', () => {
         {
           provide: PrismaService,
           useValue: prismaMock,
+        },
+        {
+          provide: NotificationDispatchService,
+          useValue: notificationDispatchMock,
         },
       ],
     }).compile();
