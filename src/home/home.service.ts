@@ -3,6 +3,7 @@ import { HttpStatus } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { CalendarService } from '@/calendar/calendar.service';
+import { toKstHourMinute } from '@/common/utils/kst-date.util';
 import { HomeErrorCode } from './home-error-code.enum';
 import { HomeResponseDto, WeekStripDayDto } from './dto/home-response.dto';
 import { HomeSummaryResponseDto } from './dto/home-summary-response.dto';
@@ -139,6 +140,7 @@ export class HomeService {
         select: {
           id: true,
           regDate: true,
+          bowelMovementAt: true,
           hasBowel: true,
           stoolBristol: true,
           stoolSimple: true,
@@ -200,6 +202,7 @@ export class HomeService {
       boogleRecords: boogleRecords.map((record) => ({
         id: Number(record.id),
         regDate: record.regDate,
+        bowelMovementAt: toKstHourMinute(record.bowelMovementAt),
         hasBowel: record.hasBowel,
         stoolBristol: record.stoolBristol,
         stoolSimple: record.stoolSimple,

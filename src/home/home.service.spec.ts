@@ -102,7 +102,10 @@ describe('HomeService', () => {
     prisma.boogleRecord.findMany.mockResolvedValue([
       {
         id: 100n,
-        regDate: new Date('2026-05-12T08:30:00.000Z'),
+        // regDate는 KST 자정(=UTC 15:00)으로 저장되므로 시각 표시에 쓸 수 없다.
+        regDate: new Date('2026-05-11T15:00:00.000Z'),
+        // 실제 배변 시각: UTC 08:30 = KST 17:30
+        bowelMovementAt: new Date('2026-05-12T08:30:00.000Z'),
         hasBowel: true,
         stoolBristol: 4,
         stoolSimple: 'M',
@@ -120,7 +123,44 @@ describe('HomeService', () => {
       id: 100,
       hasBowel: true,
       stoolSimple: 'M',
+      // 시각은 regDate(자정)가 아니라 bowelMovementAt을 KST HH:mm으로 내려준다.
+      bowelMovementAt: '17:30',
     });
+    // mock은 Prisma projection을 적용하지 않으므로, select에서 컬럼이 빠져도
+    // 위 단언은 통과한다. 조회 계약 자체를 검증한다.
+    expect(
+      (
+        prisma.boogleRecord.findMany as jest.Mock<
+          unknown,
+          [{ select: Record<string, boolean> }]
+        >
+      ).mock.calls[0][0].select.bowelMovementAt,
+    ).toBe(true);
+  });
+
+  it('배변 시각을 기록하지 않았으면 bowelMovementAt은 null이다', async () => {
+    prisma.member.findUnique.mockResolvedValue({
+      nickname: '땅콩잼',
+      regDate: new Date('2026-04-30T00:00:00.000Z'),
+    });
+    prisma.monthlyRecord.findFirst.mockResolvedValue(null);
+    prisma.boogleRecord.findMany.mockResolvedValue([
+      {
+        id: 101n,
+        regDate: new Date('2026-05-11T15:00:00.000Z'),
+        bowelMovementAt: null,
+        hasBowel: false,
+        stoolBristol: null,
+        stoolSimple: null,
+        bowelFeeling: null,
+        stomach: null,
+      },
+    ]);
+    prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+    const result = await service.getHome('1', '2026-05-12');
+
+    expect(result.boogleRecords[0].bowelMovementAt).toBeNull();
   });
 
   it('생활 기록이 있으면 음식 태그까지 매핑한다', async () => {
