@@ -176,7 +176,10 @@ describe('CalendarService', () => {
       prisma.boogleRecord.findMany.mockResolvedValue([
         {
           id: 100n,
-          regDate: new Date('2026-06-17T08:30:00.000Z'),
+          // regDate는 KST 자정(=UTC 15:00)으로 저장되므로 시각 표시에 쓸 수 없다.
+          regDate: new Date('2026-06-16T15:00:00.000Z'),
+          // 실제 배변 시각: UTC 08:30 = KST 17:30
+          bowelMovementAt: new Date('2026-06-17T08:30:00.000Z'),
           hasBowel: true,
           stoolBristol: 4,
           stoolSimple: 'M',
@@ -218,6 +221,8 @@ describe('CalendarService', () => {
         id: 100,
         hasBowel: true,
         stoolSimple: 'M',
+        // 시각은 regDate(자정)가 아니라 bowelMovementAt을 KST HH:mm으로 내려준다.
+        bowelMovementAt: '17:30',
       });
       // 부글 기록은 태그 구조 삭제(#24)로 memo/autoTags/tags를 더 이상 포함하지 않는다.
       expect(result.boogleRecords[0]).not.toHaveProperty('tags');
@@ -232,6 +237,33 @@ describe('CalendarService', () => {
         medicines: [{ id: 1, name: '유산균' }],
         tags: [{ id: 7, name: '야식' }],
       });
+    });
+
+    it('배변 시각을 기록하지 않았으면 bowelMovementAt은 null이다', async () => {
+      prisma.boogleRecord.findMany.mockResolvedValue([
+        {
+          id: 101n,
+          regDate: new Date('2026-06-16T15:00:00.000Z'),
+          bowelMovementAt: null,
+          hasBowel: false,
+          stoolBristol: null,
+          stoolSimple: null,
+          bowelFeeling: null,
+          stomach: null,
+          distension: null,
+          remainingFeeling: null,
+          urgency: null,
+          takenTime: null,
+          amount: null,
+          color: null,
+          updateDate: null,
+        },
+      ]);
+      prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+      const result = await service.getDailyRecords('1', '2026-06-17');
+
+      expect(result.boogleRecords[0].bowelMovementAt).toBeNull();
     });
   });
 

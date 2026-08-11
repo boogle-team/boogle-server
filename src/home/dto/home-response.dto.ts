@@ -18,7 +18,10 @@ export interface WeekStripDayDto {
 
 export interface HomeBoogleRecordDto {
   id: number;
+  // 어느 날짜의 기록인지(KST 자정으로 저장됨). 실제 배변 시각은 bowelMovementAt을 쓴다.
   regDate: Date;
+  // 배변 시각(KST `HH:mm`). 기록하지 않았으면 null.
+  bowelMovementAt: string | null;
   hasBowel: boolean;
   stoolBristol: number | null;
   stoolSimple: string | null;

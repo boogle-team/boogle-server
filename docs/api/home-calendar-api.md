@@ -76,6 +76,12 @@
 | `amount` (양) | `S` 적음 / `N` 보통 / `M` 많음 |
 | `color` (색상) | `B` 갈색 / `D` 어두운색 / `N` 검은색 / `R` 붉은색 / `G` 회색 / `E` 초록색 |
 | `boogleRecordStatus` | `A` 활성 / `D` 삭제 |
+| `regDate` | 기록 **날짜**. 저장 시 KST 자정으로 고정된다(= UTC 15:00) — **시각 표시에 쓰면 안 된다** |
+| `bowelMovementAt` | 실제 **배변 시각**(KST `HH:mm`, 예: `"17:30"`). 기록하지 않았으면 `null` |
+
+> ⚠️ `regDate`는 "어느 날짜의 기록인지"만 담는다. 생성 시 `new Date(regDate + 'T00:00:00+09:00')`로
+> 저장되므로 모든 기록이 동일한 시각(KST 00:00 = UTC 15:00)을 갖는다. 화면에 배변 시각을 표시할 때는
+> 반드시 `bowelMovementAt`을 사용한다.
 
 ### 2.2 생활 기록 (`life_record`)
 
@@ -170,7 +176,8 @@ Authorization: Bearer eyJhbGc...
   "boogleRecords": [
     {
       "id": 100,
-      "regDate": "2026-05-12T08:30:00",
+      "regDate": "2026-05-11T15:00:00.000Z",
+      "bowelMovementAt": "08:30",
       "hasBowel": true,
       "stoolBristol": 4,
       "stoolSimple": "M",
@@ -179,7 +186,8 @@ Authorization: Bearer eyJhbGc...
     },
     {
       "id": 101,
-      "regDate": "2026-05-12T17:30:00",
+      "regDate": "2026-05-11T15:00:00.000Z",
+      "bowelMovementAt": "17:30",
       "hasBowel": true,
       "stoolBristol": 6,
       "stoolSimple": "T",
@@ -385,7 +393,8 @@ Authorization: Bearer eyJhbGc...
   "boogleRecords": [
     {
       "id": 100,
-      "regDate": "2026-06-17T08:30:00",
+      "regDate": "2026-06-16T15:00:00.000Z",
+      "bowelMovementAt": "17:30",
       "hasBowel": true,
       "stoolBristol": 4,
       "stoolSimple": "M",

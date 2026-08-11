@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { toKstHourMinute } from '@/common/utils/kst-date.util';
 import {
   BoogleStatus,
   CalendarDayDto,
@@ -272,6 +273,7 @@ export class CalendarService {
       (record) => ({
         id: Number(record.id),
         regDate: record.regDate,
+        bowelMovementAt: toKstHourMinute(record.bowelMovementAt),
         hasBowel: record.hasBowel,
         stoolBristol: record.stoolBristol,
         stoolSimple: record.stoolSimple,
