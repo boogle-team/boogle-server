@@ -3,6 +3,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export type MonthlyReportDataStatus = 'ENOUGH' | 'INSUFFICIENT';
 export type MonthlyReportPeriodType = 'MONTHLY';
 export type MonthlyCompareType = 'PREVIOUS_MONTH';
+export type MonthlyUserTypeCode = 'R' | 'C' | 'W' | 'L' | 'I' | 'N';
+
+/*
+R 규칙형
+C 변비경향형
+W 묽은변경향형
+L 생활영향형
+I 불규칙형
+N 유형 분석 중 -> 프론트엔드 표시에는 ?로 표시
+*/
 
 export type MonthlyChangeTrend =
   | 'INCREASE'
@@ -183,18 +193,18 @@ export class PreviousMonthlySummaryDto extends MonthlySummaryDto {
   period!: MonthlyReportPeriodDto;
 
   @ApiProperty({
-    enum: ['R', 'C', 'L', 'I', 'U', 'N'],
+    enum: ['R', 'C', 'W', 'L', 'I', 'N'],
     nullable: true,
-    example: 'R',
+    example: 'I',
     description:
-      '이전 달 사용자 유형 코드. R 규칙형, C 변비경향형, L 묽은변경향형, I 생활영향형, U 불규칙형, N 기록부족형',
+      '이전 달 사용자 유형 코드. R 규칙형, C 변비경향형, W 묽은변경향형, L 생활영향형, I 불규칙형, N 유형 분석 중',
   })
-  userType!: string | null;
+  userType!: MonthlyUserTypeCode | null;
 
   @ApiProperty({
     type: String,
     nullable: true,
-    example: '규칙형',
+    example: '불규칙형',
     description: '이전 달 사용자 유형 표시 이름',
   })
   userTypeLabel!: string | null;
@@ -416,12 +426,12 @@ export class MonthlyLifeFactorStatsDto {
 
 export class MonthlyUserTypeDto {
   @ApiProperty({
-    enum: ['R', 'C', 'L', 'I', 'U', 'N'],
+    enum: ['R', 'C', 'W', 'L', 'I', 'N'],
     example: 'R',
     description:
-      'R 규칙형, C 변비경향형, L 묽은변경향형, I 생활영향형, U 불규칙형, N 기록부족형',
+      'R 규칙형, C 변비경향형, W 묽은변경향형, L 생활영향형, I 불규칙형, N 유형 분석 중',
   })
-  code!: string;
+  code!: MonthlyUserTypeCode;
 
   @ApiProperty({
     type: String,
@@ -432,20 +442,19 @@ export class MonthlyUserTypeDto {
 
   @ApiProperty({
     type: String,
-    example: '최근 30일 동안 배변 리듬이 비교적 안정적으로 유지되고 있어요.',
-    description: '월간 사용자 유형 설명',
+    example: '이번 달 배변 18회 + 보통 변 66.7%',
+    description: '사용자 유형 카드 상단 문구. 월간 계산값을 포함',
   })
-  description!: string;
+  title!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: String,
     nullable: true,
-    format: 'uri',
-    example: null,
+    example: '비교적 일정한 배변 패턴이 나타났어요',
     description:
-      '사용자 유형 캐릭터 이미지 URL. 데이터가 없으면 생략되거나 null',
+      '사용자 유형 카드 하단 문구. 별도 하단 문구가 없는 유형은 null',
   })
-  characterImageUrl?: string | null;
+  description!: string | null;
 }
 
 export class MonthlyPatternCardDto {

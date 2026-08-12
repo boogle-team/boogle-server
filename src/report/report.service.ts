@@ -24,6 +24,7 @@ import type {
 } from './dto/weekly-report-response.dto';
 import type { GetMonthlyReportQueryDto } from './dto/get-monthly-report-query.dto';
 import type {
+  MonthlyUserTypeCode,
   MonthlyChangeSummaryDto,
   MonthlyLifeFactorStatsDto,
   MonthlyPdfDto,
@@ -76,6 +77,23 @@ function isValidStoolSimple(
   value: string | null,
 ): value is NonNullable<BowelRhythmByDayDto['stoolSimple']> {
   return value === 'H' || value === 'M' || value === 'T';
+}
+
+interface MonthlyUserTypeMetrics {
+  bowelCount: number;
+  hardRatio: number;
+  normalRatio: number;
+  looseRatio: number;
+  minInterval: number | null;
+  maxInterval: number | null;
+  intervalRange: number | null;
+  lifeInfluenceDayCount: number;
+  lifeInfluenceTitleSubject: string | null;
+}
+
+interface MonthlyLifeInfluenceStats {
+  dayCount: number;
+  titleSubject: string | null;
 }
 
 @Injectable()
@@ -430,11 +448,7 @@ export class ReportService {
           effectiveMonthEnd,
         ),
         lifeFactorStats,
-        userType: this.resolveMonthlyUserType(
-          recordStats,
-          boogleRecords,
-          lifeRecords,
-        ),
+        userType: this.resolveMonthlyUserType(boogleRecords, lifeRecords),
         patternCards,
         improvements,
         pdf,
@@ -465,11 +479,7 @@ export class ReportService {
       lifeRecords,
       recordStats,
     );
-    const userType = this.resolveMonthlyUserType(
-      recordStats,
-      boogleRecords,
-      lifeRecords,
-    );
+    const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
 
     return {
       period: this.buildMonthlyPeriod(monthStartDate, monthEndDate),
@@ -1525,137 +1535,286 @@ export class ReportService {
     };
   }
 
-  private resolveMonthlyUserType(
-    recordStats: MonthlyRecordStatsDto,
-    boogleRecords: BoogleRecordForReport[],
+  private calculateRatio(count: number, total: number): number {
+    return total === 0 ? 0 : this.round1((count / total) * 100);
+  }
+
+  private buildBowelIntervals(bowelRecords: BoogleRecordForReport[]): number[] {
+    const timedRecords = bowelRecords
+      .filter(hasBowelMovementAt)
+      .sort(
+        (left, right) =>
+          left.bowelMovementAt.getTime() - right.bowelMovementAt.getTime(),
+      );
+
+    return timedRecords.slice(1).map((record, index) => {
+      const previous = timedRecords[index];
+      const intervalDays =
+        (record.bowelMovementAt.getTime() -
+          previous.bowelMovementAt.getTime()) /
+        (24 * 60 * 60 * 1000);
+
+      return this.round1(intervalDays);
+    });
+  }
+
+  private buildMonthlyLifeInfluenceStats(
+    bowelRecords: BoogleRecordForReport[],
     lifeRecords: LifeRecordForReport[],
-  ): MonthlyUserTypeDto {
-    if (recordStats.recordedDays < 15) {
-      return this.buildMonthlyUserType('N');
-    }
-
-    const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
-    const bowelDateSet = new Set(
-      bowelRecords.map((record) => toKstDateKey(record.regDate)),
-    );
-    const bowelDays = bowelDateSet.size;
-    const averageInterval = bowelDays === 0 ? 30 : 30 / bowelDays;
-
-    const validStoolRecords = bowelRecords.filter(
-      (record) =>
-        record.stoolSimple === 'H' ||
-        record.stoolSimple === 'M' ||
-        record.stoolSimple === 'T',
-    );
-    const denominator = validStoolRecords.length;
-    const hardRatio =
-      denominator === 0
-        ? 0
-        : (validStoolRecords.filter((record) => record.stoolSimple === 'H')
-            .length /
-            denominator) *
-          100;
-    const normalRatio =
-      denominator === 0
-        ? 0
-        : (validStoolRecords.filter((record) => record.stoolSimple === 'M')
-            .length /
-            denominator) *
-          100;
-    const looseRatio =
-      denominator === 0
-        ? 0
-        : (validStoolRecords.filter((record) => record.stoolSimple === 'T')
-            .length /
-            denominator) *
-          100;
-
+  ): MonthlyLifeInfluenceStats {
     const abnormalStoolDateSet = new Set(
       bowelRecords
         .filter(
-          (record) => record.stoolSimple === 'H' || record.stoolSimple === 'T',
-        )
-        .map((record) => toKstDateKey(record.regDate)),
-    );
-
-    const lifeIssueDateSet = new Set(
-      lifeRecords
-        .filter(
           (record) =>
-            record.sleep === 'B' ||
-            record.stress === 'H' ||
-            record.water === 'L' ||
-            (record.waterIntake !== null && record.waterIntake <= 2),
+            record.stoolBristol === 1 ||
+            record.stoolBristol === 2 ||
+            record.stoolBristol === 6 ||
+            record.stoolBristol === 7,
         )
         .map((record) => toKstDateKey(record.regDate)),
     );
-    const abnormalCompanionDays = [...lifeIssueDateSet].filter((dateKey) =>
-      abnormalStoolDateSet.has(dateKey),
-    ).length;
-    const abnormalCompanionRatio =
-      lifeIssueDateSet.size === 0
-        ? 0
-        : (abnormalCompanionDays / lifeIssueDateSet.size) * 100;
 
-    // 확정 우선순위: C -> L -> R -> I -> U
-    if (averageInterval >= 3 && hardRatio >= 35) {
-      return this.buildMonthlyUserType('C');
+    const factorStats = [
+      {
+        titleSubject: '수면 부족이',
+        count: 0,
+        matches: (record: LifeRecordForReport) => record.sleep === 'B',
+      },
+      {
+        titleSubject: '수분 부족이',
+        count: 0,
+        matches: (record: LifeRecordForReport) =>
+          record.waterIntake !== null
+            ? record.waterIntake <= 2
+            : record.water === 'L',
+      },
+      {
+        titleSubject: '불규칙한 식사가',
+        count: 0,
+        matches: (record: LifeRecordForReport) => record.mealRegular === 'I',
+      },
+      {
+        titleSubject: '운동 부족이',
+        count: 0,
+        matches: (record: LifeRecordForReport) => record.exercise === 'N',
+      },
+      {
+        titleSubject: '높은 스트레스가',
+        count: 0,
+        matches: (record: LifeRecordForReport) => record.stress === 'H',
+      },
+    ];
+
+    const matchedDateSet = new Set<string>();
+
+    for (const lifeRecord of lifeRecords) {
+      const dateKey = toKstDateKey(lifeRecord.regDate);
+
+      if (!abnormalStoolDateSet.has(dateKey)) {
+        continue;
+      }
+
+      const matchedFactors = factorStats.filter((factor) =>
+        factor.matches(lifeRecord),
+      );
+
+      if (matchedFactors.length === 0) {
+        continue;
+      }
+
+      matchedDateSet.add(dateKey);
+
+      for (const factor of matchedFactors) {
+        factor.count += 1;
+      }
     }
 
-    if (looseRatio >= 35 && bowelDays >= 26) {
-      return this.buildMonthlyUserType('L');
+    let dominantFactor = factorStats[0];
+
+    for (const factor of factorStats.slice(1)) {
+      if (factor.count > dominantFactor.count) {
+        dominantFactor = factor;
+      }
     }
 
-    if (bowelDays >= 13 && normalRatio >= 50) {
-      return this.buildMonthlyUserType('R');
-    }
-
-    if (lifeIssueDateSet.size >= 8 && abnormalCompanionRatio >= 60) {
-      return this.buildMonthlyUserType('I');
-    }
-
-    return this.buildMonthlyUserType('U');
+    return {
+      dayCount: matchedDateSet.size,
+      titleSubject:
+        dominantFactor.count === 0 ? null : dominantFactor.titleSubject,
+    };
   }
 
-  private buildMonthlyUserType(code: string): MonthlyUserTypeDto {
-    const userTypeMap: Record<string, MonthlyUserTypeDto> = {
-      R: {
-        code: 'R',
-        name: '규칙형',
-        description:
-          '최근 30일 동안 배변 리듬이 비교적 안정적으로 유지되고 있어요.',
-      },
-      C: {
-        code: 'C',
-        name: '변비경향형',
-        description: '딱딱한 변이나 긴 배변 간격이 반복되는 경향이 있어요.',
-      },
-      L: {
-        code: 'L',
-        name: '묽은변경향형',
-        description: '묽은 변이나 잦은 배변이 반복되는 경향이 있어요.',
-      },
-      I: {
-        code: 'I',
-        name: '생활영향형',
-        description:
-          '수면, 스트레스, 수분, 식사 같은 생활 요인의 영향이 커 보여요.',
-      },
-      U: {
-        code: 'U',
-        name: '불규칙형',
-        description:
-          '배변 리듬이 일정하지 않아 생활 패턴과 함께 관찰이 필요해요.',
-      },
-      N: {
-        code: 'N',
-        name: '기록부족형',
-        description: '기록이 부족해 정확한 유형 분석이 어려워요.',
-        characterImageUrl: null,
-      },
+  private resolveMonthlyUserType(
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
+  ): MonthlyUserTypeDto {
+    const bowelRecords = boogleRecords.filter((record) => record.hasBowel);
+    const bowelCount = bowelRecords.length;
+
+    const validBristolRecords = bowelRecords.filter(
+      (record) =>
+        record.stoolBristol !== null &&
+        Number.isInteger(record.stoolBristol) &&
+        record.stoolBristol >= 1 &&
+        record.stoolBristol <= 7,
+    );
+    const denominator = validBristolRecords.length;
+    const hardCount = validBristolRecords.filter(
+      (record) => record.stoolBristol === 1 || record.stoolBristol === 2,
+    ).length;
+    const normalCount = validBristolRecords.filter(
+      (record) => record.stoolBristol === 3 || record.stoolBristol === 4,
+    ).length;
+    const looseCount = validBristolRecords.filter(
+      (record) => record.stoolBristol === 6 || record.stoolBristol === 7,
+    ).length;
+
+    const hardRatio = this.calculateRatio(hardCount, denominator);
+    const normalRatio = this.calculateRatio(normalCount, denominator);
+    const looseRatio = this.calculateRatio(looseCount, denominator);
+
+    const bowelIntervals = this.buildBowelIntervals(bowelRecords);
+    const minInterval =
+      bowelIntervals.length === 0 ? null : Math.min(...bowelIntervals);
+    const maxInterval =
+      bowelIntervals.length === 0 ? null : Math.max(...bowelIntervals);
+    const intervalRange =
+      minInterval === null || maxInterval === null
+        ? null
+        : this.round1(maxInterval - minInterval);
+
+    const lifeInfluence = this.buildMonthlyLifeInfluenceStats(
+      bowelRecords,
+      lifeRecords,
+    );
+
+    const metrics: MonthlyUserTypeMetrics = {
+      bowelCount,
+      hardRatio,
+      normalRatio,
+      looseRatio,
+      minInterval,
+      maxInterval,
+      intervalRange,
+      lifeInfluenceDayCount: lifeInfluence.dayCount,
+      lifeInfluenceTitleSubject: lifeInfluence.titleSubject,
     };
 
-    return userTypeMap[code] ?? userTypeMap.N;
+    if (bowelCount < 5) {
+      return this.buildMonthlyUserType('N', metrics);
+    }
+
+    const matchesConstipation =
+      hardRatio >= 40 || (maxInterval !== null && maxInterval >= 3);
+    const matchesLoose = looseRatio >= 40;
+    const matchesIrregular = intervalRange !== null && intervalRange >= 2;
+    const matchesLifeInfluence = lifeInfluence.dayCount >= 2;
+    const matchesRegular = normalRatio >= 60;
+
+    if (matchesConstipation && matchesLoose) {
+      return this.buildMonthlyUserType('N', metrics);
+    }
+
+    if (matchesConstipation) {
+      return this.buildMonthlyUserType('C', metrics);
+    }
+
+    if (matchesLoose) {
+      return this.buildMonthlyUserType('W', metrics);
+    }
+
+    if (matchesIrregular) {
+      return this.buildMonthlyUserType('I', metrics);
+    }
+
+    if (matchesLifeInfluence) {
+      return this.buildMonthlyUserType('L', metrics);
+    }
+
+    if (matchesRegular) {
+      return this.buildMonthlyUserType('R', metrics);
+    }
+
+    return this.buildMonthlyUserType('N', metrics);
+  }
+
+  private formatMonthlyUserTypeValue(value: number): string {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
+  private buildMonthlyUserType(
+    code: MonthlyUserTypeCode,
+    metrics: MonthlyUserTypeMetrics,
+  ): MonthlyUserTypeDto {
+    const format = (value: number) => this.formatMonthlyUserTypeValue(value);
+
+    switch (code) {
+      case 'R':
+        return {
+          code,
+          name: '규칙형',
+          title:
+            `이번 달 배변 ${metrics.bowelCount}회 + ` +
+            `보통 변 ${format(metrics.normalRatio)}%`,
+          description: '비교적 일정한 배변 패턴이 나타났어요',
+        };
+
+      case 'C': {
+        const titleParts: string[] = [];
+
+        if (metrics.maxInterval !== null && metrics.maxInterval >= 3) {
+          titleParts.push(`최대 배변 간격 ${format(metrics.maxInterval)}일`);
+        }
+
+        if (metrics.hardRatio >= 40) {
+          titleParts.push(`딱딱한 변 ${format(metrics.hardRatio)}%`);
+        }
+
+        return {
+          code,
+          name: '변비경향형',
+          title: titleParts.join(' 또는 '),
+          description:
+            '딱딱한 변이 자주 기록되거나 배변 간격이 길어진 구간이 있었어요',
+        };
+      }
+
+      case 'W':
+        return {
+          code,
+          name: '묽은변경향형',
+          title: `묽은 변 ${format(metrics.looseRatio)}%`,
+          description: '묽은 변이 비교적 자주 기록됐어요',
+        };
+
+      case 'L':
+        return {
+          code,
+          name: '생활영향형',
+          title:
+            `${metrics.lifeInfluenceTitleSubject ?? '생활 요인이'} 나타난 날에 ` +
+            '평소와 다른 변 상태가 함께 나타났어요',
+          description: null,
+        };
+
+      case 'I':
+        return {
+          code,
+          name: '불규칙형',
+          title:
+            `배변 간격 ${format(metrics.minInterval ?? 0)}일 ~ ` +
+            `${format(metrics.maxInterval ?? 0)}일`,
+          description: '배변 간격이 일정하지 않고 들쭉날쭉했어요',
+        };
+
+      case 'N':
+        return {
+          code,
+          name: '유형 분석 중',
+          title: '아직 뚜렷한 유형이 나타나지 않았어요',
+          description: null,
+        };
+    }
   }
 
   private resolveMonthlyState(conditionScore: number | null): number {

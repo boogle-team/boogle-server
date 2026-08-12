@@ -200,7 +200,7 @@ export function detectWeeklyPatterns(
   }
 
   // 룰 7
-  const looseCountThreshold = previousType === 'L' ? 5 : 3;
+  const looseCountThreshold = previousType === 'W' ? 5 : 3;
   if (looseStoolRecords.length >= looseCountThreshold) {
     addRule(WEEKLY_RULE_CODE.FREQUENT_LOOSE_STOOL, {
       evidence: [
@@ -219,7 +219,7 @@ export function detectWeeklyPatterns(
   const looseStoolDateKeys = uniqueDateKeys(
     looseStoolRecords.map((record) => record.regDate),
   );
-  const looseStreakThreshold = previousType === 'L' ? 5 : 3;
+  const looseStreakThreshold = previousType === 'W' ? 5 : 3;
   const looseStoolStreakDays = longestConsecutiveDays(looseStoolDateKeys);
 
   if (looseStoolStreakDays >= looseStreakThreshold) {
