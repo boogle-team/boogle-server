@@ -11,7 +11,7 @@ export class HomeUserDto {
     nullable: true,
     example: 'R',
     description:
-      '최근 월간 유형 코드(R 규칙형 / C 변비경향형 / L 묽은변경향형 / I 생활영향형 / U 불규칙형 / N 기록부족형). 유형 산출 전이면 null',
+      '최근 월간 유형 코드(R 규칙형 / C 변비경향형 / W 묽은변경향형 / L 생활영향형 / I 불규칙형 / N 유형 분석 중). 유형 산출 전이면 null',
   })
   userType!: string | null;
 

@@ -8,13 +8,17 @@ import { HomeErrorCode } from './home-error-code.enum';
 import { HomeResponseDto, WeekStripDayDto } from './dto/home-response.dto';
 import { HomeSummaryResponseDto } from './dto/home-summary-response.dto';
 
+// monthly_record.user_type 코드 → 표시 라벨.
+// 코드 정의는 리포트(월간 유형 산출)가 저장하는 값이 기준이다
+// (prisma/schema.prisma의 user_type 주석, report.service의 resolveMonthlyUserType).
+// W/L/I를 L/I/U로 잘못 매핑하면 다른 유형이 표시되므로 함부로 바꾸지 않는다.
 const USER_TYPE_LABEL: Record<string, string> = {
   R: '규칙형',
   C: '변비경향형',
-  L: '묽은변경향형',
-  I: '생활영향형',
-  U: '불규칙형',
-  N: '기록부족형',
+  W: '묽은변경향형',
+  L: '생활영향형',
+  I: '불규칙형',
+  N: '유형 분석 중',
 };
 
 // auto_tags는 콤마로 이어붙인 문자열이라 배열로 파싱해 내려준다.
