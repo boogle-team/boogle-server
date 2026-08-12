@@ -7,7 +7,11 @@ const notificationDispatchMock = {
   dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
 };
 import { ReportErrorCode } from './report-error-code.enum';
-import { BoogleRecordForReport } from './dto/report-record.dto';
+import type {
+  BoogleRecordForReport,
+  LifeRecordForReport,
+} from './dto/report-record.dto';
+import type { MonthlyUserTypeDto } from './dto/monthly-report-response.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
 import type {
   ChangeTrend,
@@ -60,6 +64,13 @@ interface BowelRhythmByDayTestAccessor {
   ): BowelRhythmByDayDto[];
 }
 
+interface MonthlyUserTypeTestAccessor {
+  resolveMonthlyUserType(
+    boogleRecords: BoogleRecordForReport[],
+    lifeRecords: LifeRecordForReport[],
+  ): MonthlyUserTypeDto;
+}
+
 function createBoogleRecord(
   dateKey: string,
   overrides: Partial<BoogleRecordForReport> = {},
@@ -87,6 +98,27 @@ function createBoogleRecord(
     takenTime: null,
     amount: null,
     ...rest,
+  };
+}
+
+function createLifeRecord(
+  dateKey: string,
+  overrides: Partial<LifeRecordForReport> = {},
+): LifeRecordForReport {
+  return {
+    id: BigInt(dateKey.slice(-2)),
+    regDate: kstDate(dateKey),
+    sleep: null,
+    sleepTime: null,
+    caffeine: null,
+    exercise: null,
+    stress: null,
+    water: null,
+    waterIntake: null,
+    mealRegular: null,
+    hormone: null,
+    foodTags: [],
+    ...overrides,
   };
 }
 
@@ -384,6 +416,218 @@ describe('ReportService', () => {
     ).toEqual([]);
   });
 
+  describe('resolveMonthlyUserType', () => {
+    const getAccessor = () => service as unknown as MonthlyUserTypeTestAccessor;
+
+    type MonthlyBowelFixture = readonly [
+      dateKey: string,
+      time: string,
+      stoolBristol: number | null,
+    ];
+
+    const createMonthlyRecords = (
+      fixtures: readonly MonthlyBowelFixture[],
+    ): BoogleRecordForReport[] =>
+      fixtures.map(([dateKey, time, stoolBristol], index) =>
+        createBoogleRecord(dateKey, {
+          id: BigInt(index + 1),
+          bowelMovementAt: kstDate(dateKey, time),
+          stoolBristol,
+          stoolSimple: null,
+        }),
+      );
+
+    it('월 누적 배변이 5회 미만이면 유형 분석 중을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 3],
+        ['2026-08-02', '09:00', 4],
+        ['2026-08-03', '09:00', 3],
+        ['2026-08-04', '09:00', 4],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'N',
+        name: '유형 분석 중',
+        title: '아직 뚜렷한 유형이 나타나지 않았어요',
+        description: null,
+      });
+    });
+
+    it('실제 최대 배변 간격이 3일 미만이면 표시값이 3.0일이어도 C로 판정하지 않는다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '00:00', 5],
+        ['2026-08-01', '12:00', 5],
+        ['2026-08-04', '11:00', 5], // 이전 기록과 2일 23시간
+        ['2026-08-05', '11:00', 5],
+        ['2026-08-06', '11:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, []).code).toBe('I');
+    });
+
+    it('배변 5회 중 브리스톨 3~4가 60%이면 규칙형을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 3],
+        ['2026-08-02', '09:00', 4],
+        ['2026-08-03', '09:00', 3],
+        ['2026-08-04', '09:00', 5],
+        ['2026-08-05', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'R',
+        name: '규칙형',
+        title: '이번 달 배변 5회 + 보통 변 60%',
+        description: '비교적 일정한 배변 패턴이 나타났어요',
+      });
+    });
+
+    it('브리스톨 1~2 비율이 40%이면 변비경향형을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 1],
+        ['2026-08-02', '09:00', 2],
+        ['2026-08-03', '09:00', 3],
+        ['2026-08-04', '09:00', 4],
+        ['2026-08-05', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'C',
+        name: '변비경향형',
+        title: '딱딱한 변 40%',
+        description:
+          '딱딱한 변이 자주 기록되거나 배변 간격이 길어진 구간이 있었어요',
+      });
+    });
+
+    it('딱딱한 변 비율이 낮아도 최대 배변 간격이 3일이면 변비경향형을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 5],
+        ['2026-08-02', '09:00', 5],
+        ['2026-08-05', '09:00', 5],
+        ['2026-08-06', '09:00', 5],
+        ['2026-08-07', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'C',
+        name: '변비경향형',
+        title: '최대 배변 간격 3일',
+        description:
+          '딱딱한 변이 자주 기록되거나 배변 간격이 길어진 구간이 있었어요',
+      });
+    });
+
+    it('변비경향형의 두 조건을 모두 만족하면 title에 두 계산값을 표시한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 1],
+        ['2026-08-02', '09:00', 2],
+        ['2026-08-05', '09:00', 5],
+        ['2026-08-06', '09:00', 5],
+        ['2026-08-07', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'C',
+        name: '변비경향형',
+        title: '최대 배변 간격 3일 또는 딱딱한 변 40%',
+        description:
+          '딱딱한 변이 자주 기록되거나 배변 간격이 길어진 구간이 있었어요',
+      });
+    });
+
+    it('브리스톨 6~7 비율이 40%이면 묽은변경향형을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 6],
+        ['2026-08-02', '09:00', 7],
+        ['2026-08-03', '09:00', 5],
+        ['2026-08-04', '09:00', 5],
+        ['2026-08-05', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'W',
+        name: '묽은변경향형',
+        title: '묽은 변 40%',
+        description: '묽은 변이 비교적 자주 기록됐어요',
+      });
+    });
+
+    it('변비경향형과 묽은변경향형을 동시에 만족하면 유형 분석 중을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 1],
+        ['2026-08-02', '09:00', 2],
+        ['2026-08-03', '09:00', 6],
+        ['2026-08-04', '09:00', 7],
+        ['2026-08-05', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'N',
+        name: '유형 분석 중',
+        title: '아직 뚜렷한 유형이 나타나지 않았어요',
+        description: null,
+      });
+    });
+
+    it('최대 간격은 3일 미만이지만 최대와 최소 간격 차이가 2일 이상이면 불규칙형을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '00:00', 5],
+        ['2026-08-01', '06:00', 5],
+        ['2026-08-03', '18:00', 5],
+        ['2026-08-04', '18:00', 5],
+        ['2026-08-05', '18:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'I',
+        name: '불규칙형',
+        title: '배변 간격 0.3일 ~ 2.5일',
+        description: '배변 간격이 일정하지 않고 들쭉날쭉했어요',
+      });
+    });
+
+    it('이상 변과 생활 이상이 같은 날짜에 2일 있고 규칙형도 만족하면 생활영향형을 우선한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 1],
+        ['2026-08-02', '09:00', 6],
+        ['2026-08-03', '09:00', 3],
+        ['2026-08-04', '09:00', 4],
+        ['2026-08-05', '09:00', 3],
+      ]);
+      const lifeRecords = [
+        createLifeRecord('2026-08-01', { water: 'L' }),
+        createLifeRecord('2026-08-02', { water: 'L' }),
+      ];
+
+      expect(
+        getAccessor().resolveMonthlyUserType(records, lifeRecords),
+      ).toEqual({
+        code: 'L',
+        name: '생활영향형',
+        title: '수분 부족이 나타난 날에 평소와 다른 변 상태가 함께 나타났어요',
+        description: null,
+      });
+    });
+
+    it('배변은 5회 이상이지만 어떤 유형 조건도 만족하지 않으면 유형 분석 중을 반환한다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '09:00', 5],
+        ['2026-08-02', '09:00', 5],
+        ['2026-08-03', '09:00', 5],
+        ['2026-08-04', '09:00', 5],
+        ['2026-08-05', '09:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, [])).toEqual({
+        code: 'N',
+        name: '유형 분석 중',
+        title: '아직 뚜렷한 유형이 나타나지 않았어요',
+        description: null,
+      });
+    });
+  });
+
   describe('createPdfReport', () => {
     let renderMonthlyPdfSpy: jest.SpiedFunction<
       typeof monthlyPdfRenderer.renderMonthlyPdf
@@ -506,6 +750,17 @@ describe('ReportService', () => {
         errorCode: ReportErrorCode.REPORT_INVALID_MONTH_FORMAT,
       });
     });
+
+    it.each(['', '2026-7-01', '2026-07-02', '2026-13-01', 'invalid'])(
+      'PDF 월 시작일 %s는 REPORT_INVALID_MONTH_FORMAT을 반환한다',
+      async (monthStartDate) => {
+        await expect(
+          service.createPdfReport(1n, { monthStartDate }),
+        ).rejects.toMatchObject({
+          errorCode: ReportErrorCode.REPORT_INVALID_MONTH_FORMAT,
+        });
+      },
+    );
 
     it('renderer 오류를 REPORT_PDF_GENERATION_FAILED로 변환한다', async () => {
       prismaMock.boogleRecord.findMany.mockResolvedValue(

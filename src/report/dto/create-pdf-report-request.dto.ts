@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Matches } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class CreatePdfReportRequestDto {
   @ApiProperty({
@@ -9,8 +9,5 @@ export class CreatePdfReportRequestDto {
     format: 'date',
   })
   @IsString()
-  @Matches(/^\d{4}-(0[1-9]|1[0-2])-01$/, {
-    message: 'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
-  })
   monthStartDate!: string;
 }

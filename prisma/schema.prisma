@@ -263,8 +263,7 @@ model MonthlyRecord {
   state           Int?
   completionScore Float?    @map("completion_score") @db.Double
   conditionScore  Int?      @map("condition_score")
-  userType        String?   @map("user_type") @db.Char(1) // 규칙형/변비경향형/묽은변걍형/생활영향형/불규칙형/기록부족형
-
+  userType        String?   @map("user_type") @db.Char(1) // R 규칙형 / C 변비경향형 / W 묽은변경향형 / L 생활영향형 / I 불규칙형 / N 유형 분석 중
   user Member? @relation(fields: [userId], references: [id])
 
   @@unique([userId, monthStartDate], map: "monthly_record_index_4")

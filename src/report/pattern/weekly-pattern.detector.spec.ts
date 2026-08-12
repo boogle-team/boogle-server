@@ -342,7 +342,7 @@ describe('weekly-pattern.detector', () => {
     const looseTypeResult = detect({
       boogleRecords,
       context: {
-        previousMonthlyUserType: 'L',
+        previousMonthlyUserType: 'W',
         sensitiveInfoAgreed: false,
       },
     });
@@ -375,7 +375,7 @@ describe('weekly-pattern.detector', () => {
       }),
     ];
     const looseTypeContext: WeeklyPatternContext = {
-      previousMonthlyUserType: 'L',
+      previousMonthlyUserType: 'W',
       sensitiveInfoAgreed: false,
     };
 
