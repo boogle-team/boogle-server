@@ -109,6 +109,20 @@ export class ReportService {
     private readonly notifications: NotificationDispatchService,
     private readonly snapshots: ReportSnapshotService,
   ) {}
+
+  private async saveSnapshotSafely(
+    context: string,
+    save: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await save();
+    } catch (error) {
+      this.logger.error(
+        `리포트 스냅샷 저장 실패 context=${context}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
   // 주간 메인
   async getWeeklyReport(
     userId: bigint,
@@ -169,12 +183,16 @@ export class ReportService {
       );
 
       // 기록 부족 여부와 관계없이 현재 주 계산 결과를 한 번만 저장한다.
-      await this.snapshots.upsertWeekly(
-        userId,
-        weekStartDate,
-        this.minDate(weekEndDate, this.getTodayCalendarDate()),
-        this.isPeriodFinalized(weekEndDate),
-        this.toWeeklySnapshotValue(summary, recordStats),
+      await this.saveSnapshotSafely(
+        `weekly userId=${userId.toString()} period=${this.toDateString(weekStartDate)}`,
+        () =>
+          this.snapshots.upsertWeekly(
+            userId,
+            weekStartDate,
+            this.minDate(weekEndDate, this.getTodayCalendarDate()),
+            this.isPeriodFinalized(weekEndDate),
+            this.toWeeklySnapshotValue(summary, recordStats),
+          ),
       );
 
       const previousSummary = await this.getOrCreatePreviousWeeklySummary(
@@ -316,12 +334,18 @@ export class ReportService {
       recordStats,
     );
 
-    await this.snapshots.upsertWeekly(
-      userId,
-      previousWeekStartDate,
-      previousWeekEndDate,
-      true,
-      this.toWeeklySnapshotValue(summary, recordStats),
+    await this.saveSnapshotSafely(
+      `previous-weekly userId=${userId.toString()} period=${this.toDateString(
+        previousWeekStartDate,
+      )}`,
+      () =>
+        this.snapshots.upsertWeekly(
+          userId,
+          previousWeekStartDate,
+          previousWeekEndDate,
+          true,
+          this.toWeeklySnapshotValue(summary, recordStats),
+        ),
     );
 
     return recordStats.recordedDays === 0
@@ -389,12 +413,16 @@ export class ReportService {
       const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
 
       // 기록 부족 여부와 관계없이 현재 월 계산 결과를 저장한다.
-      await this.snapshots.upsertMonthly(
-        userId,
-        monthStartDate,
-        effectiveMonthEnd,
-        this.isPeriodFinalized(calendarMonthEnd),
-        this.toMonthlySnapshotValue(summary, userType, recordStats),
+      await this.saveSnapshotSafely(
+        `monthly userId=${userId.toString()} period=${this.toDateString(monthStartDate)}`,
+        () =>
+          this.snapshots.upsertMonthly(
+            userId,
+            monthStartDate,
+            effectiveMonthEnd,
+            this.isPeriodFinalized(calendarMonthEnd),
+            this.toMonthlySnapshotValue(summary, userType, recordStats),
+          ),
       );
 
       if (!hasEnoughMonthlyRecords) {
@@ -628,12 +656,18 @@ export class ReportService {
       previousLifeRecords,
     );
 
-    await this.snapshots.upsertMonthly(
-      userId,
-      previousMonthStartDate,
-      previousMonthEndDate,
-      true,
-      this.toMonthlySnapshotValue(summary, userType, recordStats),
+    await this.saveSnapshotSafely(
+      `previous-monthly userId=${userId.toString()} period=${this.toDateString(
+        previousMonthStartDate,
+      )}`,
+      () =>
+        this.snapshots.upsertMonthly(
+          userId,
+          previousMonthStartDate,
+          previousMonthEndDate,
+          true,
+          this.toMonthlySnapshotValue(summary, userType, recordStats),
+        ),
     );
 
     return recordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
@@ -886,12 +920,18 @@ export class ReportService {
     );
     const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
 
-    await this.snapshots.upsertMonthly(
-      userId,
-      previousMonthStart,
-      previousMonthEnd,
-      true,
-      this.toMonthlySnapshotValue(summary, userType, recordStats),
+    await this.saveSnapshotSafely(
+      `weekly-pattern-context userId=${userId.toString()} period=${this.toDateString(
+        previousMonthStart,
+      )}`,
+      () =>
+        this.snapshots.upsertMonthly(
+          userId,
+          previousMonthStart,
+          previousMonthEnd,
+          true,
+          this.toMonthlySnapshotValue(summary, userType, recordStats),
+        ),
     );
 
     return {
