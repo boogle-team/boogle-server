@@ -36,12 +36,33 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Boogle API')
-    .setDescription('Boogle server API documentation')
+    .setDescription(
+      [
+        'Boogle 서버 API 문서입니다.',
+        '',
+        '일반 성공 응답은 `{ success: true, data, message }`, 오류 응답은 `{ success: false, code, message, data? }` 형식입니다.',
+        '인증이 필요한 API는 Authorize에 access token을 입력해 호출할 수 있습니다.',
+      ].join('\n'),
+    )
     .setVersion('0.0.1')
-    .addBearerAuth()
+    .addBearerAuth({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: '로그인 또는 토큰 재발급에서 받은 access token',
+    })
     .build();
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api-docs', app, swaggerDocument);
+  SwaggerModule.setup('api-docs', app, swaggerDocument, {
+    customSiteTitle: 'Boogle API Docs',
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      filter: true,
+      tagsSorter: 'alpha',
+      operationsSorter: 'method',
+    },
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }
