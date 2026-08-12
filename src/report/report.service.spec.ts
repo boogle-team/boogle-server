@@ -444,6 +444,18 @@ describe('ReportService', () => {
       });
     });
 
+    it('실제 최대 배변 간격이 3일 미만이면 표시값이 3.0일이어도 C로 판정하지 않는다', () => {
+      const records = createMonthlyRecords([
+        ['2026-08-01', '00:00', 5],
+        ['2026-08-01', '12:00', 5],
+        ['2026-08-04', '11:00', 5], // 이전 기록과 2일 23시간
+        ['2026-08-05', '11:00', 5],
+        ['2026-08-06', '11:00', 5],
+      ]);
+
+      expect(getAccessor().resolveMonthlyUserType(records, []).code).toBe('I');
+    });
+
     it('배변 5회 중 브리스톨 3~4가 60%이면 규칙형을 반환한다', () => {
       const records = createMonthlyRecords([
         ['2026-08-01', '09:00', 3],
@@ -729,6 +741,17 @@ describe('ReportService', () => {
         errorCode: ReportErrorCode.REPORT_INVALID_MONTH_FORMAT,
       });
     });
+
+    it.each(['', '2026-7-01', '2026-07-02', '2026-13-01', 'invalid'])(
+      'PDF 월 시작일 %s는 REPORT_INVALID_MONTH_FORMAT을 반환한다',
+      async (monthStartDate) => {
+        await expect(
+          service.createPdfReport(1n, { monthStartDate }),
+        ).rejects.toMatchObject({
+          errorCode: ReportErrorCode.REPORT_INVALID_MONTH_FORMAT,
+        });
+      },
+    );
 
     it('renderer 오류를 REPORT_PDF_GENERATION_FAILED로 변환한다', async () => {
       prismaMock.boogleRecord.findMany.mockResolvedValue(

@@ -107,6 +107,15 @@ export class ReportService {
     try {
       const includeGuide = query.includeGuide ?? true;
       const weekStartDate = this.resolveWeekStartDate(query.weekStartDate);
+      const currentWeekStartDate = this.getCurrentMonday();
+
+      if (weekStartDate > currentWeekStartDate) {
+        throw new BusinessException(
+          ReportErrorCode.REPORT_INVALID_DATE_RANGE,
+          '미래 주의 리포트는 조회할 수 없습니다.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       const weekEndDate = this.addDays(weekStartDate, 6);
       const nextWeekStartDate = this.addDays(weekStartDate, 7);
 
@@ -261,6 +270,17 @@ export class ReportService {
       const calendarMonthEnd = this.addDays(calendarNextMonthStart, -1);
 
       const today = this.getTodayCalendarDate();
+      const currentMonthStartDate = new Date(
+        Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1),
+      );
+
+      if (monthStartDate > currentMonthStartDate) {
+        throw new BusinessException(
+          ReportErrorCode.REPORT_INVALID_DATE_RANGE,
+          '미래 월의 리포트는 조회할 수 없습니다.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       const effectiveMonthEnd =
         monthStartDate <= today && today <= calendarMonthEnd
           ? today
@@ -494,7 +514,9 @@ export class ReportService {
     body: CreatePdfReportRequestDto,
   ): Promise<PdfReportResult> {
     try {
-      const monthStartDate = this.resolveMonthStartDate(body.monthStartDate);
+      const monthStartDate = this.resolveRequiredMonthStartDate(
+        body.monthStartDate,
+      );
       const today = this.getTodayCalendarDate();
 
       if (monthStartDate > today) {
@@ -570,6 +592,20 @@ export class ReportService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private resolveRequiredMonthStartDate(monthStartDate: string): Date {
+    const parsedDate = this.parseDateString(monthStartDate);
+
+    if (parsedDate === null || parsedDate.getUTCDate() !== 1) {
+      throw new BusinessException(
+        ReportErrorCode.REPORT_INVALID_MONTH_FORMAT,
+        'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return parsedDate;
   }
   // 주간기록 조회
   private async findWeeklyRecord(
@@ -1536,7 +1572,7 @@ export class ReportService {
   }
 
   private calculateRatio(count: number, total: number): number {
-    return total === 0 ? 0 : this.round1((count / total) * 100);
+    return total === 0 ? 0 : (count / total) * 100;
   }
 
   private buildBowelIntervals(bowelRecords: BoogleRecordForReport[]): number[] {
@@ -1554,7 +1590,7 @@ export class ReportService {
           previous.bowelMovementAt.getTime()) /
         (24 * 60 * 60 * 1000);
 
-      return this.round1(intervalDays);
+      return intervalDays;
     });
   }
 
@@ -1681,7 +1717,7 @@ export class ReportService {
     const intervalRange =
       minInterval === null || maxInterval === null
         ? null
-        : this.round1(maxInterval - minInterval);
+        : maxInterval - minInterval;
 
     const lifeInfluence = this.buildMonthlyLifeInfluenceStats(
       bowelRecords,
@@ -1739,7 +1775,9 @@ export class ReportService {
   }
 
   private formatMonthlyUserTypeValue(value: number): string {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    const rounded = this.round1(value);
+
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
   }
 
   private buildMonthlyUserType(
