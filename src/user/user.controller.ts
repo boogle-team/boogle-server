@@ -51,7 +51,6 @@ import {
 import { ErrorResponseDto } from '@/common/dto/api-response.dto';
 import { errorExamples } from '@/common/swagger/error-example.util';
 import { ApiSuccessResponse } from '@/common/decorators/api-success-response.decorator';
-import { NotificationSettingsResponseDto } from './dto/notification-settings-response.dto';
 import {
   MeResponseDto,
   OnboardingStatusResponseDto,

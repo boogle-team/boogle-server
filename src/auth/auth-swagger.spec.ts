@@ -71,7 +71,8 @@ describe('인증·계정 Swagger 문서', () => {
     const operation = document.paths['/api/v1/auth/oauth/exchange']
       ?.post as unknown as SwaggerOperation;
     const response = operation.responses?.['200'];
-    const schema = response.content?.['application/json']?.schema as {
+    expect(response).toBeDefined();
+    const schema = response?.content?.['application/json']?.schema as {
       properties?: { data?: { oneOf?: unknown[]; discriminator?: unknown } };
     };
 
@@ -99,7 +100,8 @@ describe('인증·계정 Swagger 문서', () => {
         method
       ] as unknown as SwaggerOperation;
       const response = operation.responses?.['200'];
-      expect(response.content?.['application/json']?.schema).toBeDefined();
+      expect(response).toBeDefined();
+      expect(response?.content?.['application/json']?.schema).toBeDefined();
     }
   });
 
