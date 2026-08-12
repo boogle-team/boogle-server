@@ -115,7 +115,7 @@ describe('AuthService', () => {
     await expect(
       service.createAuthorizationUrl('google', 'https://evil.example.com'),
     ).rejects.toMatchObject({
-      errorCode: AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+      errorCode: AuthErrorCode.AUTH_FRONTEND_ORIGIN_NOT_ALLOWED,
       status: HttpStatus.BAD_REQUEST,
     });
     expect(temporaryTokens.create).not.toHaveBeenCalled();

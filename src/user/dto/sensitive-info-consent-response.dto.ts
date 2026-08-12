@@ -29,16 +29,3 @@ export class SensitiveInfoConsentDataDto {
   })
   withdrawnAt: string | null;
 }
-
-export class SensitiveInfoConsentSuccessResponseDto {
-  @ApiProperty({ example: true })
-  success: boolean;
-
-  @ApiProperty({ type: SensitiveInfoConsentDataDto })
-  data: SensitiveInfoConsentDataDto;
-
-  @ApiProperty({
-    example: '민감정보 수집 동의 상태 조회에 성공했습니다.',
-  })
-  message: string;
-}
