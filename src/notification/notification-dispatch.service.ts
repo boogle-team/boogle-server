@@ -25,6 +25,13 @@ const PUSH_SETTING_COLUMN: Record<
   STREAK: 'recordAlarm',
 };
 
+export interface DispatchResult {
+  // 생성된 인앱 알림 id (alarm_map.id).
+  notificationId: number;
+  // 푸시를 실제로 발송했는지. 설정이 'N'이거나 발송 실패면 false.
+  pushSent: boolean;
+}
+
 /**
  * 이벤트성 알림(위험 신호·리포트·PDF)의 공용 진입점.
  *
@@ -45,11 +52,16 @@ export class NotificationDispatchService {
     private readonly pushSender: PushSenderService,
   ) {}
 
+  /**
+   * @returns 생성된 인앱 알림 id와 **푸시를 실제로 발송했는지** 여부.
+   *   설정이 'N'이라 건너뛰거나 발송이 실패하면 pushSent=false다
+   *   (호출부가 "알림은 남았지만 푸시는 안 갔다"를 구분할 수 있어야 한다).
+   */
   async dispatch(
     userId: string | number | bigint,
     type: NotificationType,
     params?: NotificationTemplateParams,
-  ): Promise<void> {
+  ): Promise<DispatchResult> {
     const template = NOTIFICATION_TEMPLATES[type];
 
     // 1) 인앱 알림은 설정과 무관하게 항상 생성한다.
@@ -57,7 +69,7 @@ export class NotificationDispatchService {
 
     // 2) 푸시는 사용자 설정을 따른다. 값이 없으면(null=레거시) 기본 'Y'로 본다.
     if (!(await this.isPushEnabled(userId, type))) {
-      return;
+      return { notificationId: created.id, pushSent: false };
     }
 
     // 푸시 실패가 인앱 알림 생성까지 되돌리지 않도록 여기서 격리한다.
@@ -69,11 +81,13 @@ export class NotificationDispatchService {
         type,
         linkTo: NOTIFICATION_LINK_TO[template.category],
       });
+      return { notificationId: created.id, pushSent: true };
     } catch (error) {
       this.logger.error(
         `푸시 발송 실패 userId=${String(userId)} type=${type}`,
         error instanceof Error ? error.stack : String(error),
       );
+      return { notificationId: created.id, pushSent: false };
     }
   }
 
