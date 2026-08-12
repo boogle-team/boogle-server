@@ -12,7 +12,7 @@ import { AuthService } from './auth.service';
 
 interface SwaggerMediaType {
   schema?: unknown;
-  examples?: unknown;
+  examples?: Record<string, unknown>;
 }
 
 interface SwaggerResponse {
@@ -68,16 +68,27 @@ describe('인증·계정 Swagger 문서', () => {
   });
 
   it('OAuth 결과의 로그인·계정 연동 분기를 oneOf으로 구분한다', () => {
-    const operation = document.paths['/api/v1/auth/oauth/exchange']
-      ?.post as unknown as SwaggerOperation;
+    const operation = getOperation(
+      document,
+      '/api/v1/auth/oauth/exchange',
+      'post',
+    );
     const response = operation.responses?.['200'];
     expect(response).toBeDefined();
     const schema = response?.content?.['application/json']?.schema as {
-      properties?: { data?: { oneOf?: unknown[]; discriminator?: unknown } };
+      properties?: {
+        data?: {
+          oneOf?: unknown[];
+          discriminator?: { mapping?: Record<string, string> };
+        };
+      };
     };
 
     expect(schema.properties?.data?.oneOf).toHaveLength(2);
     expect(schema.properties?.data?.discriminator).toBeDefined();
+    expect(
+      Object.keys(schema.properties?.data?.discriminator?.mapping ?? {}),
+    ).toEqual(['HOME', 'ONBOARDING_REQUIRED', 'ACCOUNT_LINK_REQUIRED']);
   });
 
   it('성공 응답에 실제 data 스키마를 제공한다', () => {
@@ -96,13 +107,33 @@ describe('인증·계정 Swagger 문서', () => {
     ] as const;
 
     for (const [path, method] of targets) {
-      const operation = document.paths[path]?.[
-        method
-      ] as unknown as SwaggerOperation;
+      const operation = getOperation(document, path, method);
       const response = operation.responses?.['200'];
       expect(response).toBeDefined();
-      expect(response?.content?.['application/json']?.schema).toBeDefined();
+      const schema = response?.content?.['application/json']?.schema as
+        { properties?: { data?: unknown } } | undefined;
+      expect(schema?.properties?.data).toBeDefined();
     }
+  });
+
+  it('허용되지 않은 Origin과 OAuth 서버 설정 오류 코드를 구분한다', () => {
+    const operation = getOperation(
+      document,
+      '/api/v1/auth/oauth/{provider}',
+      'get',
+    );
+    const badRequestExamples =
+      operation.responses?.['400']?.content?.['application/json']?.examples;
+    const internalServerErrorExamples =
+      operation.responses?.['500']?.content?.['application/json']?.examples;
+
+    expect(badRequestExamples).toHaveProperty(
+      'AUTH_FRONTEND_ORIGIN_NOT_ALLOWED',
+    );
+    expect(badRequestExamples).not.toHaveProperty('AUTH_OAUTH_CONFIG_ERROR');
+    expect(internalServerErrorExamples).toHaveProperty(
+      'AUTH_OAUTH_CONFIG_ERROR',
+    );
   });
 
   it('4xx·5xx 응답에 공통 오류 스키마와 코드별 예시를 제공한다', () => {
@@ -133,4 +164,19 @@ describe('인증·계정 Swagger 문서', () => {
 
 function isOperation(value: unknown): value is SwaggerOperation {
   return typeof value === 'object' && value !== null && 'responses' in value;
+}
+
+function getOperation(
+  document: OpenAPIObject,
+  path: string,
+  method: string,
+): SwaggerOperation {
+  const operation = document.paths[path]?.[method] as unknown as
+    SwaggerOperation | undefined;
+  if (!operation) {
+    throw new Error(
+      `Swagger operation이 없습니다: ${method.toUpperCase()} ${path}`,
+    );
+  }
+  return operation;
 }

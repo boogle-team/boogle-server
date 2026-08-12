@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class AuthTokenPairResponseDto {
   @ApiProperty({
@@ -27,32 +27,32 @@ export class AuthUserResponseDto {
   @ApiProperty({ example: 1 })
   id!: number;
 
-  @ApiPropertyOptional({ nullable: true, example: 'boogle@example.com' })
+  @ApiProperty({ nullable: true, example: 'boogle@example.com' })
   email!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: '부글이' })
+  @ApiProperty({ nullable: true, example: '부글이' })
   nickname!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     nullable: true,
     example: 'https://cdn.example.com/profile.jpg',
   })
   profileImage!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['CUSTOM', 'SOCIAL'],
     nullable: true,
     example: 'SOCIAL',
   })
   profileImageSource!: 'CUSTOM' | 'SOCIAL' | null;
 
-  @ApiPropertyOptional({ enum: ['M', 'F', 'N'], nullable: true, example: 'F' })
+  @ApiProperty({ enum: ['M', 'F', 'N'], nullable: true, example: 'F' })
   gender!: string | null;
 
-  @ApiPropertyOptional({ enum: [10, 20, 30, 40], nullable: true, example: 20 })
+  @ApiProperty({ enum: [10, 20, 30, 40], nullable: true, example: 20 })
   ageGroup!: number | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['R', 'C', 'L', 'U'],
     nullable: true,
     example: 'R',

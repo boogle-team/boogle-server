@@ -1,35 +1,35 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, OmitType } from '@nestjs/swagger';
 
 export class UserProfileDataDto {
   @ApiProperty({ example: 1 })
   id!: number;
 
-  @ApiPropertyOptional({ nullable: true, example: 'boogle@example.com' })
+  @ApiProperty({ nullable: true, example: 'boogle@example.com' })
   email!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: '부글이' })
+  @ApiProperty({ nullable: true, example: '부글이' })
   nickname!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     nullable: true,
     example: 'https://cdn.example.com/profile.jpg',
   })
   profileImage!: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['CUSTOM', 'SOCIAL'],
     nullable: true,
     example: 'CUSTOM',
   })
   profileImageSource!: 'CUSTOM' | 'SOCIAL' | null;
 
-  @ApiPropertyOptional({ enum: ['M', 'F', 'N'], nullable: true, example: 'F' })
+  @ApiProperty({ enum: ['M', 'F', 'N'], nullable: true, example: 'F' })
   gender!: string | null;
 
-  @ApiPropertyOptional({ enum: [10, 20, 30, 40], nullable: true, example: 20 })
+  @ApiProperty({ enum: [10, 20, 30, 40], nullable: true, example: 20 })
   ageGroup!: number | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['R', 'C', 'L', 'U'],
     nullable: true,
     example: 'R',
@@ -53,55 +53,20 @@ export class SaveOnboardingResponseDto {
   user!: UserProfileDataDto;
 }
 
-export class OnboardingStatusResponseDto {
-  @ApiProperty({ example: 1 })
-  id!: number;
-
-  @ApiPropertyOptional({ nullable: true, example: '부글이' })
-  nickname!: string | null;
-
-  @ApiPropertyOptional({
-    nullable: true,
-    example: 'https://cdn.example.com/profile.jpg',
-  })
-  profileImage!: string | null;
-
-  @ApiPropertyOptional({
-    enum: ['CUSTOM', 'SOCIAL'],
-    nullable: true,
-    example: 'CUSTOM',
-  })
-  profileImageSource!: 'CUSTOM' | 'SOCIAL' | null;
-
-  @ApiPropertyOptional({ enum: ['M', 'F', 'N'], nullable: true, example: 'F' })
-  gender!: string | null;
-
-  @ApiPropertyOptional({ enum: [10, 20, 30, 40], nullable: true, example: 20 })
-  ageGroup!: number | null;
-
-  @ApiPropertyOptional({
-    enum: ['R', 'C', 'L', 'U'],
-    nullable: true,
-    example: 'R',
-  })
-  baselineType!: string | null;
-
-  @ApiProperty({ example: true })
-  sensitiveInfoAgreed!: boolean;
-
-  @ApiProperty({ example: true })
-  onboardingCompleted!: boolean;
-}
+export class OnboardingStatusResponseDto extends OmitType(
+  UserProfileResponseDto,
+  ['email'] as const,
+) {}
 
 export class SocialAccountResponseDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: ['GOOGLE', 'KAKAO'],
     nullable: true,
     example: 'GOOGLE',
   })
   provider!: 'GOOGLE' | 'KAKAO' | null;
 
-  @ApiPropertyOptional({ nullable: true, example: 'boo***@example.com' })
+  @ApiProperty({ nullable: true, example: 'boo***@example.com' })
   maskedEmail!: string | null;
 
   @ApiProperty({ format: 'date-time', example: '2026-07-01T09:00:00.000Z' })

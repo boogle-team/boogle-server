@@ -56,7 +56,7 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, swaggerDocument, {
     customSiteTitle: 'Boogle API Docs',
     swaggerOptions: {
-      persistAuthorization: true,
+      persistAuthorization: process.env.NODE_ENV !== 'production',
       displayRequestDuration: true,
       filter: true,
       tagsSorter: 'alpha',

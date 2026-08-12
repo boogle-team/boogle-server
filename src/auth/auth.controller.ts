@@ -48,17 +48,10 @@ import {
   OAuthLoginResponseDto,
 } from './dto/auth-response.dto';
 import { ApiSuccessResponse } from '@/common/decorators/api-success-response.decorator';
-
-const TOKEN_ERROR_EXAMPLES = {
-  TOKEN_REQUIRED: 'token이 필요합니다.',
-  TOKEN_INVALID: '유효하지 않은 token입니다.',
-  TOKEN_EXPIRED: 'token이 만료되었습니다.',
-};
-
-const REFRESH_TOKEN_ERROR_EXAMPLES = {
-  REFRESH_TOKEN_INVALID: '유효하지 않은 refreshToken입니다.',
-  REFRESH_TOKEN_EXPIRED: 'refreshToken이 만료되었습니다.',
-};
+import {
+  REFRESH_TOKEN_ERROR_EXAMPLES,
+  TOKEN_ERROR_EXAMPLES,
+} from '@/common/swagger/auth-error-examples.constant';
 
 @ApiTags('회원가입, 로그인')
 @Controller('auth')
@@ -94,7 +87,7 @@ export class AuthController {
     description: '지원하지 않는 OAuth 제공자',
     examples: errorExamples({
       AUTH_INVALID_PROVIDER: '지원하지 않는 소셜 로그인 제공자입니다.',
-      AUTH_OAUTH_CONFIG_ERROR: '허용되지 않은 프론트 Origin입니다.',
+      AUTH_FRONTEND_ORIGIN_NOT_ALLOWED: '허용되지 않은 프론트 Origin입니다.',
     }),
   })
   @ApiInternalServerErrorResponse({
@@ -391,7 +384,7 @@ export class AuthController {
   @ApiForbiddenResponse({
     type: ErrorResponseDto,
     description: '탈퇴한 회원',
-    examples: errorExamples({ USER_WITHDRAWN: '탈퇴한 회원입니다.' }),
+    examples: errorExamples({ AUTH_WITHDRAWN_USER: '탈퇴한 회원입니다.' }),
   })
   @ResponseMessage('토큰이 재발급되었습니다.')
   refresh(@Body() dto: RefreshTokenRequestDto) {

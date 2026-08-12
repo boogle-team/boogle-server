@@ -58,12 +58,7 @@ import {
   SaveOnboardingResponseDto,
   UserProfileResponseDto,
 } from './dto/user-response.dto';
-
-const TOKEN_ERROR_EXAMPLES = {
-  TOKEN_REQUIRED: 'token이 필요합니다.',
-  TOKEN_INVALID: '유효하지 않은 token입니다.',
-  TOKEN_EXPIRED: 'token이 만료되었습니다.',
-};
+import { TOKEN_ERROR_EXAMPLES } from '@/common/swagger/auth-error-examples.constant';
 
 const USER_NOT_FOUND_EXAMPLE = {
   USER_NOT_FOUND: '사용자를 찾을 수 없습니다.',

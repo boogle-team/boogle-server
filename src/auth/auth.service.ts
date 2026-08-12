@@ -937,7 +937,7 @@ export class AuthService {
         }
       } catch {
         throw new BusinessException(
-          AuthErrorCode.AUTH_OAUTH_CONFIG_ERROR,
+          AuthErrorCode.AUTH_FRONTEND_ORIGIN_NOT_ALLOWED,
           '허용되지 않은 프론트 Origin입니다.',
           HttpStatus.BAD_REQUEST,
         );
