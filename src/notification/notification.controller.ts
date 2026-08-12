@@ -138,11 +138,12 @@ export class NotificationController {
   })
   @ApiBody({ type: TestNotificationRequestDto })
   @ApiOkResponse({
-    description: '테스트 알림 발송 성공',
+    description:
+      '테스트 알림 발송 성공. pushSent=false면 인앱 알림만 생성되고 푸시는 발송되지 않은 것이다(알림 설정이 N / 등록된 기기 토큰 없음 / FCM 발송 실패).',
     schema: {
       example: {
         success: true,
-        data: { type: 'WARNING', sent: true },
+        data: { type: 'WARNING', notificationId: 5001, pushSent: true },
         message: '요청이 성공적으로 처리되었습니다.',
       },
     },

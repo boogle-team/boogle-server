@@ -43,10 +43,20 @@ export class NotificationService {
   async sendTestNotification(
     userId: string,
     type: NotificationType,
-  ): Promise<{ type: NotificationType; sent: boolean }> {
-    await this.dispatch.dispatch(userId, type, TEST_TEMPLATE_PARAMS[type]);
+  ): Promise<{
+    type: NotificationType;
+    notificationId: number;
+    pushSent: boolean;
+  }> {
+    const { notificationId, pushSent } = await this.dispatch.dispatch(
+      userId,
+      type,
+      TEST_TEMPLATE_PARAMS[type],
+    );
 
-    return { type, sent: true };
+    // pushSent=false면 "인앱 알림은 생겼지만 푸시는 안 갔다"는 뜻이다
+    // (알림 설정이 N / 등록된 기기 토큰 없음 / FCM 발송 실패).
+    return { type, notificationId, pushSent };
   }
 
   async getNotifications(userId: string): Promise<NotificationListResponseDto> {

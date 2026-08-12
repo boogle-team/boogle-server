@@ -29,10 +29,13 @@ describe('NotificationDispatchService', () => {
     );
   });
 
-  it('설정이 켜져 있으면 인앱 알림 생성과 푸시를 모두 수행한다', async () => {
+  it('설정이 켜져 있으면 인앱 알림 생성과 푸시를 모두 수행하고 pushSent:true를 반환한다', async () => {
     prisma.member.findUnique.mockResolvedValue({ reportAlarm: 'Y' });
 
-    await service.dispatch('1', 'REPORT_READY');
+    await expect(service.dispatch('1', 'REPORT_READY')).resolves.toEqual({
+      notificationId: 5001,
+      pushSent: true,
+    });
 
     expect(creation.create).toHaveBeenCalledWith({
       userId: '1',
@@ -48,10 +51,12 @@ describe('NotificationDispatchService', () => {
     });
   });
 
-  it('설정이 N이면 인앱 알림은 생성하되 푸시는 보내지 않는다', async () => {
+  it('설정이 N이면 인앱 알림은 생성하되 푸시는 보내지 않고 pushSent:false를 반환한다', async () => {
     prisma.member.findUnique.mockResolvedValue({ warnAlarm: 'N' });
 
-    await service.dispatch('1', 'WARNING', { color: '붉은색' });
+    await expect(
+      service.dispatch('1', 'WARNING', { color: '붉은색' }),
+    ).resolves.toEqual({ notificationId: 5001, pushSent: false });
 
     // 설정과 무관하게 알림 목록에는 남아야 한다.
     expect(creation.create).toHaveBeenCalledWith({
@@ -83,9 +88,11 @@ describe('NotificationDispatchService', () => {
     prisma.member.findUnique.mockResolvedValue({ reportAlarm: 'Y' });
     pushSender.send.mockRejectedValue(new Error('FCM down'));
 
-    await expect(
-      service.dispatch('1', 'REPORT_READY'),
-    ).resolves.toBeUndefined();
+    // 예외는 삼키되, 푸시가 안 갔다는 사실은 pushSent:false로 알린다.
+    await expect(service.dispatch('1', 'REPORT_READY')).resolves.toEqual({
+      notificationId: 5001,
+      pushSent: false,
+    });
     expect(creation.create).toHaveBeenCalled();
   });
 

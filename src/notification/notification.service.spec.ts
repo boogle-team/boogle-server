@@ -24,7 +24,11 @@ describe('NotificationService', () => {
         updateMany: jest.fn(),
       },
     };
-    dispatch = { dispatch: jest.fn().mockResolvedValue(undefined) };
+    dispatch = {
+      dispatch: jest
+        .fn()
+        .mockResolvedValue({ notificationId: 5001, pushSent: true }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -259,9 +263,18 @@ describe('NotificationService', () => {
 
   describe('sendTestNotification', () => {
     it('실제 발송 경로(dispatch)로 로그인 사용자 본인에게 발송한다', async () => {
+      dispatch.dispatch.mockResolvedValue({
+        notificationId: 5001,
+        pushSent: true,
+      });
+
       await expect(
         service.sendTestNotification('1', 'REPORT_READY'),
-      ).resolves.toEqual({ type: 'REPORT_READY', sent: true });
+      ).resolves.toEqual({
+        type: 'REPORT_READY',
+        notificationId: 5001,
+        pushSent: true,
+      });
 
       // 파라미터가 필요 없는 유형은 params 없이 그대로 위임한다.
       expect(dispatch.dispatch).toHaveBeenCalledWith(
@@ -269,6 +282,22 @@ describe('NotificationService', () => {
         'REPORT_READY',
         undefined,
       );
+    });
+
+    it('푸시가 실제로 안 나갔으면 pushSent:false를 그대로 전달한다', async () => {
+      // 설정이 N이거나 기기 토큰이 없으면 인앱 알림만 생기고 푸시는 없다.
+      dispatch.dispatch.mockResolvedValue({
+        notificationId: 5002,
+        pushSent: false,
+      });
+
+      await expect(
+        service.sendTestNotification('1', 'WARNING'),
+      ).resolves.toEqual({
+        type: 'WARNING',
+        notificationId: 5002,
+        pushSent: false,
+      });
     });
 
     it('WARNING은 템플릿 필수 파라미터(color)를 채워 발송한다', async () => {
