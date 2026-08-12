@@ -93,6 +93,43 @@ describe('HomeService', () => {
     expect(result.user.userTypeLabel).toBe('규칙형');
   });
 
+  // 리포트(월간 유형 산출)가 저장하는 코드와 라벨이 어긋나면 홈에 다른 유형이
+  // 표시된다. 실제로 W/L/I를 L/I/U로 잘못 매핑한 적이 있어 전 코드를 고정한다.
+  it.each([
+    ['R', '규칙형'],
+    ['C', '변비경향형'],
+    ['W', '묽은변경향형'],
+    ['L', '생활영향형'],
+    ['I', '불규칙형'],
+    ['N', '유형 분석 중'],
+  ])('월간 유형 %s의 라벨은 %s이다', async (userType, expectedLabel) => {
+    prisma.member.findUnique.mockResolvedValue({
+      nickname: '땅콩잼',
+      regDate: new Date('2026-04-30T00:00:00.000Z'),
+    });
+    prisma.monthlyRecord.findFirst.mockResolvedValue({ userType });
+    prisma.boogleRecord.findMany.mockResolvedValue([]);
+    prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+    const result = await service.getHome('1', '2026-05-12');
+
+    expect(result.user.userTypeLabel).toBe(expectedLabel);
+  });
+
+  it('계약 밖의 유형 코드면 라벨은 null이다', async () => {
+    prisma.member.findUnique.mockResolvedValue({
+      nickname: '땅콩잼',
+      regDate: new Date('2026-04-30T00:00:00.000Z'),
+    });
+    prisma.monthlyRecord.findFirst.mockResolvedValue({ userType: 'U' });
+    prisma.boogleRecord.findMany.mockResolvedValue([]);
+    prisma.lifeRecord.findFirst.mockResolvedValue(null);
+
+    const result = await service.getHome('1', '2026-05-12');
+
+    expect(result.user.userTypeLabel).toBeNull();
+  });
+
   it('오늘 부글 기록이 있으면 boogleCount/greeting/목록을 채운다', async () => {
     prisma.member.findUnique.mockResolvedValue({
       nickname: '땅콩잼',
