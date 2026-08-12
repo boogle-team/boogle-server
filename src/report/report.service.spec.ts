@@ -2,10 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationDispatchService } from '@/notification/notification-dispatch.service';
 import { ReportService } from './report.service';
-
-const notificationDispatchMock = {
-  dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
-};
+import { ReportSnapshotService } from './report-snapshot.service';
 import { ReportErrorCode } from './report-error-code.enum';
 import type {
   BoogleRecordForReport,
@@ -23,6 +20,17 @@ import {
   WEEKLY_RULE_CODE,
   type WeeklyRuleCode,
 } from './pattern/weekly-pattern.constants';
+
+const notificationDispatchMock = {
+  dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
+};
+
+const reportSnapshotMock = {
+  findFinalizedWeekly: jest.fn(),
+  upsertWeekly: jest.fn(),
+  findFinalizedMonthly: jest.fn(),
+  upsertMonthly: jest.fn(),
+};
 
 function kstDate(dateKey: string, time = '09:00'): Date {
   return new Date(`${dateKey}T${time}:00.000+09:00`);
@@ -136,14 +144,6 @@ describe('ReportService', () => {
     lifeRecord: {
       findMany: jest.fn(),
     },
-    weeklyRecord: {
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-    },
-    monthlyRecord: {
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-    },
     guide: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -152,6 +152,12 @@ describe('ReportService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+
+    reportSnapshotMock.findFinalizedWeekly.mockReset().mockResolvedValue(null);
+    reportSnapshotMock.upsertWeekly.mockReset().mockResolvedValue(undefined);
+    reportSnapshotMock.findFinalizedMonthly.mockReset().mockResolvedValue(null);
+    reportSnapshotMock.upsertMonthly.mockReset().mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReportService,
@@ -162,6 +168,10 @@ describe('ReportService', () => {
         {
           provide: NotificationDispatchService,
           useValue: notificationDispatchMock,
+        },
+        {
+          provide: ReportSnapshotService,
+          useValue: reportSnapshotMock,
         },
       ],
     }).compile();
@@ -784,8 +794,6 @@ describe('ReportService', () => {
     beforeEach(() => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date('2026-07-15T03:00:00.000Z'));
-
-      prismaMock.weeklyRecord.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

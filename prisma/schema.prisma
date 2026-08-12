@@ -239,32 +239,44 @@ model Tag {
 }
 
 model WeeklyRecord {
-  id              BigInt    @id @default(autoincrement())
-  regDate         DateTime? @default(now()) @map("reg_date")
-  userId          BigInt?   @map("user_id")
-  weekStartDate   DateTime  @map("week_start_date") @db.Date
-  bowelCount      Int?      @map("bowel_count")
-  intervalAvg     Int?      @map("interval_avg")
-  completionScore Float?    @map("completion_score") @db.Double
+  id                    BigInt    @id @default(autoincrement())
+  regDate               DateTime? @default(now()) @map("reg_date")
+  userId                BigInt    @map("user_id")
+  weekStartDate         DateTime  @map("week_start_date") @db.Date
+  bowelCount            Int       @default(0) @map("bowel_count")
+  intervalAvg           Float     @default(0) @map("interval_avg") @db.Double
+  completionScore       Float     @default(0) @map("completion_score") @db.Double
+  recordedDays          Int       @default(0) @map("recorded_days")
+  calculatedThroughDate DateTime  @map("calculated_through_date") @db.Date
+  isFinalized           Boolean   @default(false) @map("is_finalized")
+  updateDate            DateTime  @updatedAt @map("update_date")
 
-  user Member? @relation(fields: [userId], references: [id])
+  user Member @relation(fields: [userId], references: [id])
 
   @@unique([userId, weekStartDate], map: "weekly_record_index_3")
   @@map("weekly_record")
 }
 
 model MonthlyRecord {
-  id              BigInt    @id @default(autoincrement())
-  regDate         DateTime? @default(now()) @map("reg_date")
-  userId          BigInt?   @map("user_id")
-  monthStartDate  DateTime  @map("month_start_date") @db.Date
-  bowelCount      Int?      @map("bowel_count")
-  intervalAvg     Int?      @map("interval_avg")
-  state           Int?
-  completionScore Float?    @map("completion_score") @db.Double
-  conditionScore  Int?      @map("condition_score")
-  userType        String?   @map("user_type") @db.Char(1) // R 규칙형 / C 변비경향형 / W 묽은변경향형 / L 생활영향형 / I 불규칙형 / N 유형 분석 중
-  user Member? @relation(fields: [userId], references: [id])
+  id                    BigInt    @id @default(autoincrement())
+  regDate               DateTime? @default(now()) @map("reg_date")
+  userId                BigInt    @map("user_id")
+  monthStartDate        DateTime  @map("month_start_date") @db.Date
+  bowelCount            Int       @default(0) @map("bowel_count")
+  bowelDays             Int       @default(0) @map("bowel_days")
+  intervalAvg           Float     @default(0) @map("interval_avg") @db.Double
+  state                 Int       @default(3)
+  completionScore       Float     @default(0) @map("completion_score") @db.Double
+  rhythmScore           Float     @default(50) @map("rhythm_score") @db.Double
+  stateScore            Float     @default(50) @map("state_score") @db.Double
+  conditionScore        Int       @default(0) @map("condition_score")
+  userType              String    @default("N") @map("user_type") @db.Char(1) // R 규칙형 / C 변비경향형 / W 묽은변경향형 / L 생활영향형 / I 불규칙형 / N 유형 분석 중
+  recordedDays          Int       @default(0) @map("recorded_days")
+  calculatedThroughDate DateTime  @map("calculated_through_date") @db.Date
+  isFinalized           Boolean   @default(false) @map("is_finalized")
+  updateDate            DateTime  @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
 
   @@unique([userId, monthStartDate], map: "monthly_record_index_4")
   @@map("monthly_record")

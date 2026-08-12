@@ -46,12 +46,6 @@ export interface WeeklyPatternContext {
   sensitiveInfoAgreed: boolean;
 }
 
-export interface WeeklyRecordForReport {
-  bowelCount: number | null;
-  intervalAvg: number | null;
-  completionScore: number | null;
-}
-
 export interface MonthlyRecordForReport {
   bowelCount: number | null;
   intervalAvg: number | null;
@@ -59,10 +53,4 @@ export interface MonthlyRecordForReport {
   completionScore: number | null;
   conditionScore: number | null;
   userType: string | null;
-}
-
-export interface WeeklyRecordForTrend {
-  weekStartDate: Date;
-  bowelCount: number | null;
-  completionScore: number | null;
 }
