@@ -5,6 +5,7 @@ import { LifeRecordService } from './life-record.service';
 import { GeminiTagExtractorService } from './gemini-tag-extractor.service';
 import { LifeRecordErrorCode } from './life-record-error-code.enum';
 import { CreateLifeRecordDto } from './dto/create-life-record.dto';
+import { ReportSnapshotService } from '@/report/report-snapshot.service';
 
 const validCreateFields: Pick<
   CreateLifeRecordDto,
@@ -30,6 +31,10 @@ describe('LifeRecordService', () => {
     $transaction: jest.Mock;
   };
   let geminiTagExtractor: { extractTags: jest.Mock };
+
+  let reportSnapshots: {
+    invalidateByDateKey: jest.Mock;
+  };
 
   const baseRecord = {
     id: 15n,
@@ -78,11 +83,16 @@ describe('LifeRecordService', () => {
     );
     geminiTagExtractor = { extractTags: jest.fn() };
 
+    reportSnapshots = {
+      invalidateByDateKey: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LifeRecordService,
         { provide: PrismaService, useValue: prisma },
         { provide: GeminiTagExtractorService, useValue: geminiTagExtractor },
+        { provide: ReportSnapshotService, useValue: reportSnapshots },
       ],
     }).compile();
 
@@ -166,6 +176,11 @@ describe('LifeRecordService', () => {
         foodIds: [1],
       });
 
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
+
       expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
       expect(prisma.lifeTag.deleteMany).toHaveBeenCalledWith({
         where: { lifeId: baseRecord.id },
@@ -196,6 +211,11 @@ describe('LifeRecordService', () => {
         tagNames: ['야식'],
         foodIds: [1],
       });
+
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
 
       expect(result.id).toBe(15);
       expect(result.regDate).toBe('2026-07-02');
@@ -248,6 +268,7 @@ describe('LifeRecordService', () => {
         errorCode: LifeRecordErrorCode.INVALID_FOOD_ID,
       });
       expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+      expect(reportSnapshots.invalidateByDateKey).not.toHaveBeenCalled();
     });
 
     it('존재하지 않는 medicineId가 포함되면 INVALID_MEDICINE_ID를 던진다', async () => {
@@ -265,6 +286,7 @@ describe('LifeRecordService', () => {
         errorCode: LifeRecordErrorCode.INVALID_MEDICINE_ID,
       });
       expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+      expect(reportSnapshots.invalidateByDateKey).not.toHaveBeenCalled();
     });
 
     it('동시 생성으로 인한 userId+regDate 유니크 충돌(P2002)은 LIFE_RECORD_ALREADY_EXISTS를 던진다', async () => {
@@ -341,6 +363,53 @@ describe('LifeRecordService', () => {
       ).rejects.toMatchObject({
         errorCode: LifeRecordErrorCode.LIFE_RECORD_CREATE_FAILED,
       });
+    });
+
+    it('스냅샷 무효화 실패 시 생활 기록을 생성하거나 복구하지 않는다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue(null);
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
+      reportSnapshots.invalidateByDateKey.mockRejectedValueOnce(
+        new Error('snapshot invalidation failed'),
+      );
+
+      await expect(
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+        }),
+      ).rejects.toThrow('snapshot invalidation failed');
+
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
+      expect(prisma.lifeRecord.create).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
+    });
+
+    it('복구 전 스냅샷 무효화가 실패하면 삭제 기록을 활성화하지 않는다', async () => {
+      prisma.lifeRecord.findUnique.mockResolvedValue({
+        ...baseRecord,
+        status: 'D',
+      });
+      prisma.food.findMany.mockResolvedValue([{ id: 1 }]);
+      reportSnapshots.invalidateByDateKey.mockRejectedValueOnce(
+        new Error('snapshot invalidation failed'),
+      );
+
+      await expect(
+        service.create('1', {
+          ...validCreateFields,
+          regDate: '2026-07-02',
+        }),
+      ).rejects.toThrow('snapshot invalidation failed');
+
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
     });
   });
 
@@ -535,6 +604,11 @@ describe('LifeRecordService', () => {
         medicineIds: [5],
       });
 
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
+
       expect(prisma.lifeTag.deleteMany).toHaveBeenCalledWith({
         where: { lifeId: 15n },
       });
@@ -560,6 +634,7 @@ describe('LifeRecordService', () => {
       });
       expect(prisma.lifeFoodTag.deleteMany).not.toHaveBeenCalled();
       expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
+      expect(reportSnapshots.invalidateByDateKey).not.toHaveBeenCalled();
     });
 
     it('존재하지 않는 medicineId로 수정하면 기존 연결을 지우지 않고 INVALID_MEDICINE_ID를 던진다', async () => {
@@ -572,6 +647,21 @@ describe('LifeRecordService', () => {
         errorCode: LifeRecordErrorCode.INVALID_MEDICINE_ID,
       });
       expect(prisma.medicineMap.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
+      expect(reportSnapshots.invalidateByDateKey).not.toHaveBeenCalled();
+    });
+
+    it('스냅샷 무효화 실패 시 생활 기록 수정 트랜잭션을 시작하지 않는다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(baseRecord);
+      reportSnapshots.invalidateByDateKey.mockRejectedValueOnce(
+        new Error('snapshot invalidation failed'),
+      );
+
+      await expect(
+        service.update('1', 15, { memo: '수정된 메모' }),
+      ).rejects.toThrow('snapshot invalidation failed');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
     });
   });
@@ -586,12 +676,31 @@ describe('LifeRecordService', () => {
 
       const result = await service.remove('1', 15);
 
+      expect(reportSnapshots.invalidateByDateKey).toHaveBeenCalledWith(
+        1n,
+        '2026-07-02',
+      );
+
       expect(result).toBeNull();
       const [[callArgs]] = prisma.lifeRecord.update.mock.calls as [
-        [{ where: { id: bigint }; data: { status: string } }],
+        [{ where: { id: bigint }; data: { status: string; updateTime: Date } }],
       ];
       expect(callArgs.where).toEqual({ id: 15n });
       expect(callArgs.data.status).toBe('D');
+      expect(callArgs.data.updateTime).toBeInstanceOf(Date);
+    });
+
+    it('스냅샷 무효화 실패 시 생활 기록을 삭제하지 않는다', async () => {
+      prisma.lifeRecord.findFirst.mockResolvedValue(baseRecord);
+      reportSnapshots.invalidateByDateKey.mockRejectedValueOnce(
+        new Error('snapshot invalidation failed'),
+      );
+
+      await expect(service.remove('1', 15)).rejects.toThrow(
+        'snapshot invalidation failed',
+      );
+
+      expect(prisma.lifeRecord.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -11,10 +11,14 @@ import {
   getKstMinute,
   toKstDateTime,
 } from '@/common/utils/kst-date.util';
+import { ReportSnapshotService } from '@/report/report-snapshot.service';
 
 @Injectable()
 export class RecordService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reportSnapshots: ReportSnapshotService,
+  ) {}
 
   // 부글 기록 생성
   async create(
@@ -22,6 +26,8 @@ export class RecordService {
     dto: CreateRecordDto,
   ): Promise<RecordResponseDto> {
     this.validateRecord(dto);
+
+    await this.reportSnapshots.invalidateByDateKey(BigInt(userId), dto.regDate);
 
     const bowelMovementAt = dto.bowelMovementAt
       ? new Date(`${dto.regDate}T${dto.bowelMovementAt}:00+09:00`)
@@ -111,6 +117,8 @@ export class RecordService {
     this.validateOwner(record, userId);
 
     const dateKey = dto.regDate ?? toKstDateKey(record.regDate);
+    const previousDateKey = toKstDateKey(record.regDate);
+    const nextDateKey = dto.regDate ?? previousDateKey;
 
     const bowelMovementAt =
       dto.bowelMovementAt !== undefined
@@ -118,6 +126,11 @@ export class RecordService {
           ? new Date(`${dateKey}T${dto.bowelMovementAt}:00+09:00`)
           : null
         : undefined;
+
+    await this.reportSnapshots.invalidateByDateKeys(record.userId, [
+      previousDateKey,
+      nextDateKey,
+    ]);
 
     const updatedRecord = await this.prisma.boogleRecord.update({
       where: {
@@ -148,6 +161,11 @@ export class RecordService {
     const record = await this.findActiveRecord(id);
 
     this.validateOwner(record, userId);
+
+    await this.reportSnapshots.invalidateByDateKey(
+      record.userId,
+      toKstDateKey(record.regDate),
+    );
 
     await this.prisma.boogleRecord.update({
       where: {

@@ -157,17 +157,7 @@ export class ReportSnapshotService {
   }
 
   async invalidateByDateKey(userId: bigint, dateKey: string): Promise<void> {
-    const weekStartDate = parseCalendarDate(getMondayDateKey(dateKey));
-    const monthStartDate = parseCalendarDate(getMonthStartDateKey(dateKey));
-
-    await this.prisma.$transaction([
-      this.prisma.weeklyRecord.deleteMany({
-        where: { userId, weekStartDate },
-      }),
-      this.prisma.monthlyRecord.deleteMany({
-        where: { userId, monthStartDate },
-      }),
-    ]);
+    await this.invalidateByDateKeys(userId, [dateKey]);
   }
 
   async invalidateByDateKeys(
@@ -176,11 +166,37 @@ export class ReportSnapshotService {
   ): Promise<void> {
     const uniqueDateKeys = [...new Set(dateKeys)];
 
-    await Promise.all(
-      uniqueDateKeys.map((dateKey) =>
-        this.invalidateByDateKey(userId, dateKey),
+    if (uniqueDateKeys.length === 0) {
+      return;
+    }
+
+    const weekStartDateKeys = [
+      ...new Set(uniqueDateKeys.map((dateKey) => getMondayDateKey(dateKey))),
+    ];
+    const monthStartDateKeys = [
+      ...new Set(
+        uniqueDateKeys.map((dateKey) => getMonthStartDateKey(dateKey)),
       ),
-    );
+    ];
+
+    await this.prisma.$transaction([
+      ...weekStartDateKeys.map((weekStartDateKey) =>
+        this.prisma.weeklyRecord.deleteMany({
+          where: {
+            userId,
+            weekStartDate: parseCalendarDate(weekStartDateKey),
+          },
+        }),
+      ),
+      ...monthStartDateKeys.map((monthStartDateKey) =>
+        this.prisma.monthlyRecord.deleteMany({
+          where: {
+            userId,
+            monthStartDate: parseCalendarDate(monthStartDateKey),
+          },
+        }),
+      ),
+    ]);
   }
 }
 

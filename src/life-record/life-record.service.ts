@@ -34,6 +34,7 @@ import {
   toBigInt,
   toNumberId,
 } from './life-record.util';
+import { ReportSnapshotService } from '@/report/report-snapshot.service';
 
 type LifeRecordWithRelations = LifeRecord & {
   lifeTags: (LifeTag & { tag: Tag })[];
@@ -58,6 +59,7 @@ export class LifeRecordService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly geminiTagExtractor: GeminiTagExtractorService,
+    private readonly reportSnapshots: ReportSnapshotService,
   ) {}
 
   async create(
@@ -89,6 +91,8 @@ export class LifeRecordService {
     const tagNames = [...new Set(dto.tagNames ?? [])];
     const foodIds = await this.resolveValidFoodIds(dto.foodIds);
     const medicineIds = await this.resolveValidMedicineIds(dto.medicineIds);
+
+    await this.reportSnapshots.invalidateByDateKey(userIdBigInt, regDate);
 
     try {
       const recordData = {
@@ -343,6 +347,11 @@ export class LifeRecordService {
 
     const lifeIdBigInt = toBigInt(lifeId);
 
+    await this.reportSnapshots.invalidateByDateKey(
+      record.userId,
+      formatDateOnly(record.regDate),
+    );
+
     const updated = await this.prisma.$transaction(async (tx) => {
       if (tagNames !== undefined) {
         await tx.lifeTag.deleteMany({ where: { lifeId: lifeIdBigInt } });
@@ -411,6 +420,11 @@ export class LifeRecordService {
   async remove(userId: string, lifeId: number): Promise<null> {
     const record = await this.findActiveOrThrow(lifeId);
     this.assertOwner(record, userId, LifeRecordErrorCode.LIFE_RECORD_FORBIDDEN);
+
+    await this.reportSnapshots.invalidateByDateKey(
+      record.userId,
+      formatDateOnly(record.regDate),
+    );
 
     await this.prisma.lifeRecord.update({
       where: { id: toBigInt(lifeId) },
