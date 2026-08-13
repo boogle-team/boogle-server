@@ -1,0 +1,148 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ArrayNotEmpty,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MaxLength,
+} from 'class-validator';
+import { LIFE_VALUE_CODES, SLEEP_TIME_CODES } from '../life-record.util';
+
+export class CreateLifeRecordDto {
+  @ApiPropertyOptional({ example: '2026-07-02', description: 'YYYY-MM-DD' })
+  @IsOptional()
+  @IsString()
+  regDate?: string;
+
+  @ApiProperty({
+    example: 'B',
+    description: '좋음 G / 보통 N / 부족 B',
+    enum: LIFE_VALUE_CODES.sleep,
+  })
+  @IsIn(LIFE_VALUE_CODES.sleep)
+  sleep: string;
+
+  @ApiProperty({
+    example: 'H',
+    description: '낮음 L / 보통 N / 높음 H',
+    enum: LIFE_VALUE_CODES.stress,
+  })
+  @IsIn(LIFE_VALUE_CODES.stress)
+  stress: string;
+
+  @ApiProperty({
+    example: 'N',
+    description: '부족 L / 보통 N / 충분 H',
+    enum: LIFE_VALUE_CODES.water,
+  })
+  @IsIn(LIFE_VALUE_CODES.water)
+  water: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: '물 섭취량 (잔 수, 1잔 ≈ 200ml)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  waterIntake?: number;
+
+  @ApiProperty({
+    example: 'I',
+    description: '규칙 R / 보통 N / 불규칙 I',
+    enum: LIFE_VALUE_CODES.mealRegular,
+  })
+  @IsIn(LIFE_VALUE_CODES.mealRegular)
+  mealRegular: string;
+
+  @ApiPropertyOptional({
+    example: '어제 야식으로 매운 음식을 먹고 커피를 마셨다.',
+    description: '최대 101자',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(101)
+  memo?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['야식', '매운 음식', '카페인'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tagNames?: string[];
+
+  @ApiPropertyOptional({
+    example: 2,
+    description: '1 5시간 이하 / 2 5~7시간 / 3 7시간 이상',
+    enum: SLEEP_TIME_CODES,
+  })
+  @IsOptional()
+  @IsInt()
+  @IsIn(SLEEP_TIME_CODES)
+  sleepTime?: number;
+
+  @ApiPropertyOptional({
+    example: 'N',
+    description: '안 함 N / 가볍게 L / 충분히 H',
+    enum: LIFE_VALUE_CODES.exercise,
+  })
+  @IsOptional()
+  @IsIn(LIFE_VALUE_CODES.exercise)
+  exercise?: string;
+
+  @ApiPropertyOptional({
+    example: 'O',
+    description: '없음 N / 1잔 O / 2잔 이상 M',
+    enum: LIFE_VALUE_CODES.caffeine,
+  })
+  @IsOptional()
+  @IsIn(LIFE_VALUE_CODES.caffeine)
+  caffeine?: string;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [1, 3],
+    description:
+      '복용한 약/영양제 ID 목록 (medicine 목록 조회 API로 확인 가능, 1 감기약 / 2 항생제 / 3 유산균 / 4 철분제 / 5 변비약 / 6 해당 없음)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  medicineIds?: number[];
+
+  @ApiPropertyOptional({
+    example: 'N',
+    description: '평소와 같음 N / 외출 많음 L / 여행 중 T',
+    enum: LIFE_VALUE_CODES.outing,
+  })
+  @IsOptional()
+  @IsIn(LIFE_VALUE_CODES.outing)
+  outing?: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    example: 'N',
+    description:
+      '없음 N / 생리 중 M / 변화 있음 E (마이페이지에서 민감정보 동의한 사용자만 노출)',
+    enum: LIFE_VALUE_CODES.hormone,
+  })
+  @IsOptional()
+  @IsIn(LIFE_VALUE_CODES.hormone)
+  hormone?: string | null;
+
+  @ApiProperty({
+    type: [Number],
+    example: [1, 3],
+    description:
+      '오늘 먹은 음식 ID 목록 (food 목록 조회 API로 확인 가능, 1 음주 / 3 자극적인 음식). 최소 1개 이상 필요합니다.',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  foodIds: number[];
+}

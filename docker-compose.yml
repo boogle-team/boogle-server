@@ -1,0 +1,13 @@
+services:
+  app:
+    image: ghcr.io/boogle-team/boogle-server:latest
+    ports:
+      - '3000:${PORT:-3000}'
+    env_file:
+      - .env
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

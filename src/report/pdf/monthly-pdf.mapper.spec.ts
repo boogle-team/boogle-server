@@ -1,0 +1,505 @@
+import type {
+  BoogleRecordForReport,
+  LifeRecordForReport,
+} from '../dto/report-record.dto';
+import type { MonthlyPdfSourceData } from '../dto/pdf-report-data.dto';
+import { buildMonthlyPdfData } from './monthly-pdf.mapper';
+
+function kstDate(dateKey: string, time = '09:00'): Date {
+  return new Date(`${dateKey}T${time}:00.000+09:00`);
+}
+
+function createBoogleRecord(
+  overrides: Partial<BoogleRecordForReport> = {},
+): BoogleRecordForReport {
+  const {
+    id = 1n,
+    regDate = kstDate('2026-07-01'),
+    hasBowel = true,
+    bowelMovementAt = hasBowel ? regDate : null,
+    ...rest
+  } = overrides;
+
+  return {
+    id,
+    regDate,
+    bowelMovementAt,
+    hasBowel,
+    stoolBristol: 4,
+    stoolSimple: 'M',
+    bowelFeeling: null,
+    stomach: null,
+    distension: null,
+    remainingFeeling: null,
+    urgency: null,
+    takenTime: null,
+    amount: null,
+    ...rest,
+  };
+}
+
+function createLifeRecord(
+  overrides: Partial<LifeRecordForReport> = {},
+): LifeRecordForReport {
+  return {
+    id: 1n,
+    regDate: kstDate('2026-07-01'),
+    sleep: 'N',
+    sleepTime: null,
+    caffeine: null,
+    exercise: null,
+    stress: 'N',
+    water: 'N',
+    waterIntake: null,
+    mealRegular: 'N',
+    hormone: null,
+    foodTags: [],
+    ...overrides,
+  };
+}
+
+function createSourceFixture(
+  overrides: Partial<MonthlyPdfSourceData> = {},
+): MonthlyPdfSourceData {
+  return {
+    startDate: '2026-07-01',
+    endDate: '2026-07-15',
+    generatedDate: '2026-07-15',
+    bowelCount: 0,
+    intervalAvg: 0,
+    completionScore: 0,
+    boogleRecords: [],
+    lifeRecords: [],
+    patternCards: [],
+    ...overrides,
+  };
+}
+
+describe('buildMonthlyPdfData', () => {
+  it('조회 기간과 생성일을 dot 형식으로 만들고 모든 날짜를 생성한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-06-01',
+        endDate: '2026-06-15',
+        generatedDate: '2026-06-15',
+      }),
+    );
+
+    expect(result.period).toEqual({
+      startDate: '2026-06-01',
+      endDate: '2026-06-15',
+      generatedDate: '2026-06-15',
+      displayRange: '2026.06.01 - 2026.06.15 (15일)',
+      displayGeneratedDate: '2026.06.15',
+      inclusiveDays: 15,
+    });
+    expect(result.dailyRows).toHaveLength(15);
+    expect(result.dailyRows[0].date).toBe('6/1');
+    expect(result.dailyRows[14].date).toBe('6/15');
+  });
+
+  it('배변한 유효 H/M/T 기록만 변 상태 분포에 포함한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        boogleRecords: [
+          createBoogleRecord({ id: 1n, stoolSimple: 'M' }),
+          createBoogleRecord({ id: 2n, stoolSimple: 'H' }),
+          createBoogleRecord({ id: 3n, stoolSimple: 'H' }),
+          createBoogleRecord({ id: 4n, stoolSimple: 'T' }),
+          createBoogleRecord({
+            id: 5n,
+            hasBowel: false,
+            stoolSimple: 'H',
+          }),
+          createBoogleRecord({ id: 6n, stoolSimple: 'X' }),
+        ],
+      }),
+    );
+
+    expect(result.stoolDistribution).toEqual([
+      { code: 'M', label: '보통', count: 1, ratio: 25 },
+      { code: 'H', label: '딱딱', count: 2, ratio: 50 },
+      { code: 'T', label: '묽음', count: 1, ratio: 25 },
+    ]);
+  });
+
+  it('동반 변 상태는 증상이 기록된 날짜별 한 표로 계산한다', () => {
+    const hardRecordsOnOneDay = Array.from({ length: 3 }, (_, index) =>
+      createBoogleRecord({
+        id: BigInt(index + 1),
+        regDate: kstDate('2026-07-01', `09:0${index}`),
+        stoolBristol: 2,
+        stoolSimple: 'H',
+        stomach: 1,
+      }),
+    );
+    const normalRecordsOnTwoDays = [
+      createBoogleRecord({
+        id: 4n,
+        regDate: kstDate('2026-07-02'),
+        stoolSimple: 'M',
+        stomach: 1,
+      }),
+      createBoogleRecord({
+        id: 5n,
+        regDate: kstDate('2026-07-03'),
+        stoolSimple: 'M',
+        stomach: 3,
+      }),
+    ];
+
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        boogleRecords: [...hardRecordsOnOneDay, ...normalRecordsOnTwoDays],
+      }),
+    );
+
+    expect(result.discomfortRows[0]).toEqual({
+      label: '복통 (약간 이상)',
+      count: 5,
+      dominantStool: '보통 변',
+    });
+  });
+
+  it('생활 요인 일수와 식사 태그 상위 2개를 계산한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        lifeRecords: [
+          createLifeRecord({
+            id: 1n,
+            regDate: kstDate('2026-07-01'),
+            sleep: 'B',
+            water: 'L',
+            stress: 'H',
+            foodTags: [
+              { food: { name: '야식' } },
+              { food: { name: '유제품' } },
+            ],
+          }),
+          createLifeRecord({
+            id: 2n,
+            regDate: kstDate('2026-07-02'),
+            sleep: 'N',
+            water: 'N',
+            stress: 'N',
+            foodTags: [
+              { food: { name: '야식' } },
+              { food: { name: '유제품' } },
+            ],
+          }),
+          createLifeRecord({
+            id: 3n,
+            regDate: kstDate('2026-07-03'),
+            sleep: 'G',
+            water: 'H',
+            stress: 'L',
+            foodTags: [{ food: { name: '야식' } }, { food: { name: '음주' } }],
+          }),
+        ],
+      }),
+    );
+
+    expect(result.lifeFactorRows).toEqual([
+      {
+        label: '수면',
+        lowCount: 1,
+        normalCount: 1,
+        highCount: 1,
+      },
+      {
+        label: '수분',
+        lowCount: 1,
+        normalCount: 1,
+        highCount: 1,
+      },
+      {
+        label: '스트레스',
+        lowCount: 1,
+        normalCount: 1,
+        highCount: 1,
+      },
+    ]);
+    expect(result.topFoodTags).toEqual([
+      { name: '야식', count: 3 },
+      { name: '유제품', count: 2 },
+    ]);
+  });
+
+  it('KST 날짜로 묶어 최신 배변과 가장 높은 불편감 및 주요 생활을 표시한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-03',
+        boogleRecords: [
+          createBoogleRecord({
+            id: 1n,
+            regDate: new Date('2026-06-30T15:30:00.000Z'),
+            stoolBristol: 2,
+            stoolSimple: 'H',
+            stomach: 1,
+          }),
+          createBoogleRecord({
+            id: 2n,
+            regDate: new Date('2026-07-01T11:00:00.000Z'),
+            stoolBristol: 4,
+            stoolSimple: 'M',
+            stomach: 3,
+            distension: 'M',
+            remainingFeeling: 'L',
+            urgency: 'M',
+          }),
+          createBoogleRecord({
+            id: 3n,
+            regDate: kstDate('2026-07-02'),
+            hasBowel: false,
+            stoolBristol: null,
+            stoolSimple: null,
+          }),
+        ],
+        lifeRecords: [
+          createLifeRecord({
+            regDate: kstDate('2026-07-01'),
+            sleep: 'B',
+            stress: 'H',
+            water: 'L',
+            mealRegular: 'I',
+            foodTags: [
+              { food: { name: '음주' } },
+              { food: { name: '야식' } },
+              { food: { name: '자극적인 음식' } },
+              { food: { name: '기름진 음식' } },
+              { food: { name: '유제품' } },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    expect(result.dailyRows).toEqual([
+      {
+        date: '7/1',
+        bowel: '있음',
+        stoolState: '보통(4형)',
+        discomfort: '복통 심함, 복부팽만 약간, 잔변감 있음, 급박감 약간',
+        mainLife:
+          '수면 부족, 스트레스 높음, 수분 부족, 식사 불규칙, 음주, 야식, 자극적, 기름진, 유제품',
+      },
+      {
+        date: '7/2',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+      {
+        date: '7/3',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+    ]);
+  });
+
+  it('감지된 월간 패턴 카드를 그대로 전달한다', () => {
+    const patternCard = {
+      level: 'WARN' as const,
+      ruleCode: 'MONTHLY_LOW_SLEEP',
+      title: '수면 부족 반복',
+      description: '이번 달 10일 이상 수면이 부족했어요.',
+      value: 10,
+      threshold: 10,
+      unit: 'DAY' as const,
+    };
+
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        patternCards: [patternCard],
+      }),
+    );
+
+    expect(result.patternCards).toEqual([patternCard]);
+  });
+
+  it('우세 변 상태가 동률이면 M, H, T 순서로 결정한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        boogleRecords: [
+          createBoogleRecord({
+            id: 1n,
+            regDate: kstDate('2026-07-01'),
+            stoolSimple: 'H',
+            stomach: 1,
+          }),
+          createBoogleRecord({
+            id: 2n,
+            regDate: kstDate('2026-07-02'),
+            stoolSimple: 'M',
+            stomach: 1,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.discomfortRows[0]).toEqual({
+      label: '복통 (약간 이상)',
+      count: 2,
+      dominantStool: '보통 변',
+    });
+  });
+
+  it('원본 기록이 없으면 0값 분포와 날짜별 빈 상태를 반환한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-03',
+      }),
+    );
+
+    expect(result.stoolDistribution).toEqual([
+      { code: 'M', label: '보통', count: 0, ratio: 0 },
+      { code: 'H', label: '딱딱', count: 0, ratio: 0 },
+      { code: 'T', label: '묽음', count: 0, ratio: 0 },
+    ]);
+    expect(result.discomfortRows).toEqual([
+      {
+        label: '복통 (약간 이상)',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '복부 팽만',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '잔변감',
+        count: 0,
+        dominantStool: '-',
+      },
+      {
+        label: '급박감',
+        count: 0,
+        dominantStool: '-',
+      },
+    ]);
+    expect(result.lifeFactorRows).toEqual([
+      {
+        label: '수면',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+      {
+        label: '수분',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+      {
+        label: '스트레스',
+        lowCount: 0,
+        normalCount: 0,
+        highCount: 0,
+      },
+    ]);
+    expect(result.topFoodTags).toEqual([]);
+    expect(result.dailyRows).toEqual([
+      {
+        date: '7/1',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+      {
+        date: '7/2',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+      {
+        date: '7/3',
+        bowel: '없음',
+        stoolState: '-',
+        discomfort: '-',
+        mainLife: '-',
+      },
+    ]);
+  });
+
+  it('일별 변 상태는 배열과 regDate 순서가 아니라 가장 늦은 bowelMovementAt을 사용한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-01',
+        boogleRecords: [
+          createBoogleRecord({
+            id: 1n,
+            regDate: kstDate('2026-07-01', '08:00'),
+            bowelMovementAt: kstDate('2026-07-01', '20:00'),
+            stoolBristol: 2,
+            stoolSimple: 'H',
+          }),
+          createBoogleRecord({
+            id: 2n,
+            regDate: kstDate('2026-07-01', '22:00'),
+            bowelMovementAt: kstDate('2026-07-01', '08:00'),
+            stoolBristol: 4,
+            stoolSimple: 'M',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.dailyRows[0].stoolState).toBe('딱딱(2형)');
+  });
+
+  it('배변 기록이어도 bowelMovementAt이 없으면 일별 변 상태에서 제외한다', () => {
+    const result = buildMonthlyPdfData(
+      createSourceFixture({
+        startDate: '2026-07-01',
+        endDate: '2026-07-01',
+        boogleRecords: [
+          createBoogleRecord({
+            bowelMovementAt: null,
+            stoolBristol: 4,
+            stoolSimple: 'M',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.dailyRows[0]).toEqual(
+      expect.objectContaining({
+        bowel: '있음',
+        stoolState: '-',
+      }),
+    );
+  });
+
+  it.each([
+    { stomach: 0, expectedCount: 0, expectedLabel: '-' },
+    { stomach: 2, expectedCount: 1, expectedLabel: '복통 약간' },
+    { stomach: 3, expectedCount: 1, expectedLabel: '복통 심함' },
+  ] as const)(
+    'PDF에서 stomach=$stomach을 올바른 복통 단계로 표시한다',
+    ({ stomach, expectedCount, expectedLabel }) => {
+      const result = buildMonthlyPdfData(
+        createSourceFixture({
+          startDate: '2026-07-01',
+          endDate: '2026-07-01',
+          boogleRecords: [
+            createBoogleRecord({
+              stomach,
+            }),
+          ],
+        }),
+      );
+
+      expect(result.discomfortRows[0].count).toBe(expectedCount);
+      expect(result.dailyRows[0].discomfort).toBe(expectedLabel);
+    },
+  );
+});

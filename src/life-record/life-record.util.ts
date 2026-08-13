@@ -1,0 +1,70 @@
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isValidRegDate(regDate: unknown): regDate is string {
+  if (typeof regDate !== 'string' || !DATE_ONLY_PATTERN.test(regDate)) {
+    return false;
+  }
+
+  const date = new Date(`${regDate}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === regDate
+  );
+}
+
+// ERD 노트 기준 코드값 (예: sleep - 좋음G/보통N/부족B)
+export const LIFE_VALUE_CODES = {
+  sleep: ['G', 'N', 'B'],
+  stress: ['L', 'N', 'H'],
+  water: ['L', 'N', 'H'],
+  mealRegular: ['R', 'N', 'I'],
+  exercise: ['N', 'L', 'H'],
+  caffeine: ['N', 'O', 'M'],
+  medicine: ['C', 'V', 'L', 'I', 'B', 'E'],
+  outing: ['N', 'L', 'T'],
+  hormone: ['N', 'M', 'E'],
+} as const;
+
+export type LifeValueField = keyof typeof LIFE_VALUE_CODES;
+
+export function isValidLifeValue(
+  field: LifeValueField,
+  value?: string | null,
+): boolean {
+  return (
+    value == null ||
+    (LIFE_VALUE_CODES[field] as readonly string[]).includes(value)
+  );
+}
+
+// docs/api/home-calendar-api.md §2.2: 1 5시간 이하 / 2 5~7시간 / 3 7시간 이상
+export const SLEEP_TIME_CODES = [1, 2, 3] as const;
+
+export function isValidSleepTime(value?: number | null): boolean {
+  return (
+    value == null || (SLEEP_TIME_CODES as readonly number[]).includes(value)
+  );
+}
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// regDate는 KST 자정을 UTC로 변환한 절대 시각으로 저장된다 (home/calendar와
+// 동일한 규칙). "며칠"인지 읽어올 때는 KST 기준으로 다시 변환해야 한다.
+export function formatDateOnly(date: Date): string {
+  return new Date(date.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function formatDateTime(date: Date): string {
+  return date.toISOString().slice(0, 19);
+}
+
+export function toBigInt(value: string | number): bigint {
+  return BigInt(value);
+}
+
+export function toNumberId(value: bigint): number {
+  return Number(value);
+}
+
+export function getTodayKstDateString(): string {
+  return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}

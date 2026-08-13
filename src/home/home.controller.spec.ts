@@ -1,0 +1,170 @@
+import {
+  Controller,
+  ExecutionContext,
+  Get,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
+import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '@/auth/types/authenticated-user.type';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { HomeController } from './home.controller';
+import { HomeService } from './home.service';
+
+type SupertestApp = Parameters<typeof request>[0];
+
+// 가드 없이 @CurrentUser()만 붙은 라우트 — 인증 정보가 없을 때
+// 데코레이터가 401을 던지는지 확인하기 위한 테스트 전용 컨트롤러.
+@Controller('__no-guard-test')
+class NoGuardTestController {
+  @Get()
+  get(@CurrentUser() user: AuthenticatedUser) {
+    return user;
+  }
+}
+
+const jwtAuthGuard = {
+  canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest<{
+      user?: AuthenticatedUser;
+    }>();
+    request.user = { id: '1' };
+    return true;
+  },
+};
+
+describe('HomeController', () => {
+  let controller: HomeController;
+  let service: { getHome: jest.Mock; getDateSummary: jest.Mock };
+
+  beforeEach(async () => {
+    service = { getHome: jest.fn(), getDateSummary: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [HomeController],
+      providers: [{ provide: HomeService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue(jwtAuthGuard)
+      .compile();
+
+    controller = module.get<HomeController>(HomeController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  it('getHome은 로그인 사용자 id와 date 쿼리를 그대로 서비스에 전달한다', async () => {
+    await controller.getHome({ id: '1' }, { date: '2026-05-12' });
+
+    expect(service.getHome).toHaveBeenCalledWith('1', '2026-05-12');
+  });
+
+  it('date 쿼리가 없으면 undefined로 전달한다', async () => {
+    await controller.getHome({ id: '1' }, {});
+
+    expect(service.getHome).toHaveBeenCalledWith('1', undefined);
+  });
+
+  it('getHome은 서비스에서 발생한 예외를 그대로 전파한다', async () => {
+    service.getHome.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      controller.getHome({ id: '1' }, { date: '2026-05-12' }),
+    ).rejects.toThrow('boom');
+  });
+
+  it('getDateSummary는 사용자 id와 baseDate 쿼리를 서비스에 전달한다', async () => {
+    await controller.getDateSummary({ id: '1' }, { baseDate: '2026-05-12' });
+
+    expect(service.getDateSummary).toHaveBeenCalledWith('1', '2026-05-12');
+  });
+
+  it('baseDate 쿼리가 없으면 undefined로 전달한다', async () => {
+    await controller.getDateSummary({ id: '1' }, {});
+
+    expect(service.getDateSummary).toHaveBeenCalledWith('1', undefined);
+  });
+
+  describe('라우트 레벨 검증 (ValidationPipe + JwtAuthGuard)', () => {
+    let app: INestApplication<SupertestApp>;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [HomeController],
+        providers: [{ provide: HomeService, useValue: service }],
+      })
+        .overrideGuard(JwtAuthGuard)
+        .useValue(jwtAuthGuard)
+        .compile();
+
+      app = module.createNestApplication();
+      app.useGlobalPipes(
+        new ValidationPipe({ whitelist: true, transform: true }),
+      );
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('date가 YYYY-MM-DD 형식이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .get('/home')
+        .query({ date: '2026-05-12T00:00:00Z' })
+        .expect(400);
+
+      expect(service.getHome).not.toHaveBeenCalled();
+    });
+
+    it('date가 없으면 JWT 인증 사용자로 서비스가 호출된다', async () => {
+      service.getHome.mockResolvedValueOnce({});
+
+      await request(app.getHttpServer()).get('/home').expect(200);
+
+      expect(service.getHome).toHaveBeenCalledWith('1', undefined);
+    });
+
+    it('/home/summary의 baseDate가 YYYY-MM-DD 형식이 아니면 400을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .get('/home/summary')
+        .query({ baseDate: '2026-05-12T00:00:00Z' })
+        .expect(400);
+
+      expect(service.getDateSummary).not.toHaveBeenCalled();
+    });
+
+    it('/home/summary는 baseDate 없이도 JWT 사용자로 서비스가 호출된다', async () => {
+      service.getDateSummary.mockResolvedValueOnce({});
+
+      await request(app.getHttpServer()).get('/home/summary').expect(200);
+
+      expect(service.getDateSummary).toHaveBeenCalledWith('1', undefined);
+    });
+  });
+
+  describe('@CurrentUser() 인증 실패 처리', () => {
+    let app: INestApplication<SupertestApp>;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        controllers: [NoGuardTestController],
+      }).compile();
+
+      app = module.createNestApplication();
+      await app.init();
+    });
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it('인증 가드 없이 request.user가 비어있으면 401을 반환한다', async () => {
+      await request(app.getHttpServer()).get('/__no-guard-test').expect(401);
+    });
+  });
+});

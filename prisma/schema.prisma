@@ -1,0 +1,375 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Member {
+  id               BigInt    @id @default(autoincrement()) // pk
+  loginId          String?   @unique @map("login_id") @db.VarChar(20) // 일반 로그인 id
+  password         String?   @db.VarChar(255) // hash값
+  nickname         String?   @unique @db.VarChar(10) // 닉네임
+  profileImg       String?   @map("profile_img") @db.VarChar(255) // 소셜 제공자 프로필 이미지 URL
+  profileImageKey  String?   @map("profile_image_key") @db.VarChar(255) // 사용자 업로드 S3 Object Key
+  email            String?   @unique @db.VarChar(255)
+  name             String?   @db.VarChar(20)
+  gender           String?   @db.Char(1) // M/F/N
+  age              Int?
+  ageGroup         Int?      @map("age_group") @db.TinyInt // 10/20/30/40
+  baselineType     String?   @map("baseline_type") @db.Char(1) // Regular/Constipation/Loose/Unkown
+  birth            String?   @db.VarChar(20)
+  sensInfo         String    @default("F") @map("sens_info") @db.Char(1)
+  regDate          DateTime  @default(now()) @map("reg_date")
+  status           String    @default("A") @db.Char(1) // Activate/Delete
+  deleteDate       DateTime? @map("delete_date")
+  subscription     String    @default("N") @db.Char(1) // N/Y
+  subscriptionDate DateTime? @map("subscription_date")
+  recordAlarm      String?   @default("Y") @map("record_alarm") @db.Char(1) // Y/N
+  reportAlarm      String?   @default("Y") @map("report_alarm") @db.Char(1) // Y/N
+  warnAlarm        String?   @default("Y") @map("warn_alarm") @db.Char(1) // Y/N
+
+  alarmMaps          AlarmMap[]
+  pushTokens         PushToken[]
+  socialAccounts     SocialAccount[]
+  refreshTokens      RefreshToken[]
+  memberConsents     MemberConsent[]
+  boogleRecords      BoogleRecord[]
+  lifeRecords        LifeRecord[]
+  weeklyRecords      WeeklyRecord[]
+  monthlyRecords     MonthlyRecord[]
+  monthlyRuleResults MonthlyRuleResult[]
+  guideFeedbacks     GuideFeedback[]
+
+  @@map("member")
+}
+
+model Alarm {
+  id       Int     @id @default(autoincrement())
+  category String  @db.Char(1) // W/R/P (점 색 표시용)
+  type     String? @db.VarChar(20) // 아이콘 구분용 의미 코드: WARNING/RECORD_REMINDER/REPORT_READY/PDF_SAVED/STREAK
+  title    String  @db.VarChar(40)
+  content  String  @db.VarChar(255)
+
+  alarmMaps AlarmMap[]
+
+  @@map("alarm")
+}
+
+model AlarmMap {
+  id      BigInt    @id @default(autoincrement())
+  userId  BigInt?   @map("user_id")
+  alarmId Int?      @map("alarm_id")
+  regDate DateTime? @default(now()) @map("reg_date")
+  isRead  String?   @default("N") @map("is_read") @db.Char(1) // N/Y
+
+  user  Member? @relation(fields: [userId], references: [id])
+  alarm Alarm?  @relation(fields: [alarmId], references: [id])
+
+  @@map("alarm_map")
+}
+
+// 웹 푸시(FCM) 전송 대상 기기 토큰. 한 유저가 여러 기기(PC·폰)를 가질 수 있어
+// user_id에는 여러 행이 붙고, token은 기기별로 고유하다(재등록 시 upsert).
+model PushToken {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt   @map("user_id")
+  token      String   @unique @db.VarChar(512)
+  regDate    DateTime @default(now()) @map("reg_date")
+  updateDate DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "push_token_user_id_idx")
+  @@map("push_token")
+}
+
+model SocialAccount {
+  id         BigInt   @id @default(autoincrement())
+  userId     BigInt   @map("user_id")
+  provider   String   @db.Char(1) // Google/Kakao/Naver
+  providerId String   @map("provider_id") @db.VarChar(255)
+  email      String?  @db.VarChar(40)
+  regDate    DateTime @default(now()) @map("reg_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerId], map: "social_account_index_0")
+  @@unique([userId, provider], map: "social_account_index_1")
+  @@map("social_account")
+}
+
+model RefreshToken {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt    @map("user_id")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  regDate   DateTime  @default(now()) @map("reg_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "refresh_token_user_id_idx")
+  @@index([expiresAt], map: "refresh_token_expires_at_idx")
+  @@map("refresh_token")
+}
+
+model MemberConsent {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  consentType   String    @map("consent_type") @db.VarChar(20)
+  agreed        Boolean   @default(false)
+  policyVersion String    @map("policy_version") @db.VarChar(20)
+  agreedAt      DateTime? @map("agreed_at")
+  withdrawnAt   DateTime? @map("withdrawn_at")
+  regDate       DateTime  @default(now()) @map("reg_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@index([userId, consentType, id], map: "member_consent_user_type_id_idx")
+  @@map("member_consent")
+}
+
+model AuthTemporaryToken {
+  id        BigInt    @id @default(autoincrement())
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  tokenType String    @map("token_type") @db.VarChar(20)
+  payload   Json
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  regDate   DateTime  @default(now()) @map("reg_date")
+
+  @@index([tokenType, expiresAt], map: "auth_temporary_token_type_expires_idx")
+  @@map("auth_temporary_token")
+}
+
+model BoogleRecord {
+  id               BigInt    @id @default(autoincrement())
+  userId           BigInt    @map("user_id")
+  regDate          DateTime  @map("reg_date")
+  hasBowel         Boolean   @default(false) @map("has_bowel")
+  stoolBristol     Int?      @map("stool_bristol") @db.TinyInt // 브리스톨 1~7
+  stoolSimple      String?   @map("stool_simple") @db.Char(1) // 딱딱H/보통M/묽음T
+  bowelFeeling     String?   @map("bowel_feeling") @db.Char(1) // 느낌 편안C/보통N/힘듦H
+  stomach          Int? // 복통 -> 숫자로 표기
+  bowelMovementAt  DateTime? @map("bowel_movement_at") // 배변 발생 시각 
+  distension       String?   @db.Char(1) // 복부팽만 N/M/L
+  remainingFeeling String?   @map("remaining_feeling") @db.Char(1) // 잔변감 N/M/L
+  urgency          String?   @db.Char(1) // 긴박감 N/M/L
+  takenTime        Int?      @map("taken_time") @db.TinyInt
+  amount           String?   @db.Char(1) // 적음S/보통N/많음M
+  color            String?   @db.Char(1) // 갈색B/어두운색D/검은색N/붉은색R/회색G/초록색E
+  status           String    @default("A") @db.Char(1)
+  updateDate       DateTime? @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@map("boogle_record")
+}
+
+model LifeRecord {
+  id          BigInt    @id @default(autoincrement())
+  userId      BigInt    @map("user_id")
+  regDate     DateTime  @map("reg_date")
+  sleep       String?   @db.Char(1) // 좋음G/보통N/부족B
+  stress      String?   @db.Char(1) // 낮음L/보통N/높음H
+  water       String?   @db.Char(1) // 부족L/보통N/충분H
+  waterIntake Int?      @map("water_intake") @db.TinyInt // 물 섭취량(잔 수, 1잔≈200ml)
+  mealRegular String?   @map("meal_regular") @db.Char(1) // 규칙R/보통N/불규칙I
+  memo        String?   @db.VarChar(255)
+  autoTags    String?   @map("auto_tags") @db.VarChar(255)
+  sleepTime   Int?      @map("sleep_time") @db.TinyInt
+  exercise    String?   @db.Char(1) // 안함N/가볍게L/충분히H
+  caffeine    String?   @db.Char(1) // 없음N/1잔O/2잔이상M
+  outing      String?   @db.Char(1) // 평소와같음N/외출많음L/여행중T
+  hormone     String?   @db.Char(1) // 없음N/생리중M/변화있음E
+  status      String    @default("A") @db.Char(1)
+  updateTime  DateTime? @map("update_time")
+
+  user         Member        @relation(fields: [userId], references: [id])
+  lifeTags     LifeTag[]
+  foodTags     LifeFoodTag[]
+  medicineMaps MedicineMap[]
+
+  @@unique([userId, regDate], map: "life_record_index_2")
+  @@map("life_record")
+}
+
+model Medicine {
+  id   Int     @id @default(autoincrement())
+  name String? @db.VarChar(20)
+
+  medicineMaps MedicineMap[]
+
+  @@map("medicine")
+}
+
+model MedicineMap {
+  medicineId   Int    @map("medicine_id")
+  lifeRecordId BigInt @map("life_record_id")
+
+  medicine   Medicine   @relation(fields: [medicineId], references: [id])
+  lifeRecord LifeRecord @relation(fields: [lifeRecordId], references: [id])
+
+  @@id([medicineId, lifeRecordId])
+  @@map("medicine_map")
+}
+
+model LifeTag {
+  tagId  BigInt @map("tag_id")
+  lifeId BigInt @map("life_id")
+
+  tag  Tag        @relation(fields: [tagId], references: [id])
+  life LifeRecord @relation(fields: [lifeId], references: [id])
+
+  @@id([tagId, lifeId])
+  @@map("life_tags")
+}
+
+model Tag {
+  id   BigInt @id @default(autoincrement())
+  name String @unique @db.VarChar(40)
+
+  lifeTags LifeTag[]
+
+  @@map("tags")
+}
+
+model WeeklyRecord {
+  id                    BigInt    @id @default(autoincrement())
+  regDate               DateTime? @default(now()) @map("reg_date")
+  userId                BigInt    @map("user_id")
+  weekStartDate         DateTime  @map("week_start_date") @db.Date
+  bowelCount            Int       @default(0) @map("bowel_count")
+  intervalAvg           Float     @default(0) @map("interval_avg") @db.Double
+  completionScore       Float     @default(0) @map("completion_score") @db.Double
+  recordedDays          Int       @default(0) @map("recorded_days")
+  calculatedThroughDate DateTime  @map("calculated_through_date") @db.Date
+  isFinalized           Boolean   @default(false) @map("is_finalized")
+  updateDate            DateTime  @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, weekStartDate], map: "weekly_record_index_3")
+  @@map("weekly_record")
+}
+
+model MonthlyRecord {
+  id                    BigInt    @id @default(autoincrement())
+  regDate               DateTime? @default(now()) @map("reg_date")
+  userId                BigInt    @map("user_id")
+  monthStartDate        DateTime  @map("month_start_date") @db.Date
+  bowelCount            Int       @default(0) @map("bowel_count")
+  bowelDays             Int       @default(0) @map("bowel_days")
+  intervalAvg           Float     @default(0) @map("interval_avg") @db.Double
+  state                 Int       @default(3)
+  completionScore       Float     @default(0) @map("completion_score") @db.Double
+  rhythmScore           Float     @default(50) @map("rhythm_score") @db.Double
+  stateScore            Float     @default(50) @map("state_score") @db.Double
+  conditionScore        Int       @default(0) @map("condition_score")
+  userType              String    @default("N") @map("user_type") @db.Char(1) // R 규칙형 / C 변비경향형 / W 묽은변경향형 / L 생활영향형 / I 불규칙형 / N 유형 분석 중
+  recordedDays          Int       @default(0) @map("recorded_days")
+  calculatedThroughDate DateTime  @map("calculated_through_date") @db.Date
+  isFinalized           Boolean   @default(false) @map("is_finalized")
+  updateDate            DateTime  @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, monthStartDate], map: "monthly_record_index_4")
+  @@map("monthly_record")
+}
+
+model MonthlyRuleResult {
+  id             BigInt   @id @default(autoincrement())
+  userId         BigInt   @map("user_id")
+  monthStartDate DateTime @map("month_start_date") @db.Date
+  ruleCode       String   @map("rule_code") @db.VarChar(40)
+  value          Float    @db.Double
+  regDate        DateTime @default(now()) @map("reg_date")
+  updateDate     DateTime @updatedAt @map("update_date")
+
+  user Member @relation(fields: [userId], references: [id])
+
+  @@unique([userId, monthStartDate, ruleCode], map: "monthly_rule_result_user_month_rule_uq")
+  @@map("monthly_rule_result")
+}
+
+model LifeFoodTag {
+  lifeId BigInt @map("life_id")
+  foodId Int    @map("food_id")
+
+  life LifeRecord @relation(fields: [lifeId], references: [id])
+  food Food       @relation(fields: [foodId], references: [id])
+
+  @@id([lifeId, foodId])
+  @@map("life_food_tag")
+}
+
+model Food {
+  id   Int    @id
+  name String @unique @db.VarChar(20)
+
+  lifeFoodTags LifeFoodTag[]
+
+  @@map("food")
+}
+
+model Guide {
+  id       Int       @id @default(autoincrement())
+  title    String    @db.VarChar(255)
+  summary  String    @db.VarChar(255)
+  category String    @db.Char(1) // 패턴 P / 장건강 H / 주의 W
+  regDate  DateTime  @default(now())
+  updateAt DateTime? @updatedAt @map("update_date")
+  status   String    @default("A") @db.Char(1)
+  source   String?   @db.VarChar(255)
+
+  guideContents  GuideContent[]
+  guideAdvices   GuideAdvice[]
+  guideFeedbacks GuideFeedback[]
+
+  @@unique([category, title], map: "guide_category_title_uq")
+  @@map("guide")
+}
+
+model GuideContent {
+  id       Int     @id @default(autoincrement())
+  guideId  Int     @map("guide_id")
+  subtitle String? @db.VarChar(255)
+  content  String  @db.Text
+
+  guide Guide @relation(fields: [guideId], references: [id])
+
+  @@map("guide_content")
+}
+
+model GuideAdvice {
+  id       Int     @id @default(autoincrement())
+  guideId  Int     @map("guide_id")
+  subtitle String? @db.VarChar(255)
+  content  String  @db.Text
+
+  guide Guide @relation(fields: [guideId], references: [id])
+
+  @@map("guide_advice")
+}
+
+model GuideFeedback {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  guideId       Int       @map("guide_id")
+  feedback      String    @db.Char(1) // 도움G/이미A/잘모름N
+  weekStartDate DateTime  @map("week_start_date") @db.Date
+  regDate       DateTime  @default(now()) @map("reg_date")
+  updateDate    DateTime? @updatedAt @map("update_date") // 수정시 수정시각
+
+  user  Member @relation(fields: [userId], references: [id])
+  guide Guide  @relation(fields: [guideId], references: [id])
+
+  @@unique([userId, guideId, weekStartDate], map: "guide_feedback_user_guide_week_uq")
+  @@index([userId, weekStartDate], map: "guide_feedback_user_week_idx")
+  @@map("guide_feedback")
+}
