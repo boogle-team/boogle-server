@@ -50,7 +50,7 @@ export class RecordService {
   private convertStoolSimple(
     stoolBristol?: number | null,
   ): string | null | undefined {
-    if (stoolBristol == null) {
+    if (stoolBristol === undefined) {
       return undefined;
     }
 
@@ -212,7 +212,7 @@ export class RecordService {
         ? `${String(getKstHour(record.bowelMovementAt)).padStart(2, '0')}:${String(
             getKstMinute(record.bowelMovementAt),
           ).padStart(2, '0')}`
-        : '',
+        : null,
       stoolBristol: record.stoolBristol,
       stoolSimple: record.stoolSimple,
       bowelFeeling: record.bowelFeeling,
