@@ -44,8 +44,8 @@
 main ← develop ← feature
 ```
 
-- main branch : 배포 브랜치
-- develop branch : 개발 브랜치 (feature 브랜치가 merge됨)
+- main branch : 배포 파이프라인과 연결되어 있지 않음 (배포 트리거는 develop)
+- develop branch : 개발 브랜치, `push` 시 GitHub Actions가 자동으로 빌드·배포함 (feature 브랜치가 merge됨)
 - feature branch : 페이지 / 기능 별 브랜치
 
 ### Gitmoji Download (once)
@@ -275,7 +275,6 @@ EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책�
 
 - **도메인 에러코드**: 위 공통 코드로 표현이 안 되는 도메인 고유 에러(ex- 이미 가입된 소셜 계정)는 각 모듈의 `*-error-code.enum.ts`에 `도메인_번호`(ex- `AUTH_001`) 형식으로 추가하고, `BusinessException(errorCode, message, status)`(`src/common/exceptions`)을 던져서 사용합니다. `BusinessException`은 `HttpExceptionFilter`에서 공통 매핑보다 우선 적용됩니다.
 - Swagger 문서는 서버 실행 후 `/api-docs`에서 확인할 수 있으며, Bearer 인증 스키마가 등록되어 있습니다.
-- 현재 도메인 모듈들은 컨트롤러/서비스/에러코드 enum 등 뼈대만 생성된 상태이며, 실제 API 로직은 각 담당자가 채워나갑니다.
 
 <br>
 
@@ -289,14 +288,18 @@ EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책�
  ┃ ┣ 📂migrations
  ┃ ┗ 📜schema.prisma
  ┣ 📂src
- ┃ ┣ 📂auth               (회원가입/로그인/온보딩 - A101~A103, 경로: /auth)
- ┃ ┣ 📂user                (로그아웃/회원탈퇴 - A104, 경로: /users)
- ┃ ┣ 📂home                 (홈 화면 - H, 경로: /home)
- ┃ ┣ 📂record                (부글 기록 - B, 경로: /records)
- ┃ ┣ 📂life-record            (생활 기록 - L, 경로: /life-records)
- ┃ ┣ 📂calendar                (캘린더 - C, 경로: /calendar)
- ┃ ┣ 📂report                   (리포트 - R, 경로: /reports)
- ┃ ┣ 📂guide                     (가이드 카드 - G, 경로: /guides)
+ ┃ ┣ 📂auth               (회원가입/로그인(Google·Kakao OAuth)/온보딩, 경로: /auth)
+ ┃ ┣ 📂user                (회원 정보/알림 설정/프로필 이미지/회원탈퇴, 경로: /users)
+ ┃ ┣ 📂home                 (홈 화면, 경로: /home)
+ ┃ ┣ 📂record                (부글 기록(배변), 경로: /records)
+ ┃ ┣ 📂life-record            (생활 기록, 경로: /life-records)
+ ┃ ┣ 📂calendar                (캘린더, 경로: /calendar)
+ ┃ ┣ 📂report                   (주간·월간 리포트, PDF 리포트, 경로: /reports)
+ ┃ ┣ 📂guide                     (가이드 카드/피드백, 경로: /guides)
+ ┃ ┣ 📂food                       (음식 목록 - 생활 기록 등록 시 참조, 경로: /foods)
+ ┃ ┣ 📂medicine                    (약/영양제 목록 - 생활 기록 등록 시 참조, 경로: /medicines)
+ ┃ ┣ 📂notification                 (알림 목록/읽음 처리, 경로: /notifications)
+ ┃ ┣ 📂push                          (FCM 푸시 토큰 등록/삭제, 경로: /push)
  ┃ ┃  ┣ 📂dto
  ┃ ┃  ┣ 📜guide-error-code.enum.ts
  ┃ ┃  ┣ 📜guide.controller.ts
@@ -304,7 +307,7 @@ EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책�
  ┃ ┃  ┣ 📜guide.module.ts
  ┃ ┃  ┣ 📜guide.service.ts
  ┃ ┃  ┗ 📜guide.service.spec.ts
- ┃ ┃    (auth/user/home/record/life-record/calendar/report 모두 위 guide와 동일한 구성)
+ ┃ ┃    (다른 도메인 모듈들도 대체로 위 guide와 동일한 구성: dto/ + *-error-code.enum.ts + *.controller.ts + *.module.ts + *.service.ts + 각 *.spec.ts)
  ┃ ┣ 📂common
  ┃ ┃ ┣ 📂dto
  ┃ ┃ ┃ ┗ 📜api-response.dto.ts       (성공/실패 응답 타입)
@@ -312,8 +315,10 @@ EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책�
  ┃ ┃ ┃ ┗ 📜business.exception.ts     (에러코드를 담는 커스텀 예외)
  ┃ ┃ ┣ 📂filters
  ┃ ┃ ┃ ┗ 📜http-exception.filter.ts  (전역 예외 필터)
- ┃ ┃ ┗ 📂interceptors
- ┃ ┃   ┗ 📜response.interceptor.ts   (전역 응답 래퍼)
+ ┃ ┃ ┣ 📂interceptors
+ ┃ ┃ ┃ ┗ 📜response.interceptor.ts   (전역 응답 래퍼)
+ ┃ ┃ ┗ 📂swagger
+ ┃ ┃   ┗ 📜error-example.util.ts     (Swagger 에러 응답 예시 생성 유틸)
  ┃ ┣ 📂generated         (Prisma Client 자동 생성 - git 미포함)
  ┃ ┣ 📂prisma
  ┃ ┃ ┣ 📜prisma.module.ts
@@ -343,18 +348,17 @@ EC2 Instance IAM Role에는 실제 버킷 이름으로 치환한 다음 정책�
 
 - prisma - `schema.prisma`에 DB 모델 정의, 마이그레이션 파일 관리
 - src
-  - auth / user / home / record / life-record / calendar / report / guide - 도메인별 모듈 (`nest g module/controller/service`로 생성, 각 `dto/` 폴더와 `*-error-code.enum.ts` 포함). 폴더/클래스명은 단수(ex- `RecordController`)이고 실제 API 경로는 API 명세서에 맞춰 복수형(ex- `/api/v1/records`)으로 노출됩니다. 아직 로직 구현 전 뼈대 상태
-  - common - 전역 응답 래퍼(`interceptors`) / 예외 필터(`filters`) / 커스텀 예외(`exceptions`) / 응답 타입(`dto`)
+  - auth / user / home / record / life-record / calendar / report / guide / food / medicine / notification / push - 도메인별 모듈 (각 `dto/` 폴더와 `*-error-code.enum.ts` 포함). 폴더/클래스명은 단수(ex- `RecordController`)이고 실제 API 경로는 복수형(ex- `/api/v1/records`)으로 노출됩니다.
+  - common - 전역 응답 래퍼(`interceptors`) / 예외 필터(`filters`) / 커스텀 예외(`exceptions`) / 응답 타입(`dto`) / Swagger 유틸(`swagger`)
   - generated/prisma - `prisma generate`로 자동 생성되는 Prisma Client (직접 수정 X)
   - prisma - 전역으로 주입되는 `PrismaService` / `PrismaModule`
-  - (추후 기능이 늘어나면 도메인별 모듈 하위에 컨트롤러/서비스 로직과 dto를 채워나감)
 
 <br>
 
 ## 🚀 배포 / 롤백
 
-- **배포 파이프라인**: `develop` 브랜치에 push되면 `.github/workflows/deploy.yml`의 `build` 잡이 GitHub Actions 러너에서 Docker 이미지를 빌드해 GHCR(`ghcr.io/boogle-team/boogle-server`)에 push하고, 이어서 `deploy` 잡이 EC2에 SSH로 접속해 `git pull`(compose 파일 동기화) → **AWS SSM Parameter Store**(`/boogle/prod/*`)에서 값을 직접 조회해 `.env` 재생성 → GHCR 로그인 → `docker compose pull` → 일회성 컨테이너에서 `prisma migrate deploy` → `docker compose up -d` 순서로 재배포합니다. 애플리케이션 컨테이너 시작과 DB 마이그레이션을 분리해 여러 컨테이너가 동시에 마이그레이션을 실행하지 않도록 했습니다. **이미지 빌드는 EC2가 아니라 GitHub Actions에서 수행합니다** — t3.micro(RAM 1GB)에서 직접 빌드하면 메모리 부족으로 인스턴스 전체가 응답 불능 상태가 되는 문제가 반복돼서, 빌드를 러너로 옮기고 EC2는 완성된 이미지를 pull만 하도록 구조를 바꿨습니다. (2026-07-30 이전엔 `PROD_ENV_FILE` GitHub 시크릿을 base64로 디코드하는 방식이었는데, SSM Parameter Store 기반으로 교체했습니다.)
-- **EC2 접속**: pem 키 SSH는 더 이상 안 됩니다 (보안그룹에서 22번 포트 제거함). **AWS Systems Manager Session Manager**로만 접속합니다.
+- **배포 파이프라인**: `develop` 브랜치에 push되면 `.github/workflows/deploy.yml`의 `build` 잡이 GitHub Actions 러너에서 Docker 이미지를 빌드해 GHCR(`ghcr.io/boogle-team/boogle-server`)에 push합니다. 이어서 `deploy` 잡이 **EC2에 SSH로 접속하지 않고**, `aws ssm send-command`(`AWS-RunShellScript`)로 `scripts/deploy-remote.sh`를 EC2에서 원격 실행합니다(EC2 보안그룹에서 22번 포트를 아예 막아뒀기 때문). 이 스크립트가 `git pull`(compose 파일 동기화) → **AWS SSM Parameter Store**(`/boogle/prod/*`)에서 값을 직접 조회해 `.env` 재생성 → GHCR 로그인 → `docker compose pull` → 일회성 컨테이너에서 `prisma migrate deploy` 및 `prisma db seed` 실행 → `docker compose up -d --force-recreate` → `docker image prune`로 낡은 이미지 정리, 순서로 재배포합니다. 애플리케이션 컨테이너 시작과 DB 마이그레이션을 분리해 여러 컨테이너가 동시에 마이그레이션을 실행하지 않도록 했습니다. **이미지 빌드는 EC2가 아니라 GitHub Actions에서 수행합니다** — t3.micro(RAM 1GB)에서 직접 빌드하면 메모리 부족으로 인스턴스 전체가 응답 불능 상태가 되는 문제가 반복돼서, 빌드를 러너로 옮기고 EC2는 완성된 이미지를 pull만 하도록 구조를 바꿨습니다. (SSH 기반 배포 → SSM Parameter Store 기반 `.env` 관리 → SSH 대신 SSM Run Command로 배포, 순서로 단계적으로 전환되었습니다.)
+- **EC2 접속**: pem 키 SSH는 더 이상 안 됩니다 (보안그룹에서 22번 포트 제거함). CI/CD 배포도, 사람이 직접 접속할 때도 **AWS Systems Manager**만 사용합니다 (배포는 Run Command, 개인 접속은 Session Manager).
 
   ```bash
   aws ssm start-session --target i-09994256d8b10d1f3
