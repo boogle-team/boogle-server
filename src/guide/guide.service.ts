@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { ReportService } from '@/report/report.service';
 import {
   PATTERN_GUIDE_BINDINGS,
+  type PatternGuideBinding,
   type WeeklyRuleCode,
 } from '@/report/pattern/weekly-pattern.constants';
 import { getTodayKstDateKey } from '@/common/utils/kst-date.util';
@@ -400,17 +401,26 @@ export class GuideService {
 
     return guideId;
   }
+
+  private findPatternGuideBinding(
+    guideId: number,
+  ): PatternGuideBinding | undefined {
+    return PATTERN_GUIDE_BINDINGS.find((item) => item.guideId === guideId);
+  }
+
   // 패턴 가이드 이유
   private async buildPatternGuideReason(
     userId: bigint,
     guideId: number,
   ): Promise<PatternGuideReasonDto> {
-    const binding = PATTERN_GUIDE_BINDINGS.find(
-      (item) => item.guideId === guideId,
-    );
+    const binding = this.findPatternGuideBinding(guideId);
 
     if (binding === undefined) {
-      throw new Error(`Pattern guide binding not found: ${guideId}`);
+      throw new BusinessException(
+        GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
+        '요청한 패턴 가이드 구성을 찾을 수 없습니다.',
+        HttpStatus.NOT_FOUND,
+      );
     }
     const weekStartDate = this.getCurrentMonday();
     const weeklyReport = await this.reportService.getWeeklyReport(userId, {
@@ -752,7 +762,10 @@ export class GuideService {
       );
     }
 
-    if (guide.category !== 'P') {
+    if (
+      guide.category !== 'P' ||
+      this.findPatternGuideBinding(guideId) === undefined
+    ) {
       throw new BusinessException(
         GuideErrorCode.GUIDE_FEEDBACK_NOT_ALLOWED,
         '패턴 기반 가이드에만 피드백을 남길 수 있습니다.',

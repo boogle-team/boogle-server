@@ -44,8 +44,6 @@ import type {
   BoogleRecordForReport,
   LifeRecordForReport,
   WeeklyPatternContext,
-  WeeklyRecordForReport,
-  WeeklyRecordForTrend,
 } from './dto/report-record.dto';
 import { detectWeeklyPatterns } from './pattern/weekly-pattern.detector';
 import {
@@ -67,6 +65,11 @@ import {
   calculateReportScores,
 } from './score/report-score.calculator';
 import { hasBowelMovementAt } from './util/bowel-record.util';
+import {
+  ReportSnapshotService,
+  type MonthlySnapshotValue,
+  type WeeklySnapshotValue,
+} from './report-snapshot.service';
 
 const TOTAL_WEEK_DAYS = 7;
 const REQUIRED_RECORDED_DAYS = 3;
@@ -104,7 +107,22 @@ export class ReportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationDispatchService,
+    private readonly snapshots: ReportSnapshotService,
   ) {}
+
+  private async saveSnapshotSafely(
+    context: string,
+    save: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await save();
+    } catch (error) {
+      this.logger.error(
+        `리포트 스냅샷 저장 실패 context=${context}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
   // 주간 메인
   async getWeeklyReport(
     userId: bigint,
@@ -122,27 +140,18 @@ export class ReportService {
           HttpStatus.BAD_REQUEST,
         );
       }
+
       const weekEndDate = this.addDays(weekStartDate, 6);
       const nextWeekStartDate = this.addDays(weekStartDate, 7);
-
       const previousWeekStartDate = this.addDays(weekStartDate, -7);
       const previousWeekEndDate = this.addDays(weekStartDate, -1);
 
-      // 현재 주 일요일을 끝으로 하는 최근 30일
+      // 현재 주 일요일을 끝으로 하는 최근 30일 기록을 조회한다.
       const lookback30StartDate = this.addDays(nextWeekStartDate, -30);
 
-      const [
-        weeklyRecord,
-        previousWeeklyRecord,
-        boogleHistory,
-        lifeHistory,
-        patternContext,
-      ] = await Promise.all([
-        this.findWeeklyRecord(userId, weekStartDate),
-        this.findWeeklyRecord(userId, previousWeekStartDate),
+      const [boogleHistory, lifeHistory] = await Promise.all([
         this.findBoogleRecords(userId, lookback30StartDate, nextWeekStartDate),
         this.findLifeRecords(userId, lookback30StartDate, nextWeekStartDate),
-        this.findWeeklyPatternContext(userId, weekStartDate),
       ]);
 
       const boogleRecords = this.filterByKstCalendarRange(
@@ -167,20 +176,32 @@ export class ReportService {
       );
 
       const recordStats = this.buildRecordStats(boogleRecords, lifeRecords);
-      const previousRecordStats = this.buildRecordStats(
+      const period = this.buildPeriod(weekStartDate, weekEndDate);
+      const summary = this.buildWeeklySummaryFromRaw(
+        boogleRecords,
+        recordStats,
+      );
+
+      // 기록 부족 여부와 관계없이 현재 주 계산 결과를 한 번만 저장한다.
+      await this.saveSnapshotSafely(
+        `weekly userId=${userId.toString()} period=${this.toDateString(weekStartDate)}`,
+        () =>
+          this.snapshots.upsertWeekly(
+            userId,
+            weekStartDate,
+            this.minDate(weekEndDate, this.getTodayCalendarDate()),
+            this.isPeriodFinalized(weekEndDate),
+            this.toWeeklySnapshotValue(summary, recordStats),
+          ),
+      );
+
+      const previousSummary = await this.getOrCreatePreviousWeeklySummary(
+        userId,
+        previousWeekStartDate,
+        previousWeekEndDate,
         previousBoogleRecords,
         previousLifeRecords,
       );
-
-      const previousSummary = this.buildPreviousSummary(
-        previousWeekStartDate,
-        previousWeekEndDate,
-        previousWeeklyRecord,
-        previousBoogleRecords,
-        previousRecordStats,
-      );
-
-      const period = this.buildPeriod(weekStartDate, weekEndDate);
 
       if (recordStats.recordedDays < REQUIRED_RECORDED_DAYS) {
         return this.buildInsufficientResponse(
@@ -190,11 +211,12 @@ export class ReportService {
         );
       }
 
-      const summary = this.buildSummary(
-        weeklyRecord,
-        boogleRecords,
-        recordStats,
+      // 패턴 분석에 필요한 이전 월 유형은 기록이 충분할 때만 조회한다.
+      const patternContext = await this.findWeeklyPatternContext(
+        userId,
+        weekStartDate,
       );
+
       const stoolDistribution = this.buildStoolDistribution(boogleRecords);
       const lifeFactorStats = this.buildLifeFactorStats(lifeRecords);
 
@@ -264,6 +286,76 @@ export class ReportService {
     }
   }
 
+  private buildWeeklySummaryFromRaw(
+    boogleRecords: BoogleRecordForReport[],
+    recordStats: WeeklyRecordStatsDto,
+  ): WeeklySummaryDto {
+    const bowelCount = boogleRecords.filter((record) => record.hasBowel).length;
+
+    return {
+      bowelCount,
+      intervalAvg:
+        bowelCount === 0 ? 0 : this.round1(TOTAL_WEEK_DAYS / bowelCount),
+      completionScore: recordStats.completionScore,
+    };
+  }
+
+  private async getOrCreatePreviousWeeklySummary(
+    userId: bigint,
+    previousWeekStartDate: Date,
+    previousWeekEndDate: Date,
+    previousBoogleRecords: BoogleRecordForReport[],
+    previousLifeRecords: LifeRecordForReport[],
+  ): Promise<PreviousWeeklySummaryDto | null> {
+    const cached = await this.snapshots.findFinalizedWeekly(
+      userId,
+      previousWeekStartDate,
+    );
+
+    if (cached !== null) {
+      if (cached.recordedDays === 0) {
+        return null;
+      }
+
+      return {
+        period: this.buildPeriod(previousWeekStartDate, previousWeekEndDate),
+        bowelCount: cached.bowelCount,
+        intervalAvg: cached.intervalAvg,
+        completionScore: cached.completionScore,
+      };
+    }
+
+    const recordStats = this.buildRecordStats(
+      previousBoogleRecords,
+      previousLifeRecords,
+    );
+    const summary = this.buildWeeklySummaryFromRaw(
+      previousBoogleRecords,
+      recordStats,
+    );
+
+    await this.saveSnapshotSafely(
+      `previous-weekly userId=${userId.toString()} period=${this.toDateString(
+        previousWeekStartDate,
+      )}`,
+      () =>
+        this.snapshots.upsertWeekly(
+          userId,
+          previousWeekStartDate,
+          previousWeekEndDate,
+          true,
+          this.toWeeklySnapshotValue(summary, recordStats),
+        ),
+    );
+
+    return recordStats.recordedDays === 0
+      ? null
+      : {
+          period: this.buildPeriod(previousWeekStartDate, previousWeekEndDate),
+          ...summary,
+        };
+  }
+
   // 월간 메인
   async getMonthlyReport(
     userId: bigint,
@@ -287,6 +379,7 @@ export class ReportService {
           HttpStatus.BAD_REQUEST,
         );
       }
+
       const effectiveMonthEnd =
         monthStartDate <= today && today <= calendarMonthEnd
           ? today
@@ -296,22 +389,70 @@ export class ReportService {
       const previousMonthStartDate = this.addMonths(monthStartDate, -1);
       const previousMonthEndDate = this.addDays(monthStartDate, -1);
 
-      const [
-        boogleRecords,
-        lifeRecords,
-        previousBoogleRecords,
-        previousLifeRecords,
-        weeklyRecords,
-      ] = await Promise.all([
+      // 현재 월은 항상 원본으로 계산한다.
+      const [boogleRecords, lifeRecords] = await Promise.all([
         this.findBoogleRecords(userId, monthStartDate, effectiveEndExclusive),
         this.findLifeRecords(userId, monthStartDate, effectiveEndExclusive),
+      ]);
+
+      const recordStats = this.buildMonthlyRecordStats(
+        boogleRecords,
+        lifeRecords,
+        calendarMonthEnd.getUTCDate(),
+      );
+      const period = this.buildMonthlyPeriod(monthStartDate, effectiveMonthEnd);
+      const hasEnoughMonthlyRecords =
+        recordStats.recordedDays >= REQUIRED_MONTHLY_RECORDED_DAYS;
+      const pdf = this.buildMonthlyPdf(hasEnoughMonthlyRecords);
+
+      const summary = this.buildMonthlySummary(
+        boogleRecords,
+        lifeRecords,
+        recordStats,
+      );
+      const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
+
+      // 기록 부족 여부와 관계없이 현재 월 계산 결과를 저장한다.
+      await this.saveSnapshotSafely(
+        `monthly userId=${userId.toString()} period=${this.toDateString(monthStartDate)}`,
+        () =>
+          this.snapshots.upsertMonthly(
+            userId,
+            monthStartDate,
+            effectiveMonthEnd,
+            this.isPeriodFinalized(calendarMonthEnd),
+            this.toMonthlySnapshotValue(summary, userType, recordStats),
+          ),
+      );
+
+      if (!hasEnoughMonthlyRecords) {
+        return {
+          period,
+          dataStatus: 'INSUFFICIENT',
+          summary: null,
+          recordStats,
+          previousSummary: null,
+          changeSummary: null,
+          stoolDistribution: [],
+          weeklyTrend: [],
+          lifeFactorStats: null,
+          userType: null,
+          patternCards: [],
+          improvements: [],
+          pdf,
+          notice: {
+            code: 'MONTHLY_RECORD_NOT_ENOUGH',
+            message:
+              `현재 ${recordStats.recordedDays}일째 기록 중이에요. ` +
+              `${REQUIRED_MONTHLY_RECORDED_DAYS}일 이상 기록하면 월간 리포트를 볼 수 있어요.`,
+          },
+        };
+      }
+
+      // 현재 월 기록이 충분할 때만 지난달 원본을 조회한다.
+      const [previousBoogleRecords, previousLifeRecords] = await Promise.all([
         this.findBoogleRecords(userId, previousMonthStartDate, monthStartDate),
         this.findLifeRecords(userId, previousMonthStartDate, monthStartDate),
-        this.findWeeklyRecordsForMonth(
-          userId,
-          monthStartDate,
-          calendarNextMonthStart,
-        ),
       ]);
 
       const currentPeriodDays =
@@ -391,67 +532,18 @@ export class ReportService {
         );
       }
 
-      const recordStats = this.buildMonthlyRecordStats(
-        boogleRecords,
-        lifeRecords,
-        calendarMonthEnd.getUTCDate(),
-      );
-      const previousRecordStats = this.buildMonthlyRecordStats(
+      const previousSummary = await this.getOrCreatePreviousMonthlySummary(
+        userId,
+        previousMonthStartDate,
+        previousMonthEndDate,
         previousBoogleRecords,
         previousLifeRecords,
-        previousMonthEndDate.getUTCDate(),
       );
-      const period = this.buildMonthlyPeriod(monthStartDate, effectiveMonthEnd);
-      const hasEnoughMonthlyRecords =
-        recordStats.recordedDays >= REQUIRED_MONTHLY_RECORDED_DAYS;
-      const pdf = this.buildMonthlyPdf(hasEnoughMonthlyRecords);
 
-      if (!hasEnoughMonthlyRecords) {
-        return {
-          period,
-          dataStatus: 'INSUFFICIENT',
-          summary: null,
-          recordStats,
-          previousSummary: null,
-          changeSummary: null,
-          stoolDistribution: [],
-          weeklyTrend: [],
-          lifeFactorStats: null,
-          userType: null,
-          patternCards: [],
-          improvements: [],
-          pdf,
-          notice: {
-            code: 'MONTHLY_RECORD_NOT_ENOUGH',
-            message:
-              `현재 ${recordStats.recordedDays}일째 기록 중이에요. ` +
-              `${REQUIRED_MONTHLY_RECORDED_DAYS}일 이상 기록하면 월간 리포트를 볼 수 있어요.`,
-          },
-        };
-      }
-
-      const summary = this.buildMonthlySummary(
-        boogleRecords,
-        lifeRecords,
-        recordStats,
-      );
-      const previousSummary =
-        previousRecordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
-          ? null
-          : this.buildPreviousMonthlySummaryFromRaw(
-              previousBoogleRecords,
-              previousLifeRecords,
-              previousRecordStats,
-              previousMonthStartDate,
-              previousMonthEndDate,
-            );
-
-      const currentMetrics = calculateMonthlyPatternMetrics(
-        boogleRecords,
-        lifeRecords,
-      );
       const patternCards = includePattern
-        ? buildMonthlyPatternCards(currentMetrics)
+        ? buildMonthlyPatternCards(
+            calculateMonthlyPatternMetrics(boogleRecords, lifeRecords),
+          )
         : [];
 
       const stoolDistribution =
@@ -467,14 +559,13 @@ export class ReportService {
         changeSummary: this.buildMonthlyChangeSummary(summary, previousSummary),
         stoolDistribution,
         weeklyTrend: this.buildWeeklyTrend(
-          weeklyRecords,
           boogleRecords,
           lifeRecords,
           monthStartDate,
           effectiveMonthEnd,
         ),
         lifeFactorStats,
-        userType: this.resolveMonthlyUserType(boogleRecords, lifeRecords),
+        userType,
         patternCards,
         improvements,
         pdf,
@@ -493,27 +584,105 @@ export class ReportService {
     }
   }
 
-  private buildPreviousMonthlySummaryFromRaw(
-    boogleRecords: BoogleRecordForReport[],
-    lifeRecords: LifeRecordForReport[],
-    recordStats: MonthlyRecordStatsDto,
+  private getMonthlyUserTypeLabel(code: MonthlyUserTypeCode): string {
+    const labels: Record<MonthlyUserTypeCode, string> = {
+      R: '규칙형',
+      C: '변비경향형',
+      W: '묽은변경향형',
+      L: '생활영향형',
+      I: '불규칙형',
+      N: '유형 분석 중',
+    };
+
+    return labels[code];
+  }
+
+  private buildPreviousMonthlySummaryFromSnapshot(
+    snapshot: MonthlySnapshotValue,
     monthStartDate: Date,
     monthEndDate: Date,
   ): PreviousMonthlySummaryDto {
-    const summary = this.buildMonthlySummary(
-      boogleRecords,
-      lifeRecords,
-      recordStats,
-    );
-    const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
-
     return {
       period: this.buildMonthlyPeriod(monthStartDate, monthEndDate),
-      ...summary,
-      userType: userType.code,
-      userTypeLabel: userType.name,
+      bowelCount: snapshot.bowelCount,
+      bowelDays: snapshot.bowelDays,
+      intervalAvg: snapshot.intervalAvg,
+      completionScore: snapshot.completionScore,
+      rhythmScore: snapshot.rhythmScore,
+      stateScore: snapshot.stateScore,
+      conditionScore: snapshot.conditionScore,
+      state: snapshot.state,
+      stateLabel: this.getStateLabel(snapshot.state),
+      userType: snapshot.userType,
+      userTypeLabel: this.getMonthlyUserTypeLabel(snapshot.userType),
     };
   }
+
+  private async getOrCreatePreviousMonthlySummary(
+    userId: bigint,
+    previousMonthStartDate: Date,
+    previousMonthEndDate: Date,
+    previousBoogleRecords: BoogleRecordForReport[],
+    previousLifeRecords: LifeRecordForReport[],
+  ): Promise<PreviousMonthlySummaryDto | null> {
+    const cached = await this.snapshots.findFinalizedMonthly(
+      userId,
+      previousMonthStartDate,
+      previousMonthEndDate,
+    );
+
+    if (cached !== null) {
+      return cached.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
+        ? null
+        : this.buildPreviousMonthlySummaryFromSnapshot(
+            cached,
+            previousMonthStartDate,
+            previousMonthEndDate,
+          );
+    }
+
+    const recordStats = this.buildMonthlyRecordStats(
+      previousBoogleRecords,
+      previousLifeRecords,
+      previousMonthEndDate.getUTCDate(),
+    );
+    const summary = this.buildMonthlySummary(
+      previousBoogleRecords,
+      previousLifeRecords,
+      recordStats,
+    );
+    const userType = this.resolveMonthlyUserType(
+      previousBoogleRecords,
+      previousLifeRecords,
+    );
+
+    await this.saveSnapshotSafely(
+      `previous-monthly userId=${userId.toString()} period=${this.toDateString(
+        previousMonthStartDate,
+      )}`,
+      () =>
+        this.snapshots.upsertMonthly(
+          userId,
+          previousMonthStartDate,
+          previousMonthEndDate,
+          true,
+          this.toMonthlySnapshotValue(summary, userType, recordStats),
+        ),
+    );
+
+    return recordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
+      ? null
+      : {
+          period: this.buildMonthlyPeriod(
+            previousMonthStartDate,
+            previousMonthEndDate,
+          ),
+          ...summary,
+          userType: userType.code,
+          userTypeLabel: userType.name,
+        };
+  }
+
   // PDF 메인
   async createPdfReport(
     userId: bigint,
@@ -626,23 +795,6 @@ export class ReportService {
 
     return parsedDate;
   }
-  // 주간기록 조회
-  private async findWeeklyRecord(
-    userId: bigint,
-    weekStartDate: Date,
-  ): Promise<WeeklyRecordForReport | null> {
-    return this.prisma.weeklyRecord.findFirst({
-      where: {
-        userId,
-        weekStartDate,
-      },
-      select: {
-        bowelCount: true,
-        intervalAvg: true,
-        completionScore: true,
-      },
-    });
-  }
   // 부글기록 조회
   private async findBoogleRecords(
     userId: bigint,
@@ -727,29 +879,66 @@ export class ReportService {
       Date.UTC(weekStartDate.getUTCFullYear(), weekStartDate.getUTCMonth(), 1),
     );
     const previousMonthStart = this.addMonths(currentMonthStart, -1);
+    const previousMonthEnd = this.addDays(currentMonthStart, -1);
 
-    const [member, previousMonthlyRecord] = await Promise.all([
+    const [member, cached] = await Promise.all([
       this.prisma.member.findUnique({
-        where: {
-          id: userId,
-        },
-        select: {
-          sensInfo: true,
-        },
+        where: { id: userId },
+        select: { sensInfo: true },
       }),
-      this.prisma.monthlyRecord.findFirst({
-        where: {
-          userId,
-          monthStartDate: previousMonthStart,
-        },
-        select: {
-          userType: true,
-        },
-      }),
+      this.snapshots.findFinalizedMonthly(
+        userId,
+        previousMonthStart,
+        previousMonthEnd,
+      ),
     ]);
 
+    if (cached !== null) {
+      return {
+        previousMonthlyUserType:
+          cached.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
+            ? null
+            : cached.userType,
+        sensitiveInfoAgreed: member?.sensInfo === 'Y',
+      };
+    }
+
+    const [boogleRecords, lifeRecords] = await Promise.all([
+      this.findBoogleRecords(userId, previousMonthStart, currentMonthStart),
+      this.findLifeRecords(userId, previousMonthStart, currentMonthStart),
+    ]);
+
+    const recordStats = this.buildMonthlyRecordStats(
+      boogleRecords,
+      lifeRecords,
+      previousMonthEnd.getUTCDate(),
+    );
+    const summary = this.buildMonthlySummary(
+      boogleRecords,
+      lifeRecords,
+      recordStats,
+    );
+    const userType = this.resolveMonthlyUserType(boogleRecords, lifeRecords);
+
+    await this.saveSnapshotSafely(
+      `weekly-pattern-context userId=${userId.toString()} period=${this.toDateString(
+        previousMonthStart,
+      )}`,
+      () =>
+        this.snapshots.upsertMonthly(
+          userId,
+          previousMonthStart,
+          previousMonthEnd,
+          true,
+          this.toMonthlySnapshotValue(summary, userType, recordStats),
+        ),
+    );
+
     return {
-      previousMonthlyUserType: previousMonthlyRecord?.userType ?? null,
+      previousMonthlyUserType:
+        recordStats.recordedDays < REQUIRED_MONTHLY_RECORDED_DAYS
+          ? null
+          : userType.code,
       sensitiveInfoAgreed: member?.sensInfo === 'Y',
     };
   }
@@ -972,52 +1161,6 @@ export class ReportService {
       lifeRecordDays: lifeRecordDateSet.size,
       requiredDays: 3,
       completionScore,
-    };
-  }
-
-  private buildSummary(
-    weeklyRecord: WeeklyRecordForReport | null,
-    boogleRecords: BoogleRecordForReport[],
-    recordStats: WeeklyRecordStatsDto,
-  ): WeeklySummaryDto {
-    const calculatedBowelCount = boogleRecords.filter(
-      (record) => record.hasBowel,
-    ).length;
-
-    const bowelCount = weeklyRecord?.bowelCount ?? calculatedBowelCount;
-
-    return {
-      bowelCount,
-      intervalAvg:
-        weeklyRecord?.intervalAvg ??
-        (bowelCount === 0 ? 0 : this.round1(TOTAL_WEEK_DAYS / bowelCount)),
-      completionScore: recordStats.completionScore,
-    };
-  }
-
-  private buildPreviousSummary(
-    previousWeekStartDate: Date,
-    previousWeekEndDate: Date,
-    previousWeeklyRecord: WeeklyRecordForReport | null,
-    previousBoogleRecords: BoogleRecordForReport[],
-    previousRecordStats: WeeklyRecordStatsDto,
-  ): PreviousWeeklySummaryDto | null {
-    if (
-      previousWeeklyRecord === null &&
-      previousRecordStats.recordedDays === 0
-    ) {
-      return null;
-    }
-
-    const summary = this.buildSummary(
-      previousWeeklyRecord,
-      previousBoogleRecords,
-      previousRecordStats,
-    );
-
-    return {
-      period: this.buildPeriod(previousWeekStartDate, previousWeekEndDate),
-      ...summary,
     };
   }
 
@@ -1329,30 +1472,6 @@ export class ReportService {
     };
   }
 
-  private async findWeeklyRecordsForMonth(
-    userId: bigint,
-    monthStartDate: Date,
-    nextMonthStartDate: Date,
-  ): Promise<WeeklyRecordForTrend[]> {
-    return this.prisma.weeklyRecord.findMany({
-      where: {
-        userId,
-        weekStartDate: {
-          gte: monthStartDate,
-          lt: nextMonthStartDate,
-        },
-      },
-      select: {
-        weekStartDate: true,
-        bowelCount: true,
-        completionScore: true,
-      },
-      orderBy: {
-        weekStartDate: 'asc',
-      },
-    });
-  }
-
   private buildMonthlySummary(
     boogleRecords: BoogleRecordForReport[],
     lifeRecords: LifeRecordForReport[],
@@ -1500,19 +1619,11 @@ export class ReportService {
   }
 
   private buildWeeklyTrend(
-    weeklyRecords: WeeklyRecordForTrend[],
     boogleRecords: BoogleRecordForReport[],
     lifeRecords: LifeRecordForReport[],
     monthStartDate: Date,
     monthEndDate: Date,
   ): WeeklyTrendDto[] {
-    const weeklyRecordMap = new Map(
-      weeklyRecords.map((record) => [
-        this.toDateString(record.weekStartDate),
-        record,
-      ]),
-    );
-
     const weeklyTrend: WeeklyTrendDto[] = [];
     let weekStartDate = monthStartDate;
     let weekIndex = 1;
@@ -1524,25 +1635,18 @@ export class ReportService {
       );
       const nextWeekEndDate = this.addDays(weekEndDate, 1);
 
-      const weekKey = this.toDateString(weekStartDate);
-      const weeklyRecord = weeklyRecordMap.get(weekKey);
-
       const weekBoogleRecords = this.filterByKstCalendarRange(
         boogleRecords,
         weekStartDate,
         nextWeekEndDate,
       );
-
       const weekLifeRecords = this.filterByKstCalendarRange(
         lifeRecords,
         weekStartDate,
         nextWeekEndDate,
       );
-      const trendPeriodDays =
-        Math.floor(
-          (weekEndDate.getTime() - weekStartDate.getTime()) /
-            (24 * 60 * 60 * 1000),
-        ) + 1;
+
+      const trendPeriodDays = this.daysBetween(weekStartDate, weekEndDate) + 1;
       const trendScores = calculateReportScores(
         weekBoogleRecords,
         weekLifeRecords,
@@ -1553,9 +1657,8 @@ export class ReportService {
         weekIndex,
         weekStartDate: this.toDateString(weekStartDate),
         weekEndDate: this.toDateString(weekEndDate),
-        bowelCount:
-          weeklyRecord?.bowelCount ??
-          weekBoogleRecords.filter((record) => record.hasBowel).length,
+        bowelCount: weekBoogleRecords.filter((record) => record.hasBowel)
+          .length,
         conditionScore: trendScores.conditionScore,
       });
 
@@ -1908,5 +2011,43 @@ export class ReportService {
       .slice(0, 7)
       .replace('-', '');
     return `boogle_report_${month}.pdf`;
+  }
+
+  // DB캐싱 스냅샷
+  private isPeriodFinalized(periodEndDate: Date): boolean {
+    return periodEndDate < this.getTodayCalendarDate();
+  }
+
+  // 주간 스냅샷
+  private toWeeklySnapshotValue(
+    summary: WeeklySummaryDto,
+    recordStats: WeeklyRecordStatsDto,
+  ): WeeklySnapshotValue {
+    return {
+      bowelCount: summary.bowelCount,
+      intervalAvg: summary.intervalAvg,
+      completionScore: summary.completionScore,
+      recordedDays: recordStats.recordedDays,
+    };
+  }
+
+  //월간 스냅샷
+  private toMonthlySnapshotValue(
+    summary: MonthlySummaryDto,
+    userType: MonthlyUserTypeDto,
+    recordStats: MonthlyRecordStatsDto,
+  ): MonthlySnapshotValue {
+    return {
+      bowelCount: summary.bowelCount,
+      bowelDays: summary.bowelDays,
+      intervalAvg: summary.intervalAvg,
+      state: summary.state,
+      completionScore: summary.completionScore,
+      rhythmScore: summary.rhythmScore,
+      stateScore: summary.stateScore,
+      conditionScore: summary.conditionScore,
+      userType: userType.code,
+      recordedDays: recordStats.recordedDays,
+    };
   }
 }

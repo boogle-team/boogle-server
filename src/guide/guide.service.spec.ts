@@ -634,4 +634,37 @@ describe('GuideService', () => {
       content: '갑작스러운 변화가 더 중요할 수 있어요.',
     });
   });
+
+  it('바인딩이 없는 활성 P Guide는 GUIDE_CONTENT_NOT_FOUND를 반환한다', async () => {
+    prismaMock.guide.findUnique.mockResolvedValue({
+      ...healthGuideRow,
+      id: 999,
+      title: '바인딩이 없는 패턴 가이드',
+      category: 'P',
+      guideAdvices: [],
+    });
+
+    await expect(service.getGuideDetail(1n, '999')).rejects.toMatchObject({
+      errorCode: GuideErrorCode.GUIDE_CONTENT_NOT_FOUND,
+    });
+
+    expect(reportServiceMock.getWeeklyReport).not.toHaveBeenCalled();
+  });
+
+  it('바인딩이 없는 활성 P Guide에는 피드백을 남길 수 없다', async () => {
+    prismaMock.guide.findUnique.mockResolvedValueOnce(
+      activePatternGuideForFeedback,
+    );
+
+    await expect(
+      service.createGuideFeedback(1n, '999', {
+        feedback: 'G',
+      }),
+    ).rejects.toMatchObject({
+      errorCode: GuideErrorCode.GUIDE_FEEDBACK_NOT_ALLOWED,
+    });
+
+    expect(prismaMock.guideFeedback.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.guideFeedback.create).not.toHaveBeenCalled();
+  });
 });

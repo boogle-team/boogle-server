@@ -2,27 +2,39 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@/prisma/prisma.service';
 import { NotificationDispatchService } from '@/notification/notification-dispatch.service';
 import { ReportService } from './report.service';
-
-const notificationDispatchMock = {
-  dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
-};
+import { ReportSnapshotService } from './report-snapshot.service';
 import { ReportErrorCode } from './report-error-code.enum';
 import type {
   BoogleRecordForReport,
   LifeRecordForReport,
 } from './dto/report-record.dto';
-import type { MonthlyUserTypeDto } from './dto/monthly-report-response.dto';
+import type {
+  MonthlyUserTypeDto,
+  PreviousMonthlySummaryDto,
+} from './dto/monthly-report-response.dto';
 import * as monthlyPdfRenderer from './pdf/monthly-pdf.renderer';
 import type {
   ChangeTrend,
   FrequentTimeSlotDto,
   WeeklyGuideDto,
   BowelRhythmByDayDto,
+  PreviousWeeklySummaryDto,
 } from './dto/weekly-report-response.dto';
 import {
   WEEKLY_RULE_CODE,
   type WeeklyRuleCode,
 } from './pattern/weekly-pattern.constants';
+
+const notificationDispatchMock = {
+  dispatch: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
+};
+
+const reportSnapshotMock = {
+  findFinalizedWeekly: jest.fn(),
+  upsertWeekly: jest.fn(),
+  findFinalizedMonthly: jest.fn(),
+  upsertMonthly: jest.fn(),
+};
 
 function kstDate(dateKey: string, time = '09:00'): Date {
   return new Date(`${dateKey}T${time}:00.000+09:00`);
@@ -69,6 +81,24 @@ interface MonthlyUserTypeTestAccessor {
     boogleRecords: BoogleRecordForReport[],
     lifeRecords: LifeRecordForReport[],
   ): MonthlyUserTypeDto;
+}
+
+interface ReportSnapshotTestAccessor {
+  getOrCreatePreviousWeeklySummary(
+    userId: bigint,
+    previousWeekStartDate: Date,
+    previousWeekEndDate: Date,
+    previousBoogleRecords: BoogleRecordForReport[],
+    previousLifeRecords: LifeRecordForReport[],
+  ): Promise<PreviousWeeklySummaryDto | null>;
+
+  getOrCreatePreviousMonthlySummary(
+    userId: bigint,
+    previousMonthStartDate: Date,
+    previousMonthEndDate: Date,
+    previousBoogleRecords: BoogleRecordForReport[],
+    previousLifeRecords: LifeRecordForReport[],
+  ): Promise<PreviousMonthlySummaryDto | null>;
 }
 
 function createBoogleRecord(
@@ -136,14 +166,6 @@ describe('ReportService', () => {
     lifeRecord: {
       findMany: jest.fn(),
     },
-    weeklyRecord: {
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-    },
-    monthlyRecord: {
-      findFirst: jest.fn(),
-      findMany: jest.fn(),
-    },
     guide: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -152,6 +174,12 @@ describe('ReportService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+
+    reportSnapshotMock.findFinalizedWeekly.mockReset().mockResolvedValue(null);
+    reportSnapshotMock.upsertWeekly.mockReset().mockResolvedValue(undefined);
+    reportSnapshotMock.findFinalizedMonthly.mockReset().mockResolvedValue(null);
+    reportSnapshotMock.upsertMonthly.mockReset().mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReportService,
@@ -162,6 +190,10 @@ describe('ReportService', () => {
         {
           provide: NotificationDispatchService,
           useValue: notificationDispatchMock,
+        },
+        {
+          provide: ReportSnapshotService,
+          useValue: reportSnapshotMock,
         },
       ],
     }).compile();
@@ -414,6 +446,291 @@ describe('ReportService', () => {
     expect(
       accessor.buildBowelRhythmByDay(records, calendarDate('2026-08-03')),
     ).toEqual([]);
+  });
+
+  describe('report snapshot cache', () => {
+    const getSnapshotAccessor = (): ReportSnapshotTestAccessor =>
+      service as unknown as ReportSnapshotTestAccessor;
+
+    it('확정된 이전 주 캐시가 있으면 previousSummary에 캐시 값을 사용한다', async () => {
+      reportSnapshotMock.findFinalizedWeekly.mockResolvedValueOnce({
+        bowelCount: 5,
+        intervalAvg: 1.4,
+        completionScore: 71.4,
+        recordedDays: 5,
+      });
+
+      const result =
+        await getSnapshotAccessor().getOrCreatePreviousWeeklySummary(
+          1n,
+          calendarDate('2026-07-13'),
+          calendarDate('2026-07-19'),
+          [createBoogleRecord('2026-07-13')],
+          [createLifeRecord('2026-07-13')],
+        );
+
+      expect(result).toEqual({
+        period: {
+          type: 'WEEKLY',
+          startDate: '2026-07-13',
+          endDate: '2026-07-19',
+        },
+        bowelCount: 5,
+        intervalAvg: 1.4,
+        completionScore: 71.4,
+      });
+      expect(reportSnapshotMock.upsertWeekly).not.toHaveBeenCalled();
+    });
+    it('이전 주 캐시의 recordedDays가 0이면 previousSummary는 null이다', async () => {
+      reportSnapshotMock.findFinalizedWeekly.mockResolvedValueOnce({
+        bowelCount: 0,
+        intervalAvg: 0,
+        completionScore: 0,
+        recordedDays: 0,
+      });
+
+      const result =
+        await getSnapshotAccessor().getOrCreatePreviousWeeklySummary(
+          1n,
+          calendarDate('2026-07-13'),
+          calendarDate('2026-07-19'),
+          [createBoogleRecord('2026-07-13')],
+          [],
+        );
+
+      expect(result).toBeNull();
+      expect(reportSnapshotMock.upsertWeekly).not.toHaveBeenCalled();
+    });
+    it('확정된 이전 월 캐시가 있으면 previousSummary에 캐시 값을 사용한다', async () => {
+      reportSnapshotMock.findFinalizedMonthly.mockResolvedValueOnce({
+        bowelCount: 15,
+        bowelDays: 12,
+        intervalAvg: 2,
+        state: 2,
+        completionScore: 66.7,
+        rhythmScore: 65,
+        stateScore: 58,
+        conditionScore: 63,
+        userType: 'I',
+        recordedDays: 20,
+      });
+
+      const result =
+        await getSnapshotAccessor().getOrCreatePreviousMonthlySummary(
+          1n,
+          calendarDate('2026-06-01'),
+          calendarDate('2026-06-30'),
+          [],
+          [],
+        );
+
+      expect(result).toEqual({
+        period: {
+          type: 'MONTHLY',
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+        },
+        bowelCount: 15,
+        bowelDays: 12,
+        intervalAvg: 2,
+        completionScore: 66.7,
+        rhythmScore: 65,
+        stateScore: 58,
+        conditionScore: 63,
+        state: 2,
+        stateLabel: '보통',
+        userType: 'I',
+        userTypeLabel: '불규칙형',
+      });
+      expect(reportSnapshotMock.upsertMonthly).not.toHaveBeenCalled();
+    });
+    it('이전 월 캐시의 recordedDays가 7일 미만이면 previousSummary는 null이다', async () => {
+      reportSnapshotMock.findFinalizedMonthly.mockResolvedValueOnce({
+        bowelCount: 4,
+        bowelDays: 4,
+        intervalAvg: 7.5,
+        state: 3,
+        completionScore: 20,
+        rhythmScore: 50,
+        stateScore: 50,
+        conditionScore: 50,
+        userType: 'N',
+        recordedDays: 6,
+      });
+
+      const result =
+        await getSnapshotAccessor().getOrCreatePreviousMonthlySummary(
+          1n,
+          calendarDate('2026-06-01'),
+          calendarDate('2026-06-30'),
+          [createBoogleRecord('2026-06-01')],
+          [],
+        );
+
+      expect(result).toBeNull();
+      expect(reportSnapshotMock.upsertMonthly).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('weekly snapshot finalization', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-22T03:00:00.000Z'));
+
+      prismaMock.boogleRecord.findMany.mockResolvedValue([]);
+      prismaMock.lifeRecord.findMany.mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('현재 주 스냅샷은 오늘까지 계산하고 isFinalized=false로 저장한다', async () => {
+      await service.getWeeklyReport(1n, {
+        weekStartDate: '2026-07-20',
+        includeGuide: false,
+      });
+
+      expect(reportSnapshotMock.upsertWeekly).toHaveBeenCalledWith(
+        1n,
+        calendarDate('2026-07-20'),
+        calendarDate('2026-07-22'),
+        false,
+        expect.objectContaining({
+          recordedDays: 0,
+        }),
+      );
+    });
+
+    it('과거 주 스냅샷은 일요일까지 계산하고 isFinalized=true로 저장한다', async () => {
+      await service.getWeeklyReport(1n, {
+        weekStartDate: '2026-07-06',
+        includeGuide: false,
+      });
+
+      expect(reportSnapshotMock.upsertWeekly).toHaveBeenCalledWith(
+        1n,
+        calendarDate('2026-07-06'),
+        calendarDate('2026-07-12'),
+        true,
+        expect.objectContaining({
+          recordedDays: 0,
+        }),
+      );
+    });
+  });
+
+  describe('snapshot write failure fallback', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-07-22T03:00:00.000Z'));
+
+      prismaMock.boogleRecord.findMany.mockResolvedValue([]);
+      prismaMock.lifeRecord.findMany.mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('현재 주 스냅샷 저장이 실패해도 원본 계산 리포트를 반환한다', async () => {
+      reportSnapshotMock.upsertWeekly
+        .mockRejectedValueOnce(new Error('weekly snapshot unavailable'))
+        .mockResolvedValueOnce(undefined);
+
+      const result = await service.getWeeklyReport(1n, {
+        weekStartDate: '2026-07-20',
+        includeGuide: false,
+      });
+
+      expect(result).toMatchObject({
+        dataStatus: 'INSUFFICIENT',
+        recordStats: {
+          recordedDays: 0,
+        },
+      });
+      expect(reportSnapshotMock.upsertWeekly).toHaveBeenCalled();
+    });
+
+    it('이전 주 fallback 저장이 실패해도 계산한 previousSummary를 반환한다', async () => {
+      reportSnapshotMock.findFinalizedWeekly.mockResolvedValueOnce(null);
+      reportSnapshotMock.upsertWeekly.mockRejectedValueOnce(
+        new Error('weekly snapshot unavailable'),
+      );
+
+      const result = await (
+        service as unknown as ReportSnapshotTestAccessor
+      ).getOrCreatePreviousWeeklySummary(
+        1n,
+        calendarDate('2026-07-13'),
+        calendarDate('2026-07-19'),
+        [createBoogleRecord('2026-07-13')],
+        [],
+      );
+
+      expect(result).toEqual({
+        period: {
+          type: 'WEEKLY',
+          startDate: '2026-07-13',
+          endDate: '2026-07-19',
+        },
+        bowelCount: 1,
+        intervalAvg: 7,
+        completionScore: 14.3,
+      });
+    });
+    it('현재 월 스냅샷 저장이 실패해도 원본 계산 리포트를 반환한다', async () => {
+      reportSnapshotMock.upsertMonthly.mockRejectedValueOnce(
+        new Error('monthly snapshot unavailable'),
+      );
+
+      const currentRecords = Array.from({ length: 6 }, (_, index) =>
+        createBoogleRecord(`2026-07-${String(index + 1).padStart(2, '0')}`),
+      );
+
+      prismaMock.boogleRecord.findMany.mockResolvedValueOnce(currentRecords);
+      prismaMock.lifeRecord.findMany.mockResolvedValueOnce([]);
+
+      const result = await service.getMonthlyReport(1n, {
+        monthStartDate: '2026-07-01',
+        includePattern: false,
+      });
+
+      expect(result).toMatchObject({
+        dataStatus: 'INSUFFICIENT',
+        recordStats: {
+          recordedDays: 6,
+        },
+      });
+    });
+    it('이전 월 fallback 저장이 실패해도 계산한 previousSummary를 반환한다', async () => {
+      reportSnapshotMock.findFinalizedMonthly.mockResolvedValueOnce(null);
+      reportSnapshotMock.upsertMonthly.mockRejectedValueOnce(
+        new Error('monthly snapshot unavailable'),
+      );
+
+      const previousRecords = Array.from({ length: 7 }, (_, index) =>
+        createBoogleRecord(`2026-06-${String(index + 1).padStart(2, '0')}`),
+      );
+
+      const result = await (
+        service as unknown as ReportSnapshotTestAccessor
+      ).getOrCreatePreviousMonthlySummary(
+        1n,
+        calendarDate('2026-06-01'),
+        calendarDate('2026-06-30'),
+        previousRecords,
+        [],
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.period).toEqual({
+        type: 'MONTHLY',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+      });
+      expect(result?.bowelCount).toBe(7);
+    });
   });
 
   describe('resolveMonthlyUserType', () => {
@@ -784,8 +1101,6 @@ describe('ReportService', () => {
     beforeEach(() => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date('2026-07-15T03:00:00.000Z'));
-
-      prismaMock.weeklyRecord.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

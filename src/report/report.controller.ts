@@ -112,6 +112,7 @@ export class ReportController {
     examples: errorExamples({
       REPORT_INVALID_MONTH_FORMAT:
         'monthStartDate는 YYYY-MM-01 형식이어야 합니다.',
+      REPORT_INVALID_DATE_RANGE: '미래 월의 리포트는 조회할 수 없습니다.',
       BAD_REQUEST: '요청 값이 올바르지 않습니다.',
     }),
   })
